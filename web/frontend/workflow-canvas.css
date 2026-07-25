@@ -1831,6 +1831,31 @@ body.workflow-studio-open {
     border-top: 1px solid #edf0f4;
 }
 
+.wf-http-network-section {
+    display: grid;
+    gap: 7px;
+    margin-top: 3px;
+    padding-top: 12px;
+    border-top: 1px solid #edf0f4;
+}
+
+.wf-http-network-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.wf-http-network-grid label {
+    display: grid;
+    gap: 4px;
+}
+
+.wf-http-network-grid .wf-http-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .wf-http-body-heading {
     display: grid;
     min-width: 0;

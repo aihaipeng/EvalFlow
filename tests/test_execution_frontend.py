@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from web.app import app
-from web import routes_workflow_drafts
+from web import routes_workflows
 
 
 STATIC_DIR = Path(__file__).parents[1] / "web" / "static"
@@ -11,12 +11,12 @@ STATIC_DIR = Path(__file__).parents[1] / "web" / "static"
 
 def test_execution_assets_and_navigation_are_registered(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        routes_workflow_drafts,
+        routes_workflows,
         "DATABASE_PATH",
         tmp_path / "run_storage" / "agent_bench.sqlite3",
     )
-    monkeypatch.setattr(routes_workflow_drafts, "_repository_instance", None)
-    monkeypatch.setattr(routes_workflow_drafts, "_repository_path", None)
+    monkeypatch.setattr(routes_workflows, "_repository_instance", None)
+    monkeypatch.setattr(routes_workflows, "_repository_path", None)
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     execution_js = (STATIC_DIR / "execution.js").read_text(encoding="utf-8")
@@ -47,9 +47,9 @@ def test_execution_assets_and_navigation_are_registered(tmp_path, monkeypatch):
     assert client.get("/execution.css").headers["cache-control"] == (
         "no-cache, no-store, must-revalidate"
     )
-    assert client.get("/api/workflows").status_code == 404
+    assert client.get("/api/workflows").status_code == 200
     assert client.get("/api/runs").status_code == 404
-    assert client.get("/api/workflow-drafts").status_code == 200
+    assert client.get("/api/workflow-drafts").status_code == 404
 
 
 def test_target_page_uses_complete_crud_api_and_validated_form():
@@ -86,15 +86,14 @@ def test_workflow_list_uses_persistent_drafts_without_legacy_api():
     assert "function viewWorkflows()" in execution_js
     assert "function renderWorkflowTable()" in execution_js
     assert "persistent Workflow Studio" in execution_js
-    assert "API.get('/api/workflows')" not in execution_js
-    assert "API.post('/api/workflows'" not in execution_js
+    assert "API.get('/api/workflows')" in execution_js
+    assert "API.post('/api/workflows'" in execution_js
     assert "API.del('/api/workflows/'" not in execution_js
     assert "API.put('/api/workflows/bindings/'" not in execution_js
     assert "API.del('/api/workflows/bindings/'" not in execution_js
-    assert "API.get('/api/workflow-drafts')" in execution_js
-    assert "API.get('/api/workflow-drafts/'" in execution_js
-    assert "API.post('/api/workflow-drafts' + query, body)" in execution_js
-    assert "API.put('/api/workflow-drafts/'" in execution_js
+    assert "/api/workflow-drafts" not in execution_js
+    assert "API.get('/api/workflows/'" in execution_js
+    assert "API.put('/api/workflows/'" in execution_js
     assert "已持久化" in execution_js
     assert "id=\"workflow-search\"" in execution_js
     assert "id=\"workflow-status-filter\"" in execution_js
@@ -104,10 +103,9 @@ def test_workflow_list_uses_persistent_drafts_without_legacy_api():
     assert 'id="workflow-create-description"' in execution_js
     assert "名称不能为空" in execution_js
     assert "await openWorkflowEditor(null, {name: name, description: description})" in execution_js
-    assert "createOnMount: !workflowId" in execution_js
+    assert "createOnMount: false" in execution_js
     assert "onPersistMetadata: async function (metadata)" in execution_js
-    assert "API.patch(" in execution_js
-    assert "'/metadata'" in execution_js
+    assert "API.patch(" not in execution_js[execution_js.index("async function openWorkflowEditor"):]
     assert "window.AgentBenchWorkflowCanvas.mount" in execution_js
     assert ".workflow-row-actions" in execution_css
     assert ".workflow-valid" in execution_css
@@ -202,10 +200,8 @@ def test_workflow_editor_uses_fullscreen_react_flow_canvas():
     assert 'aria-label={`输出变量名 ${index + 1}`}' in canvas_jsx
     assert "const OUTPUT_VARIABLE_TYPES = ['AUTO', 'STRING', 'INTEGER', 'NUMBER', 'BOOLEAN', 'OBJECT', 'ARRAY']" in canvas_jsx
     assert "return {id: rowId(), name: '', type: 'AUTO', value: '', pythonVariable: ''}" in canvas_jsx
-    assert "Python 顶层变量" in canvas_jsx
-    assert "pythonVariable: event.target.value" in canvas_jsx
-    assert "type === 'SCRIPT' && Array.isArray(storedData.outputVariables)" in canvas_jsx
-    assert "{...row, pythonVariable: row.name, value: ''}" in canvas_jsx
+    assert "isHttp && (" in canvas_jsx
+    assert "set_val" not in canvas_jsx
     assert 'aria-label={`输出变量类型 ${index + 1}`}' in canvas_jsx
     assert "value={row.type || 'AUTO'}" in canvas_jsx
     assert 'aria-label={`输出变量 ${index + 1}`}' in canvas_jsx
@@ -219,22 +215,22 @@ def test_workflow_editor_uses_fullscreen_react_flow_canvas():
     assert "function parameterDataSummary(value)" in canvas_jsx
     assert "正在接收原始响应…" in canvas_jsx
     assert "text.length > 180" in canvas_jsx
-    assert "const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'INTERRUPTED']" in canvas_jsx
+    assert "const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED']" in canvas_jsx
     assert "function validateWorkflowGraph(nodes, edges)" in canvas_jsx
     assert "Workflow 存在游离节点" in canvas_jsx
     assert "Workflow 存在循环依赖" in canvas_jsx
     assert "const orphaned = nodes.length === 1 ? []" in canvas_jsx
     assert canvas_jsx.count("validateWorkflowGraph(nodes, edges)") >= 3
     assert "const persistDraft = useCallback(async ({forNodeRun = false, metadata = null} = {})" in canvas_jsx
-    assert "const activeWorkflowId = await persistDraft({forNodeRun: true})" in canvas_jsx
+    assert "const activeWorkflowId = await persistDraft({forNodeRun: true})" not in canvas_jsx
     assert "if (!forNodeRun)" in canvas_jsx
-    assert "draft.forNodeRun ? '?for_node_run=true' : ''" in execution_js
+    assert "draft.forNodeRun ? '?for_node_run=true' : ''" not in execution_js
     assert "status: 'PENDING'" in canvas_jsx
-    assert "status: 'RUNNING'" in canvas_jsx
+    assert "setWorkflowRunState('RUNNING')" in canvas_jsx
     assert "SUCCESS" in canvas_jsx
     assert "function formatExecutionDuration(value)" in canvas_jsx
     assert "executionDurationMs: 0" in canvas_jsx
-    assert "Date.now() - startedAtMs" in canvas_jsx
+    assert "Date.now() - workflowState.startedAtMs" in canvas_jsx
     assert "window.setInterval" in canvas_jsx
     assert 'aria-label={`执行耗时 ${executionDuration}`}' in canvas_jsx
     assert 'className="wf-execution-spinner"' in canvas_jsx
@@ -244,7 +240,7 @@ def test_workflow_editor_uses_fullscreen_react_flow_canvas():
     assert 'aria-label="运行当前节点"' in canvas_jsx
     assert 'aria-label="打开当前节点参数"' not in canvas_jsx
     assert 'aria-label="保存当前节点"' in canvas_jsx
-    assert "onRun={() => editorNodeId && runNode(editorNodeId)}" in canvas_jsx
+    assert "onRun={() => window.showToast && window.showToast('请使用画布右上角运行 Workflow', 'error')}" in canvas_jsx
     assert "onSave={() => editorNodeId && saveNode(editorNodeId)}" in canvas_jsx
     assert "setNodeSaveNotice" in canvas_jsx
     assert "wf-node-saved-state" in canvas_jsx
@@ -346,11 +342,13 @@ def test_http_node_editor_has_api_import_and_body_controls():
     assert "['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']" in canvas_jsx
     assert "httpKeyValueSection('HEADERS', 'headers'" in canvas_jsx
     assert "httpKeyValueSection('PARAMS', 'params'" in canvas_jsx
-    assert "['none', 'form-data', 'x-www-form-urlencoded', 'raw', 'binary']" in canvas_jsx
+    assert "['none', 'form-data', 'x-www-form-urlencoded', 'raw']" in canvas_jsx
     assert "JSON.stringify(JSON.parse(httpConfig.bodyText), null, 2)" in canvas_jsx
     assert "JSON 格式错误" in canvas_jsx
     assert "Beautify" in canvas_jsx
-    assert 'aria-label="选择 Binary 文件"' in canvas_jsx
+    assert 'aria-label="Proxy 模式"' in canvas_jsx
+    assert 'aria-label="跟随重定向"' not in canvas_jsx
+    assert 'aria-label="验证 SSL 证书"' not in canvas_jsx
     assert ".wf-http-api-row" in canvas_css
     assert "grid-template-columns: 70px 96px minmax(180px, 1fr) 34px" in canvas_css
     assert "padding-left: 20px" in canvas_css
@@ -624,8 +622,8 @@ def test_llm_node_uses_saved_models_and_framework_independent_parameters():
     assert "setStreamMode(event.target.checked)" in canvas_jsx
     assert "const showOutputVariables = !isLlm || !streamEnabled" in canvas_jsx
     assert "{showOutputVariables && (" in canvas_jsx
-    assert "const streaming = targetNode.data.nodeType === 'LLM' && targetNode.data.modelParameters?.stream === true" in canvas_jsx
-    assert "const suffix = streaming ? '/runs/stream' : '/runs'" in canvas_jsx
+    assert "fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs`" in canvas_jsx
+    assert "/cancel`" in canvas_jsx
     assert 'aria-label="查看节点变量"' in canvas_jsx
     assert 'aria-label="节点可用变量"' in canvas_jsx
     assert "copyTextToClipboard(parameterDataText(variable.value, true))" in canvas_jsx
@@ -636,10 +634,10 @@ def test_llm_node_uses_saved_models_and_framework_independent_parameters():
     assert 'aria-label={`复制变量值 ${variable.name}`}' in canvas_jsx
     assert "disabled={!variable.available}" in canvas_jsx
     assert "全局变量" in canvas_jsx
-    assert "/variables`" in canvas_jsx
-    assert "const activeWorkflowId = await persistDraft({forNodeRun: true});" in canvas_jsx
-    assert "const activeWorkflowId = await persistDraft();" not in canvas_jsx
-    assert "/api/workflow-drafts/${encodeURIComponent(activeWorkflowId)}/nodes/${encodeURIComponent(id)}/runs" in canvas_jsx
+    assert "/variables`" not in canvas_jsx
+    assert "const activeWorkflowId = await persistDraft({forNodeRun: true});" not in canvas_jsx
+    assert "activeWorkflowId = await persistDraft();" in canvas_jsx
+    assert "/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs" in canvas_jsx
     assert "['HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType)" in canvas_jsx
     assert "apiKey" not in canvas_jsx
     assert "api_key" not in canvas_jsx

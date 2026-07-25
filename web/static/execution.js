@@ -257,8 +257,8 @@ function renderWorkflowTable() {
 
 async function loadWorkflows() {
     try {
-        var data = await API.get('/api/workflow-drafts');
-        executionState.workflows = data.workflows || [];
+        var data = await API.get('/api/workflows');
+        executionState.workflows = (data.workflows || []).map(normalizeWorkflowRecord);
         renderWorkflowTable();
     } catch (error) {
         showToast(executionErrorMessage(error), 'error');
@@ -317,11 +317,119 @@ function openWorkflowCreateDialog() {
 }
 
 function rememberWorkflow(workflow) {
+    workflow = normalizeWorkflowRecord(workflow);
     var existingIndex = executionState.workflows.findIndex(function (item) {
         return item.id === workflow.id;
     });
     if (existingIndex >= 0) executionState.workflows[existingIndex] = workflow;
     else executionState.workflows.unshift(workflow);
+}
+
+function normalizeWorkflowRecord(workflow) {
+    return Object.assign({}, workflow, {id: workflow.workflow_id || workflow.id});
+}
+
+function outputType(value) {
+    var normalized = String(value || 'string').toLowerCase();
+    return ['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'].includes(normalized) ? normalized : 'string';
+}
+
+function outputDefinitions(data, http) {
+    return (data.outputVariables || []).filter(function (row) { return String(row.name || '').trim(); }).map(function (row) {
+        var output = {name: String(row.name).trim().toLowerCase(), type: outputType(row.type)};
+        if (http) output.path = String(row.value || '$.response.body').trim();
+        return output;
+    });
+}
+
+function executionDefinition(data) {
+    return {
+        timeout_ms: Math.max(1, Math.round(Number(data.timeoutMs) || 120000)),
+        max_attempts: Math.max(0, Math.min(10, Math.round(Number(data.retryCount) || 0))),
+        delay_ms: Math.max(0, Math.min(600000, Math.round(Number(data.retryIntervalMs) || 0))),
+    };
+}
+
+function canvasNodeToContract(node, globalVariables) {
+    var data = node.data || {};
+    var type = String(data.nodeType || '').toUpperCase();
+    var base = {id: node.id, type: type, name: String(data.label || type).trim(), description: String(data.description || '').trim()};
+    if (type === 'START') {
+        base.inputs = (globalVariables || []).filter(function (row) { return String(row.name || '').trim(); }).map(function (row) {
+            return {name: String(row.name).trim().toLowerCase(), type: outputType(row.type), data: row.value};
+        });
+        return base;
+    }
+    if (type === 'END') return base;
+    if (type === 'SCRIPT') {
+        base.script = String(data.mainPy || '');
+        base.execution = executionDefinition(data);
+        base.outputs = outputDefinitions(data, false);
+        return base;
+    }
+    if (type === 'LLM') {
+        var parameters = Object.assign({}, data.modelParameters || {});
+        var stream = parameters.stream === true;
+        delete parameters.stream;
+        base.model = {provider_id: String(data.providerId || '').trim(), model_name: String(data.modelName || '').trim()};
+        base.prompt = {system: String(data.systemPrompt || ''), user: String(data.userPrompt || '')};
+        base.generation = {stream: stream, parameters: parameters};
+        base.execution = executionDefinition(data);
+        base.outputs = outputDefinitions(data, false).slice(0, 1);
+        return base;
+    }
+    if (type === 'HTTP') {
+        var config = data.httpConfig || {};
+        var bodyType = String(config.bodyType || 'none').replace(/-/g, '_');
+        var content = null;
+        if (bodyType === 'raw') {
+            try { content = JSON.parse(config.bodyText || ''); } catch (_error) { content = String(config.bodyText || ''); }
+        } else if (bodyType === 'form_data' || bodyType === 'form_urlencoded') {
+            content = (config.bodyFields || []).map(function (row) { return {key: row.key || '', value: row.value || ''}; });
+        }
+        base.request = {
+            method: String(config.method || 'GET').toUpperCase(),
+            url: String(config.url || ''),
+            follow_redirects: config.followRedirects !== false,
+            headers: (config.headers || []).filter(function (row) { return row.key; }).map(function (row) { return {key: row.key, value: String(row.value || '')}; }),
+            params: (config.params || []).filter(function (row) { return row.key; }).map(function (row) { return {key: row.key, value: row.value}; }),
+            body: {type: bodyType, content: content},
+        };
+        base.network = {proxy: {mode: String(config.proxyMode || 'SYSTEM').toUpperCase(), url: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyUrl || '') : null, username: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyUsername || '') || null : null, password: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyPassword || '') || null : null}, verify_ssl: config.verifySsl !== false};
+        base.response = {body_type: String(config.responseBodyType || 'json')};
+        base.execution = executionDefinition(data);
+        base.outputs = outputDefinitions(data, true);
+        return base;
+    }
+    throw new Error('当前 Workflow 契约暂不支持节点类型: ' + type);
+}
+
+function canvasDraftToContract(draft) {
+    var workflowId = draft.id || window.crypto.randomUUID();
+    return {
+        workflow_id: workflowId,
+        name: draft.name,
+        description: draft.description || '',
+        nodes: (draft.nodes || []).map(function (node) { return canvasNodeToContract(node, draft.global_variables || []); }),
+        edges: (draft.edges || []).map(function (edge) { return {edge_id: edge.id, source: edge.source, target: edge.target}; }),
+    };
+}
+
+function contractToCanvasDraft(workflow) {
+    var start = (workflow.nodes || []).find(function (node) { return node.type === 'START'; });
+    return {
+        name: workflow.name,
+        description: workflow.description || '',
+        nodes: (workflow.nodes || []).map(function (node) {
+            var data = {nodeType: node.type, label: node.name, description: node.description || '', timeoutMs: node.execution ? node.execution.timeout_ms : 120000, retryCount: node.execution ? node.execution.max_attempts : 0, retryIntervalMs: node.execution ? node.execution.delay_ms : 0};
+            if (node.type === 'SCRIPT') { data.mainPy = node.script; data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: ''}; }); }
+            if (node.type === 'LLM') { data.providerId = node.model.provider_id; data.modelName = node.model.model_name; data.systemPrompt = node.prompt.system; data.userPrompt = node.prompt.user; data.modelParameters = Object.assign({}, node.generation.parameters, {stream: node.generation.stream}); data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: ''}; }); }
+            if (node.type === 'HTTP') { data.httpConfig = {method: node.request.method, url: node.request.url, headers: node.request.headers, params: node.request.params, bodyType: node.request.body.type.replace(/_/g, '-'), bodyText: typeof node.request.body.content === 'string' ? node.request.body.content : JSON.stringify(node.request.body.content, null, 2), bodyFields: Array.isArray(node.request.body.content) ? node.request.body.content : [], followRedirects: node.request.follow_redirects !== false, proxyMode: node.network.proxy.mode, proxyUrl: node.network.proxy.url || '', proxyUsername: node.network.proxy.username || '', proxyPassword: node.network.proxy.password || '', verifySsl: node.network.verify_ssl !== false, responseBodyType: node.response.body_type}; data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: item.path}; }); }
+            return {id: node.id, type: 'workflowNode', data: data};
+        }),
+        edges: (workflow.edges || []).map(function (edge) { return {id: edge.edge_id, source: edge.source, target: edge.target, type: 'insertable'}; }),
+        global_variables: start ? (start.inputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: item.data}; }) : [],
+    };
 }
 
 async function openWorkflowEditor(workflowId, initialMetadata) {
@@ -333,7 +441,7 @@ async function openWorkflowEditor(workflowId, initialMetadata) {
     var workflow = null;
     if (workflowId) {
         try {
-            workflow = (await API.get('/api/workflow-drafts/' + encodeURIComponent(workflowId))).workflow;
+            workflow = (await API.get('/api/workflows/' + encodeURIComponent(workflowId))).workflow;
         } catch (error) {
             showToast(executionErrorMessage(error), 'error');
             return;
@@ -343,30 +451,23 @@ async function openWorkflowEditor(workflowId, initialMetadata) {
         id: workflowId || null,
         name: workflow ? workflow.name : initialMetadata.name,
         description: workflow ? workflow.description : initialMetadata.description,
-        draft: workflow,
-        createOnMount: !workflowId,
+        draft: workflow ? contractToCanvasDraft(workflow) : null,
+        createOnMount: false,
         onPersist: async function (draft) {
-            var body = {
-                name: draft.name,
-                description: draft.description || '',
-                nodes: draft.nodes || [],
-                edges: draft.edges || [],
-                global_variables: draft.global_variables || [],
-            };
-            var query = draft.forNodeRun ? '?for_node_run=true' : '';
+            var body = canvasDraftToContract(draft);
             var data = draft.id
-                ? await API.put('/api/workflow-drafts/' + encodeURIComponent(draft.id) + query, body)
-                : await API.post('/api/workflow-drafts' + query, body);
-            workflow = data.workflow;
+                ? await API.put('/api/workflows/' + encodeURIComponent(draft.id), body)
+                : await API.post('/api/workflows', body);
+            workflow = normalizeWorkflowRecord(data.workflow);
             rememberWorkflow(workflow);
             return workflow;
         },
         onPersistMetadata: async function (metadata) {
-            var data = await API.patch(
-                '/api/workflow-drafts/' + encodeURIComponent(metadata.id) + '/metadata',
-                {name: metadata.name, description: metadata.description}
-            );
-            workflow = data.workflow;
+            var body = Object.assign({}, workflow, {name: metadata.name, description: metadata.description});
+            delete body.created_at;
+            delete body.updated_at;
+            var data = await API.put('/api/workflows/' + encodeURIComponent(metadata.id), body);
+            workflow = normalizeWorkflowRecord(data.workflow);
             rememberWorkflow(workflow);
             return workflow;
         },

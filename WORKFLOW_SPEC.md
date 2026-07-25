@@ -1909,6 +1909,7 @@ CANCELLED NodeRun 的 error 结构沿用各节点 Run-Time 的通用 error 字�
 | WORKFLOW_CONFIG_INVALID | Workflow 或节点 Design-Time 字段、类型或结构不合法 |
 | WORKFLOW_GRAPH_INVALID | 节点、Edge、循环、可达性或 START/END 图约束不合法 |
 | WORKFLOW_CANCELLED | 用户取消 Workflow Run |
+| WORKFLOW_PROCESS_RESTARTED | 服务进程重启时收敛遗留的 PENDING/RUNNING WorkflowRun |
 | CONTEXT_VARIABLE_NOT_FOUND | Context 根变量或嵌套路径不存在 |
 | CONTEXT_KEY_EXISTS | Context 输出 key 已存在，原子提交被拒绝 |
 | NODE_CANCELLED_BY_USER | NodeRun 因用户取消进入 CANCELLED |
@@ -1990,3 +1991,48 @@ CANCELLED NodeRun 的 error 结构沿用各节点 Run-Time 的通用 error 字�
 - 完整标准输出、标准错误、失败堆栈和中间过程日志属于临时日志，不写入 Context、Run-Time.error.details 或其他持久化证据结构。CANCELLED 只在 NodeRun.error 中保留取消原因。
 - 当前契约不定义 log_ref。HTTP 敏感 Header、Proxy 用户名和密码按既定规则明文保存和展示；实现不得声称已脱敏。
 - 日志告警不能替代结构化失败。只有明确规定为非致命的数据（例如非法 LLM usage 单字段）才允许继续执行，并必须写入结构化 usage_errors，不能只记录警告。
+
+## Implementation Decisions (Rapid Iteration)
+
+- The current implementation prioritizes execution availability and terminal
+  correctness. Workflow/node definition snapshots, complete logs, failed-attempt
+  records, and stack-trace persistence are deferred. Observability write failures
+  must not block node execution, terminal-state updates, or Context commits.
+- A WorkflowRun stores workflow_id but does not preserve an immutable workflow
+  snapshot. Historical runs therefore do not guarantee reconstruction of a
+  Workflow definition that was later changed or deleted.
+- A Workflow with any WorkflowRun history cannot be deleted. This prevents a
+  persisted WorkflowRun and NodeRun from becoming orphaned while snapshots are
+  intentionally deferred.
+- The new /api/workflows protocol is incompatible with /api/workflow-drafts.
+  Legacy definitions and run records are not migrated or read by the new
+  repository.
+- The new repository uses versioned table names (`workflow_definitions_v2`,
+  `workflow_runs_v2`, and `workflow_node_runs_v2`) so an existing legacy SQLite
+  file cannot shadow the new schema. This is isolation, not data migration.
+- During the cutover, the new executor uses dependency-based parallel dispatch
+  and a Context commit lock. This is the selected baseline for stable multi-node
+  execution; node adapters are isolated from scheduling and can be replaced
+  without changing fail-fast or Context atomicity semantics.
+- The canvas does not persist visual node coordinates in the execution contract.
+  On load, missing coordinates are laid out automatically; the engine ignores
+  presentation state.
+- Only the canvas top-right Run and Cancel actions execute or cancel a complete
+  WorkflowRun. Node-card and node-editor actions do not start an independent
+  NodeRun in the new protocol.
+- The Workflow run and cancel APIs are the backend actions for the Workflow
+  canvas top-right Run and Cancel buttons. Run creates a WorkflowRun; Cancel
+  cancels that active WorkflowRun and the canvas refreshes status from
+  WorkflowRun and NodeRun query results. No separate run-center interaction is
+  introduced in this iteration.
+- On process startup, any persisted PENDING/RUNNING WorkflowRun is explicitly
+  finalized as FAILED with WORKFLOW_PROCESS_RESTARTED; its active NodeRuns are
+  finalized as CANCELLED. This prevents a restart from leaving an indefinitely
+  running record.
+- Save-time Context dependency validation resolves HTTP/LLM template references
+  and literal SCRIPT calls such as `get_val("result")`. A dynamically built
+  SCRIPT key cannot be inferred safely, so it remains a runtime lookup and
+  fails explicitly with CONTEXT_VARIABLE_NOT_FOUND when absent.
+- The HTTP canvas exposes only contract-supported request body types (`none`,
+  `raw`, `form_data`, `form_urlencoded`). Binary data remains a response parsing
+  option, not a request-body upload mode in this iteration.

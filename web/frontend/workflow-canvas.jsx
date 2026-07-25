@@ -73,9 +73,9 @@ const NODE_TYPES = {
 };
 
 const INSERTABLE_TYPES = ['HTTP', 'AGENT', 'LLM', 'SCRIPT'];
-const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'INTERRUPTED'];
+const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw', 'binary'];
+const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw'];
 const OUTPUT_VARIABLE_TYPES = ['AUTO', 'STRING', 'INTEGER', 'NUMBER', 'BOOLEAN', 'OBJECT', 'ARRAY'];
 const DEFAULT_AGENT_MAIN_PY = 'response = inputs';
 const DEFAULT_SCRIPT_MAIN_PY = 'msg = "介绍一下自己"\nprint(msg)';
@@ -88,7 +88,7 @@ const LLM_PARAMETERS_REFERENCE = JSON.stringify({
 }, null, 2);
 
 function nodeId(type) {
-    return `${type}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    return window.crypto.randomUUID();
 }
 
 function rowId() {
@@ -456,7 +456,13 @@ function defaultHttpConfig() {
         bodyType: 'none',
         bodyText: '',
         bodyFields: [],
-        binaryFileName: '',
+        followRedirects: true,
+        proxyMode: 'SYSTEM',
+        proxyUrl: '',
+        proxyUsername: '',
+        proxyPassword: '',
+        verifySsl: true,
+        responseBodyType: 'json',
     };
 }
 
@@ -563,10 +569,9 @@ function makeNode(type, position, overrides = {}) {
             description: '',
             status: 'PENDING',
             executionDurationMs: 0,
+            timeoutMs: 120000,
             retryCount: 0,
-            retryInterval: 0,
-            delayExecution: 0,
-            repeatExecution: 1,
+            retryIntervalMs: 0,
             outputVariables: [emptyMappingRow()],
             parameterRecords: [],
             ...(type === 'HTTP' ? {httpConfig: defaultHttpConfig()} : {}),
@@ -586,7 +591,7 @@ function makeNode(type, position, overrides = {}) {
 
 function makeEdge(source, target, overrides = {}) {
     return {
-        id: `edge_${source}_${target}_${Math.random().toString(36).slice(2, 7)}`,
+        id: window.crypto.randomUUID(),
         source,
         target,
         type: 'insertable',
@@ -612,21 +617,20 @@ function layoutGraph(nodes, edges) {
 
 function initialGraph() {
     const request = makeNode('HTTP', {x: 360, y: 280}, {label: '调用业务接口'});
-    const agent = makeNode('AGENT', {x: 675, y: 280}, {label: '执行企业 Agent'});
-    const llm = makeNode('LLM', {x: 990, y: 100}, {label: '模型质量判断'});
-    const script = makeNode('SCRIPT', {x: 990, y: 420}, {label: '规则校验'});
+    const llm = makeNode('LLM', {x: 675, y: 100}, {label: '模型质量判断'});
+    const script = makeNode('SCRIPT', {x: 675, y: 420}, {label: '规则校验'});
     return {
-        nodes: [request, agent, llm, script],
+        nodes: [request, llm, script],
         edges: [
-            makeEdge(request.id, agent.id),
-            makeEdge(agent.id, llm.id),
-            makeEdge(agent.id, script.id),
+            makeEdge(request.id, llm.id),
+            makeEdge(request.id, script.id),
         ],
     };
 }
 
 function graphFromDraft(draft) {
     if (!draft?.nodes?.length) return initialGraph();
+    const needsLayout = draft.nodes.every((stored) => !stored.position);
     const nodes = draft.nodes.map((stored) => {
         const type = stored.data?.nodeType || 'SCRIPT';
         const defaults = makeNode(type, stored.position || {x: 0, y: 0});
@@ -654,7 +658,8 @@ function graphFromDraft(draft) {
             },
         };
     });
-    return {nodes, edges: cloneValue(draft.edges || [])};
+    const loadedEdges = cloneValue(draft.edges || []);
+    return {nodes: needsLayout ? layoutGraph(nodes, loadedEdges) : nodes, edges: loadedEdges};
 }
 
 function serializableNode(node) {
@@ -1404,13 +1409,20 @@ function Inspector({
                                                 {bodyMessage && <span className="wf-http-body-error" role="alert">{bodyMessage}</span>}
                                             </div>
                                         )}
-                                        {httpConfig.bodyType === 'binary' && (
-                                            <label className="wf-http-binary-input">
-                                                <span>文件</span>
-                                                <input type="file" aria-label="选择 Binary 文件" onChange={(event) => updateHttpConfig({binaryFileName: event.target.files?.[0]?.name || ''})} />
-                                                {httpConfig.binaryFileName && <small>{httpConfig.binaryFileName}</small>}
-                                            </label>
-                                        )}
+                                    </section>
+                                    <section className="wf-http-network-section">
+                                        <div className="wf-http-kv-heading"><strong>NETWORK</strong></div>
+                                        <div className="wf-http-network-grid">
+                                            <label><span>Proxy</span><select aria-label="Proxy 模式" value={httpConfig.proxyMode} onChange={(event) => updateHttpConfig({proxyMode: event.target.value})}><option value="SYSTEM">System</option><option value="DIRECT">Direct</option><option value="CUSTOM">Custom</option></select></label>
+                                            {httpConfig.proxyMode === 'CUSTOM' && <>
+                                                <label><span>Proxy URL</span><input aria-label="Proxy URL" value={httpConfig.proxyUrl} onChange={(event) => updateHttpConfig({proxyUrl: event.target.value})} placeholder="http://proxy.example.com:8080" /></label>
+                                                <label><span>用户名</span><input aria-label="Proxy 用户名" value={httpConfig.proxyUsername} onChange={(event) => updateHttpConfig({proxyUsername: event.target.value})} /></label>
+                                                <label><span>密码</span><input aria-label="Proxy 密码" type="password" value={httpConfig.proxyPassword} onChange={(event) => updateHttpConfig({proxyPassword: event.target.value})} /></label>
+                                            </>}
+                                            <label><span>响应格式</span><select aria-label="响应 Body 类型" value={httpConfig.responseBodyType} onChange={(event) => updateHttpConfig({responseBodyType: event.target.value})}><option value="json">JSON</option><option value="text">Text</option><option value="binary">Binary</option></select></label>
+                                            <label className="wf-http-checkbox"><input type="checkbox" checked={httpConfig.followRedirects} onChange={(event) => updateHttpConfig({followRedirects: event.target.checked})} /><span>跟随重定向</span></label>
+                                            <label className="wf-http-checkbox"><input type="checkbox" checked={httpConfig.verifySsl} onChange={(event) => updateHttpConfig({verifySsl: event.target.checked})} /><span>验证 SSL 证书</span></label>
+                                        </div>
                                     </section>
                                 </section>
                             )}
@@ -1428,10 +1440,9 @@ function Inspector({
                                 <button type="button" aria-expanded={retryOpen} onClick={() => setRetryOpen((open) => !open)}><span>超时与重试</span><ChevronRight className={retryOpen ? 'is-open' : ''} size={15} /></button>
                                 {retryOpen && (
                                     <div className="wf-config-panel wf-retry-grid">
-                                        <label><span>重试次数</span><input type="number" min="0" value={node.data.retryCount ?? 0} onChange={(event) => onChange({retryCount: Number(event.target.value)})} /></label>
-                                        <label><span>重试间隔</span><input type="number" min="0" value={node.data.retryInterval ?? 0} onChange={(event) => onChange({retryInterval: Number(event.target.value)})} /></label>
-                                        <label><span>延迟执行</span><input type="number" min="0" value={node.data.delayExecution ?? 0} onChange={(event) => onChange({delayExecution: Number(event.target.value)})} /></label>
-                                        <label><span>重复执行</span><input type="number" min="1" value={node.data.repeatExecution ?? 1} onChange={(event) => onChange({repeatExecution: Number(event.target.value)})} /></label>
+                                        <label><span>单次超时（ms）</span><input type="number" min="1" step="1" value={node.data.timeoutMs ?? 120000} onChange={(event) => onChange({timeoutMs: Number(event.target.value)})} /></label>
+                                        <label><span>最大重试次数</span><input type="number" min="0" max="10" step="1" value={node.data.retryCount ?? 0} onChange={(event) => onChange({retryCount: Number(event.target.value)})} /></label>
+                                        <label><span>重试间隔（ms）</span><input type="number" min="0" max="600000" step="1" value={node.data.retryIntervalMs ?? 0} onChange={(event) => onChange({retryIntervalMs: Number(event.target.value)})} /></label>
                                     </div>
                                 )}
                                 {showOutputVariables && (
@@ -1442,9 +1453,7 @@ function Inspector({
                                                 {outputVariables.map((row, index) => (
                                                     <div className="wf-output-variable-row" key={row.id}>
                                                         <label><span>变量名</span><input aria-label={`输出变量名 ${index + 1}`} value={row.name} onChange={(event) => updateOutputVariable(row.id, {name: event.target.value})} /></label>
-                                                        {isScript ? (
-                                                            <label><span>Python 变量</span><input aria-label={`Python 顶层变量 ${index + 1}`} value={row.pythonVariable || ''} onChange={(event) => updateOutputVariable(row.id, {pythonVariable: event.target.value})} /></label>
-                                                        ) : (
+                                                        {isHttp && (
                                                             <label><span>提取表达式</span><input aria-label={`输出变量 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
                                                         )}
                                                         <label><span>类型</span><select aria-label={`输出变量类型 ${index + 1}`} value={row.type || 'AUTO'} onChange={(event) => updateOutputVariable(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
@@ -1554,8 +1563,7 @@ function WorkflowStudio({options}) {
     const [historyTick, setHistoryTick] = useState(0);
     const [workflowRunState, setWorkflowRunState] = useState('IDLE');
     const [workflowElapsedMs, setWorkflowElapsedMs] = useState(0);
-    const workflowRunRef = useRef({active: false, interruptRequested: false, startedAtMs: 0});
-    const activeNodeRuns = useRef(new Map());
+    const workflowRunRef = useRef({active: false, interruptRequested: false, startedAtMs: 0, runId: null});
     const workflowElapsedTimer = useRef(null);
     const {screenToFlowPosition, fitView} = useReactFlow();
 
@@ -1759,12 +1767,17 @@ function WorkflowStudio({options}) {
     const loadNodeRuns = useCallback(async (id, activeWorkflowId = workflowId) => {
         if (!activeWorkflowId) return [];
         try {
-            const response = await fetch(`/api/workflow-drafts/${encodeURIComponent(activeWorkflowId)}/nodes/${encodeURIComponent(id)}/runs`, {
+            const runResponse = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs`, {
                 headers: {accept: 'application/json'},
             });
+            const runPayload = await runResponse.json().catch(() => ({}));
+            if (!runResponse.ok) throw new Error(runPayload.detail || `HTTP ${runResponse.status}`);
+            const latest = Array.isArray(runPayload.runs) ? runPayload.runs[0] : null;
+            if (!latest) return [];
+            const response = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(latest.run_id)}/nodes`, {headers: {accept: 'application/json'}});
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-            const runs = Array.isArray(payload.runs) ? payload.runs.slice(0, 10) : [];
+            const runs = (payload.runs || []).filter((run) => run.node_id === id).map((run) => ({...run, id: run.node_run_id, output: run.outputs, response_body: typeof run.response === 'string' ? run.response : JSON.stringify(run.response || '')}));
             setNodes((current) => current.map((node) => node.id === id ? {
                 ...node,
                 data: {
@@ -1782,14 +1795,16 @@ function WorkflowStudio({options}) {
     }, [setNodes, workflowId]);
 
     const loadNodeVariables = useCallback(async (id) => {
-        const activeWorkflowId = await persistDraft({forNodeRun: true});
-        const response = await fetch(`/api/workflow-drafts/${encodeURIComponent(activeWorkflowId)}/nodes/${encodeURIComponent(id)}/variables`, {
-            headers: {accept: 'application/json'},
+        const targetIndex = nodes.findIndex((node) => node.id === id);
+        const visible = targetIndex < 0 ? [] : nodes.slice(0, targetIndex + 1);
+        const groups = [];
+        if (globalVariables.length) groups.push({id: 'start-inputs', label: 'START', variables: globalVariables.filter((row) => row.name).map((row) => ({name: row.name, value: row.value, available: true}))});
+        visible.forEach((node) => {
+            const variables = (node.data.outputVariables || []).filter((row) => row.name).map((row) => ({name: row.name, value: null, path: row.value || null, available: false}));
+            if (variables.length) groups.push({id: node.id, label: node.data.label || node.data.nodeType, variables});
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-        return payload.groups || [];
-    }, [persistDraft]);
+        return groups;
+    }, [globalVariables, nodes]);
 
     useEffect(() => {
         const targetNode = nodes.find((node) => node.id === editorNodeId);
@@ -1797,169 +1812,6 @@ function WorkflowStudio({options}) {
             loadNodeRuns(targetNode.id);
         }
     }, [editorNodeId, loadNodeRuns, workflowId]);
-
-    const interruptNode = useCallback(async (id) => {
-        const active = activeNodeRuns.current.get(id);
-        if (!active) return false;
-        active.interruptRequested = true;
-        if (!active.workflowId) return true;
-        try {
-            const response = await fetch(`/api/workflow-drafts/${encodeURIComponent(active.workflowId)}/nodes/${encodeURIComponent(id)}/interrupt`, {
-                method: 'POST',
-                headers: {accept: 'application/json'},
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-            return payload.interrupted === true;
-        } catch (error) {
-            if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点中断失败', 'error');
-            return false;
-        }
-    }, []);
-
-    const runNode = useCallback(async (id) => {
-        if (activeNodeRuns.current.has(id)) return 'RUNNING';
-        const targetNode = nodes.find((node) => node.id === id);
-        if (!targetNode) return 'FAILED';
-        const active = {workflowId: null, interruptRequested: false};
-        activeNodeRuns.current.set(id, active);
-        const startedAtMs = Date.now();
-        const executionId = rowId();
-        let elapsedTimer = null;
-        const isExecutable = ['HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode.data.nodeType);
-        const setRuntime = (patch) => setNodes((current) => current.map((node) => node.id === id ? {
-            ...node,
-            data: {...node.data, ...patch},
-        } : node));
-        const markLocalFinished = (status) => {
-            const finishedAt = new Date().toISOString();
-            setRuntime({
-                status,
-                executionId: null,
-                executionDurationMs: Date.now() - startedAtMs,
-                runHistory: (targetNode.data.runHistory || []).concat({
-                    id: executionId,
-                    started_at: new Date(startedAtMs).toISOString(),
-                    finished_at: finishedAt,
-                    status,
-                    duration_ms: Date.now() - startedAtMs,
-                    output: status === 'SUCCESS' ? {status: 'completed'} : null,
-                    error: status === 'INTERRUPTED' ? {type: 'INTERRUPTED', message: '用户中断节点'} : undefined,
-                }).slice(-10),
-            });
-            return status;
-        };
-        setRuntime({
-            status: 'RUNNING',
-            executionId,
-            executionDurationMs: 0,
-            runHistory: [{
-                id: executionId,
-                status: 'RUNNING',
-                started_at: new Date(startedAtMs).toISOString(),
-                duration_ms: 0,
-                provider_name: '',
-                model_name: targetNode.data.modelName || '',
-                response_body: '',
-            }].concat(targetNode.data.runHistory || []).slice(0, 10),
-        });
-        elapsedTimer = window.setInterval(() => {
-            setRuntime({executionDurationMs: Date.now() - startedAtMs});
-        }, 100);
-        try {
-            if (!isExecutable) return markLocalFinished(active.interruptRequested ? 'INTERRUPTED' : 'SUCCESS');
-            const activeWorkflowId = await persistDraft({forNodeRun: true});
-            active.workflowId = activeWorkflowId;
-            if (active.interruptRequested) return markLocalFinished('INTERRUPTED');
-            const streaming = targetNode.data.nodeType === 'LLM' && targetNode.data.modelParameters?.stream === true;
-            const suffix = streaming ? '/runs/stream' : '/runs';
-            const response = await fetch(`/api/workflow-drafts/${encodeURIComponent(activeWorkflowId)}/nodes/${encodeURIComponent(id)}${suffix}`, {
-                method: 'POST',
-                headers: {accept: streaming ? 'text/event-stream' : 'application/json'},
-            });
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.detail || `HTTP ${response.status}`);
-            }
-            let run;
-            if (streaming) {
-                if (!response.body) throw new Error('流式响应没有内容');
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                const consumeBlock = (block) => {
-                    let eventName = '';
-                    let dataText = '';
-                    block.split('\n').forEach((line) => {
-                        if (line.startsWith('event:')) eventName = line.slice(6).trim();
-                        if (line.startsWith('data:')) dataText += line.slice(5).trim();
-                    });
-                    if (!dataText) return;
-                    const payload = JSON.parse(dataText);
-                    if (eventName === 'raw') {
-                        const chunk = String(payload.chunk || '');
-                        setNodes((current) => current.map((node) => node.id === id ? {
-                            ...node,
-                            data: {
-                                ...node.data,
-                                executionDurationMs: Date.now() - startedAtMs,
-                                runHistory: (node.data.runHistory || []).map((item) => item.id === executionId ? {
-                                    ...item,
-                                    response_body: `${item.response_body || ''}${chunk}`,
-                                    duration_ms: Date.now() - startedAtMs,
-                                } : item),
-                            },
-                        } : node));
-                    }
-                    if (eventName === 'run') run = payload;
-                };
-                while (true) {
-                    const {done, value} = await reader.read();
-                    buffer += decoder.decode(value || new Uint8Array(), {stream: !done}).replace(/\r\n/g, '\n');
-                    let separator = buffer.indexOf('\n\n');
-                    while (separator >= 0) {
-                        consumeBlock(buffer.slice(0, separator));
-                        buffer = buffer.slice(separator + 2);
-                        separator = buffer.indexOf('\n\n');
-                    }
-                    if (done) break;
-                }
-                if (buffer.trim()) consumeBlock(buffer.trim());
-                if (!run) throw new Error('流式运行缺少最终结果');
-            } else {
-                const payload = await response.json();
-                run = payload.run;
-            }
-            setRuntime({
-                status: run.status,
-                executionId: null,
-                executionDurationMs: run.duration_ms || Date.now() - startedAtMs,
-                runHistory: [run].concat((targetNode.data.runHistory || []).filter((item) => item.id !== run.id && item.id !== executionId)).slice(0, 10),
-            });
-            if (window.showToast) window.showToast(run.status === 'SUCCESS' ? '节点运行完成' : run.status === 'INTERRUPTED' ? '节点已中断' : run.error?.message || '节点运行失败', run.status === 'SUCCESS' ? 'success' : 'error');
-            return run.status;
-        } catch (error) {
-            const status = active.interruptRequested ? 'INTERRUPTED' : 'FAILED';
-            const message = active.interruptRequested ? '用户中断节点' : error instanceof Error ? error.message : '节点运行失败';
-            setRuntime({
-                status,
-                executionId: null,
-                executionDurationMs: Date.now() - startedAtMs,
-                runHistory: (targetNode.data.runHistory || []).map((item) => item.id === executionId ? {
-                    ...item,
-                    status,
-                    finished_at: new Date().toISOString(),
-                    duration_ms: Date.now() - startedAtMs,
-                    error: {type: status, message, traceback: message},
-                } : item),
-            });
-            if (window.showToast) window.showToast(message, 'error');
-            return status;
-        } finally {
-            if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
-            activeNodeRuns.current.delete(id);
-        }
-    }, [edges, nodes, persistDraft, setNodes]);
 
     const saveNode = useCallback(async (id) => {
         const savedAt = new Date().toLocaleTimeString('zh-CN', {hour12: false});
@@ -1983,14 +1835,30 @@ function WorkflowStudio({options}) {
         timers.current.push(timer);
     }, [nodes, persistDraft, setNodes]);
 
+    const applyWorkflowNodeRuns = useCallback((runs) => {
+        const byNode = new Map((runs || []).map((run) => [run.node_id, run]));
+        setNodes((current) => current.map((node) => {
+            const run = byNode.get(node.id);
+            if (!run) return node;
+            const historyRun = {...run, id: run.node_run_id, output: run.outputs, response_body: typeof run.response === 'string' ? run.response : JSON.stringify(run.response || '')};
+            return {...node, data: {...node.data, status: run.status, executionDurationMs: run.duration_ms || 0, executionId: run.status === 'RUNNING' ? run.node_run_id : null, runHistory: [historyRun].concat((node.data.runHistory || []).filter((item) => item.id !== run.node_run_id)).slice(0, 10)}};
+        }));
+    }, [setNodes]);
+
     const interruptWorkflow = useCallback(async () => {
         const state = workflowRunRef.current;
-        if (!state.active) return false;
+        if (!state.active || !state.runId || !workflowIdRef.current) return false;
         state.interruptRequested = true;
-        const activeIds = Array.from(activeNodeRuns.current.keys());
-        await Promise.all(activeIds.map((id) => interruptNode(id)));
-        return true;
-    }, [interruptNode]);
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs/${encodeURIComponent(state.runId)}/cancel`, {method: 'POST', headers: {accept: 'application/json'}});
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+            return true;
+        } catch (error) {
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : 'Workflow 中断失败', 'error');
+            return false;
+        }
+    }, []);
 
     const runAll = useCallback(async () => {
         if (workflowRunRef.current.active) return;
@@ -2000,77 +1868,57 @@ function WorkflowStudio({options}) {
             return;
         }
         closeMenus();
+        let activeWorkflowId;
         const workflowState = workflowRunRef.current;
         workflowState.active = true;
         workflowState.interruptRequested = false;
         workflowState.startedAtMs = Date.now();
+        workflowState.runId = null;
         setWorkflowRunState('RUNNING');
         setWorkflowElapsedMs(0);
         if (workflowElapsedTimer.current !== null) window.clearInterval(workflowElapsedTimer.current);
         workflowElapsedTimer.current = window.setInterval(() => {
             setWorkflowElapsedMs(Date.now() - workflowState.startedAtMs);
         }, 100);
-        const nodeIds = nodes.map((node) => node.id);
-        const predecessors = new Map(nodeIds.map((id) => [id, []]));
-        edges.forEach((edge) => {
-            if (predecessors.has(edge.target)) predecessors.get(edge.target).push(edge.source);
-        });
-        const outcomes = new Map();
-        const blocked = new Set();
-        const running = new Map();
-        const orderedNodes = nodes.slice().sort((a, b) => (a.position?.x || 0) - (b.position?.x || 0));
         setNodes((current) => current.map((node) => ({
             ...node,
             data: {...node.data, status: 'PENDING', executionId: null, executionDurationMs: 0},
         })));
-        const launchReady = () => {
-            let changed = true;
-            while (changed) {
-                changed = false;
-                orderedNodes.forEach((node) => {
-                    if (outcomes.has(node.id) || blocked.has(node.id) || running.has(node.id)) return;
-                    if (workflowState.interruptRequested) {
-                        blocked.add(node.id);
-                        changed = true;
-                        return;
-                    }
-                    const dependencies = predecessors.get(node.id) || [];
-                    if (dependencies.some((dependency) => blocked.has(dependency) || ['FAILED', 'INTERRUPTED'].includes(outcomes.get(dependency)))) {
-                        blocked.add(node.id);
-                        changed = true;
-                        return;
-                    }
-                    if (!dependencies.every((dependency) => outcomes.get(dependency) === 'SUCCESS')) return;
-                    const promise = Promise.resolve(runNode(node.id)).then((status) => {
-                        running.delete(node.id);
-                        outcomes.set(node.id, status);
-                        return status;
-                    });
-                    running.set(node.id, promise);
-                    changed = true;
-                });
-            }
-        };
         try {
-            launchReady();
-            while (running.size) {
-                await Promise.race(Array.from(running.values()));
-                launchReady();
+            activeWorkflowId = await persistDraft();
+            const startedResponse = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs`, {method: 'POST', headers: {accept: 'application/json'}});
+            const startedPayload = await startedResponse.json().catch(() => ({}));
+            if (!startedResponse.ok) throw new Error(startedPayload.detail || `HTTP ${startedResponse.status}`);
+            workflowState.runId = startedPayload.run.run_id;
+            let run = startedPayload.run;
+            while (!['SUCCESS', 'FAILED', 'CANCELLED'].includes(run.status)) {
+                await new Promise((resolve) => window.setTimeout(resolve, 250));
+                const [runResponse, nodesResponse] = await Promise.all([
+                    fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}`, {headers: {accept: 'application/json'}}),
+                    fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}/nodes`, {headers: {accept: 'application/json'}}),
+                ]);
+                const runPayload = await runResponse.json().catch(() => ({}));
+                const nodesPayload = await nodesResponse.json().catch(() => ({}));
+                if (!runResponse.ok) throw new Error(runPayload.detail || `HTTP ${runResponse.status}`);
+                run = runPayload.run;
+                if (nodesResponse.ok) applyWorkflowNodeRuns(nodesPayload.runs || []);
             }
-            const hasFailure = Array.from(outcomes.values()).some((status) => status === 'FAILED');
-            const hasInterrupted = workflowState.interruptRequested || Array.from(outcomes.values()).some((status) => status === 'INTERRUPTED');
-            setWorkflowRunState(hasInterrupted ? 'INTERRUPTED' : hasFailure ? 'FAILED' : 'SUCCESS');
+            setWorkflowRunState(run.status);
             setWorkflowElapsedMs(Date.now() - workflowState.startedAtMs);
-            if (window.showToast) window.showToast(hasInterrupted ? 'Workflow 已中断' : hasFailure ? 'Workflow 执行失败' : 'Workflow 执行完成', hasInterrupted || hasFailure ? 'error' : 'success');
+            if (window.showToast) window.showToast(run.status === 'SUCCESS' ? 'Workflow 执行完成' : run.status === 'CANCELLED' ? 'Workflow 已中断' : run.error?.message || 'Workflow 执行失败', run.status === 'SUCCESS' ? 'success' : 'error');
+        } catch (error) {
+            setWorkflowRunState('FAILED');
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : 'Workflow 执行失败', 'error');
         } finally {
             workflowState.active = false;
+            workflowState.runId = null;
             if (workflowElapsedTimer.current !== null) {
                 window.clearInterval(workflowElapsedTimer.current);
                 workflowElapsedTimer.current = null;
             }
             setWorkflowElapsedMs(Date.now() - workflowState.startedAtMs);
         }
-    }, [closeMenus, edges, nodes, runNode, setNodes]);
+    }, [applyWorkflowNodeRuns, closeMenus, edges, nodes, persistDraft, setNodes]);
 
     const deleteElements = useCallback((nodeIds = [], edgeIds = []) => {
         const nodeIdSet = new Set(nodeIds);
@@ -2178,10 +2026,10 @@ function WorkflowStudio({options}) {
         ...node,
         data: {
             ...node.data,
-            onRun: () => runNode(node.id),
-            onInterrupt: () => interruptNode(node.id),
+            onRun: runAll,
+            onInterrupt: interruptWorkflow,
         },
-    })), [interruptNode, nodes, runNode]);
+    })), [interruptWorkflow, nodes, runAll]);
 
     const editorNode = nodes.find((node) => node.id === editorNodeId) || null;
 
@@ -2317,13 +2165,13 @@ function WorkflowStudio({options}) {
         if (action === 'test-run') runAll();
         if (action === 'interrupt-workflow') interruptWorkflow();
         if (action === 'paste-node') pasteNode();
-        if (action === 'run-node' && contextMenu?.nodeId) runNode(contextMenu.nodeId);
-        if (action === 'interrupt-node' && contextMenu?.nodeId) interruptNode(contextMenu.nodeId);
+        if (action === 'run-node' && contextMenu?.nodeId) runAll();
+        if (action === 'interrupt-node' && contextMenu?.nodeId) interruptWorkflow();
         if (action === 'copy-node' && contextMenu?.nodeId) copyNode(contextMenu.nodeId);
         if (action === 'delete-node' && contextMenu?.nodeId) deleteNode(contextMenu.nodeId);
         if (action === 'delete-edge' && contextMenu?.edgeId) deleteEdges([contextMenu.edgeId]);
         if (action !== 'paste-node') setContextMenu(null);
-    }, [contextMenu, copyNode, deleteEdges, deleteNode, interruptNode, interruptWorkflow, pasteNode, runAll, runNode]);
+    }, [contextMenu, copyNode, deleteEdges, deleteNode, interruptWorkflow, pasteNode, runAll]);
 
     const autoLayout = useCallback(() => {
         recordHistory();
@@ -2572,8 +2420,8 @@ function WorkflowStudio({options}) {
                     providerLoadError={providerLoadError}
                     onRefreshProviders={loadModelProviders}
                     onLoadVariables={() => editorNodeId ? loadNodeVariables(editorNodeId) : []}
-                    onRun={() => editorNodeId && runNode(editorNodeId)}
-                    onInterrupt={() => editorNodeId && interruptNode(editorNodeId)}
+                    onRun={() => window.showToast && window.showToast('请使用画布右上角运行 Workflow', 'error')}
+                    onInterrupt={() => window.showToast && window.showToast('请使用画布右上角中断 Workflow', 'error')}
                     onSave={() => editorNodeId && saveNode(editorNodeId)}
                     onClose={() => setEditorNodeId(null)}
                     onChange={(patch) => setNodes((current) => current.map((node) => node.id === editorNodeId ? {...node, data: {...node.data, ...patch, isDirty: true}} : node))}
