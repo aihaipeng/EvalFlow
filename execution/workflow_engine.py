@@ -29,10 +29,12 @@ from execution.workflows import (
 
 
 class NodeExecutionError(RuntimeError):
-    def __init__(self, code: str, message: str, details: dict[str, Any] | None = None):
+    def __init__(self, code: str, message: str, details: dict[str, Any] | None = None, result: NodeExecutionResult | None = None):
         super().__init__(message)
         self.code = code
         self.details = details
+        self.result = result
+        self.attempt_count = 0
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,7 @@ class WorkflowExecutor:
         self.repository.update_node_run(running)
         started = time.monotonic()
         attempt_count = 0
+        result: NodeExecutionResult | None = None
         try:
             result, attempt_count = await self._execute_with_retries(node, context)
             self._validate_outputs(node, result.outputs)
@@ -170,7 +173,11 @@ class WorkflowExecutor:
             return node.id, NodeStatus.CANCELLED
         except NodeExecutionError as exc:
             status = "TIMEOUT" if exc.code in {"SCRIPT_TIMEOUT", "LLM_TIMEOUT", "HTTP_TIMEOUT"} else "FAILED"
-            failed = NodeRunRecord.model_validate({**running.model_dump(mode="json"), "status": status, "finished_at": workflow_now(), "duration_ms": int((time.monotonic() - started) * 1000), "attempt_count": attempt_count, "error": {"code": exc.code, "message": str(exc), "details": exc.details}})
+            attempt_count = exc.attempt_count
+            final_facts = exc.result or result
+            fact_values = final_facts.__dict__.copy() if final_facts is not None else {}
+            fact_values["outputs"] = {}
+            failed = NodeRunRecord.model_validate({**running.model_dump(mode="json"), **fact_values, "status": status, "finished_at": workflow_now(), "duration_ms": int((time.monotonic() - started) * 1000), "attempt_count": attempt_count, "error": {"code": exc.code, "message": str(exc), "details": exc.details}})
             self.repository.update_node_run(failed)
             return node.id, NodeStatus.FAILED
         except Exception as exc:
@@ -199,9 +206,12 @@ class WorkflowExecutor:
                 code = {NodeType.SCRIPT: "SCRIPT_TIMEOUT", NodeType.LLM: "LLM_TIMEOUT", NodeType.HTTP: "HTTP_TIMEOUT"}[node.type]
                 error = NodeExecutionError(code, f"Node attempt timed out after {execution.timeout_ms} ms")
                 if attempt > execution.max_attempts or not self._retryable(node, error):
+                    error.attempt_count = attempt
                     raise error from exc
             except NodeExecutionError as exc:
                 if attempt > execution.max_attempts or not self._retryable(node, exc):
+                    preflight = exc.code in {"CONTEXT_VARIABLE_NOT_FOUND", "LLM_MODEL_NOT_FOUND", "LLM_PROMPT_EMPTY", "HTTP_URL_INVALID_HOST"}
+                    exc.attempt_count = attempt - 1 if preflight else attempt
                     raise
             if execution.delay_ms:
                 await asyncio.sleep(execution.delay_ms / 1000)

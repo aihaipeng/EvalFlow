@@ -48,7 +48,11 @@ def test_failed_parallel_branch_fails_workflow(tmp_path):
 
     async def adapter(node, context):
         if node.id == LEFT_ID:
-            raise NodeExecutionError("SCRIPT_RUNTIME_ERROR", "boom")
+            raise NodeExecutionError(
+                "SCRIPT_RUNTIME_ERROR",
+                "boom",
+                result=NodeExecutionResult(inputs={"input": context["input"]}),
+            )
         await asyncio.sleep(0.02)
         return NodeExecutionResult(outputs={"right": "ok"})
 
@@ -57,6 +61,9 @@ def test_failed_parallel_branch_fails_workflow(tmp_path):
 
     assert run.status == "FAILED"
     assert run.error.code == "SCRIPT_RUNTIME_ERROR"
+    assert node_runs[LEFT_ID].attempt_count == 1
+    assert node_runs[LEFT_ID].inputs == {"input": "x"}
+    assert node_runs[LEFT_ID].outputs == {}
     assert node_runs[RIGHT_ID].status == "CANCELLED"
     assert node_runs[RIGHT_ID].error.code == "NODE_CANCELLED_BY_FAIL_FAST"
     assert node_runs[RIGHT_ID].error.details == {"trigger_node_run_id": node_runs[LEFT_ID].node_run_id}
@@ -136,6 +143,8 @@ def test_node_timeout_fails_workflow_without_zombie_run(tmp_path):
     assert run.status == "FAILED"
     assert "TIMEOUT" in statuses
     assert "RUNNING" not in statuses
+    timed_out = next(item for item in repo.list_node_runs(run.run_id) if item.status == "TIMEOUT")
+    assert timed_out.attempt_count == 1
 
 
 def test_twenty_parallel_nodes_complete_repeatedly(tmp_path):

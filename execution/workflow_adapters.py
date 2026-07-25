@@ -53,9 +53,9 @@ try:
     with contextlib.redirect_stdout(sys.stderr): exec(compile(payload["script"], "<workflow-script>", "exec"), scope, scope)
     print(json.dumps({"ok": True, "inputs": used, "outputs": captured}, ensure_ascii=False, allow_nan=False))
 except ContractError as exc:
-    print(json.dumps({"ok": False, "code": exc.code, "message": exc.message}, ensure_ascii=False))
+    print(json.dumps({"ok": False, "code": exc.code, "message": exc.message, "inputs": used}, ensure_ascii=False))
 except Exception as exc:
-    print(json.dumps({"ok": False, "code": "SCRIPT_RUNTIME_ERROR", "message": str(exc)}, ensure_ascii=False))
+    print(json.dumps({"ok": False, "code": "SCRIPT_RUNTIME_ERROR", "message": str(exc), "inputs": used}, ensure_ascii=False))
 '''
 
 
@@ -92,7 +92,11 @@ class WorkflowNodeAdapter:
         except (UnicodeDecodeError, ValueError) as exc:
             raise NodeExecutionError("SCRIPT_RUNTIME_ERROR", "SCRIPT worker returned invalid JSON") from exc
         if not result.get("ok"):
-            raise NodeExecutionError(result.get("code", "SCRIPT_RUNTIME_ERROR"), result.get("message") or "SCRIPT failed")
+            raise NodeExecutionError(
+                result.get("code", "SCRIPT_RUNTIME_ERROR"),
+                result.get("message") or "SCRIPT failed",
+                result=NodeExecutionResult(inputs=result.get("inputs") or {}),
+            )
         return NodeExecutionResult(outputs=result["outputs"], inputs=result["inputs"])
 
     async def _http(self, node: HttpNode, context: dict[str, Any]) -> NodeExecutionResult:
@@ -126,10 +130,15 @@ class WorkflowNodeAdapter:
         body = _parse_http_body(response, node.response.body_type)
         request_fact = {"method": node.request.method, "url": str(response.request.url), "headers": dict(response.request.headers), "params": params, "body_type": node.request.body.type, "body": content}
         response_fact = {"status_code": response.status_code, "headers": response_headers, "body_type": node.response.body_type, "body": body}
+        runtime_result = NodeExecutionResult(inputs=used, network=node.network.model_dump(mode="json"), request=request_fact, response=response_fact)
         if not 200 <= response.status_code < 300:
-            raise NodeExecutionError("HTTP_STATUS_ERROR", f"HTTP {response.status_code}", {"response": response_fact})
+            raise NodeExecutionError("HTTP_STATUS_ERROR", f"HTTP {response.status_code}", {"response": response_fact}, runtime_result)
         root = {"request": request_fact, "response": response_fact}
-        outputs = {item.name: _extract_path(root, item.path) for item in node.outputs}
+        try:
+            outputs = {item.name: _extract_path(root, item.path) for item in node.outputs}
+        except NodeExecutionError as exc:
+            exc.result = runtime_result
+            raise
         return NodeExecutionResult(outputs=outputs, inputs=used, network=node.network.model_dump(mode="json"), request=request_fact, response=response_fact)
 
     async def _llm(self, node: LlmNode, context: dict[str, Any]) -> NodeExecutionResult:
@@ -145,6 +154,8 @@ class WorkflowNodeAdapter:
         defaults = config.default_body if config else {}
         parameters = deepcopy(node.generation.parameters)
         parameters["stream"] = node.generation.stream
+        request_fact = {"system": system, "user": user, "parameters": deepcopy(node.generation.parameters), "stream": node.generation.stream}
+        base_result = NodeExecutionResult(inputs=used, model=node.model.model_dump(mode="json"), request=request_fact)
         common = dict(base_url=provider.base_url, api_key=provider.api_key, timeout_seconds=node.execution.timeout_ms / 1000, proxy_mode=provider.proxy_mode, proxy_url=provider.proxy_url, proxy_username=provider.proxy_username, proxy_password=provider.proxy_password, verify_ssl=provider.verify_ssl)
         try:
             if provider.protocol == ModelProviderProtocol.ANTHROPIC:
@@ -155,29 +166,31 @@ class WorkflowNodeAdapter:
                 request_body = build_chat_completion_request(model_name=node.model.model_name, messages=messages, model_defaults=defaults, model_parameters=parameters)
                 response = await invoke_openai_compatible(request_body=request_body, **common)
         except httpx.TimeoutException as exc:
-            raise NodeExecutionError("LLM_TIMEOUT", str(exc)) from exc
+            raise NodeExecutionError("LLM_TIMEOUT", str(exc), result=base_result) from exc
         except httpx.HTTPError as exc:
-            raise NodeExecutionError("LLM_REQUEST_ERROR", str(exc)) from exc
+            raise NodeExecutionError("LLM_REQUEST_ERROR", str(exc), result=base_result) from exc
+        request_fact["parameters"] = {k: v for k, v in request_body.items() if k not in {"model", "messages", "system", "stream"}}
+        base_result = NodeExecutionResult(inputs=used, model=node.model.model_dump(mode="json"), request=request_fact)
         if not response.is_success:
-            raise NodeExecutionError("LLM_REQUEST_ERROR", f"LLM provider returned HTTP {response.status_code}", {"status_code": response.status_code})
+            raise NodeExecutionError("LLM_REQUEST_ERROR", f"LLM provider returned HTTP {response.status_code}", {"status_code": response.status_code}, base_result)
         try:
             parsed = parse_anthropic_response(response) if provider.protocol == ModelProviderProtocol.ANTHROPIC else parse_openai_compatible_response(response, stream=node.generation.stream)
         except (TypeError, ValueError, KeyError) as exc:
-            raise NodeExecutionError("LLM_RESPONSE_ERROR", str(exc)) from exc
+            raise NodeExecutionError("LLM_RESPONSE_ERROR", str(exc), result=base_result) from exc
         finish_reason = parsed.get("finish_reason")
+        parsed_result = NodeExecutionResult(inputs=used, model=node.model.model_dump(mode="json"), request=request_fact, usage=parsed.get("usage"))
         if finish_reason in {"length", "max_tokens", "max_output_tokens"}:
-            raise NodeExecutionError("LLM_OUTPUT_TRUNCATED", "LLM output was truncated", {"finish_reason": finish_reason})
+            raise NodeExecutionError("LLM_OUTPUT_TRUNCATED", "LLM output was truncated", {"finish_reason": finish_reason}, parsed_result)
         if finish_reason in {"content_filter", "safety"}:
-            raise NodeExecutionError("LLM_CONTENT_FILTERED", "LLM output was filtered", {"finish_reason": finish_reason})
+            raise NodeExecutionError("LLM_CONTENT_FILTERED", "LLM output was filtered", {"finish_reason": finish_reason}, parsed_result)
         if finish_reason in {"tool_calls", "function_call"}:
-            raise NodeExecutionError("LLM_UNSUPPORTED_RESPONSE", "LLM returned a non-text tool response", {"finish_reason": finish_reason})
+            raise NodeExecutionError("LLM_UNSUPPORTED_RESPONSE", "LLM returned a non-text tool response", {"finish_reason": finish_reason}, parsed_result)
         if finish_reason not in {None, "stop", "end_turn"}:
-            raise NodeExecutionError("LLM_UNSUPPORTED_FINISH_REASON", "Unsupported LLM finish reason", {"finish_reason": finish_reason})
+            raise NodeExecutionError("LLM_UNSUPPORTED_FINISH_REASON", "Unsupported LLM finish reason", {"finish_reason": finish_reason}, parsed_result)
         output = parsed["output"]
         if not isinstance(output, str):
-            raise NodeExecutionError("LLM_UNSUPPORTED_RESPONSE", "LLM did not return text")
+            raise NodeExecutionError("LLM_UNSUPPORTED_RESPONSE", "LLM did not return text", result=parsed_result)
         outputs = {node.outputs[0].name: output} if node.outputs else {}
-        request_fact = {"system": system, "user": user, "parameters": {k: v for k, v in request_body.items() if k not in {"model", "messages", "system"}}, "stream": node.generation.stream}
         return NodeExecutionResult(outputs=outputs, inputs=used, model=node.model.model_dump(mode="json"), request=request_fact, response=output, usage=parsed.get("usage"))
 
 

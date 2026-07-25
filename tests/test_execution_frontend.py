@@ -27,8 +27,8 @@ def test_execution_assets_and_navigation_are_registered(tmp_path, monkeypatch):
     assert 'data-view="runs"' not in index_html
     assert "运行中心" not in index_html
     assert '<link rel="stylesheet" href="/execution.css" />' in index_html
-    assert '<link rel="stylesheet" href="/assets/workflow-canvas.css?v=33" />' in index_html
-    assert '<script src="/assets/workflow-canvas.js?v=33"></script>' in index_html
+    assert '<link rel="stylesheet" href="/assets/workflow-canvas.css?v=34" />' in index_html
+    assert '<script src="/assets/workflow-canvas.js?v=34"></script>' in index_html
     assert '<script src="/execution.js"></script>' in index_html
     assert 'name="viewport"' not in index_html
     assert "viewTargets();" in app_js
@@ -235,6 +235,8 @@ def test_workflow_editor_uses_fullscreen_react_flow_canvas():
     assert 'aria-label={`执行耗时 ${executionDuration}`}' in canvas_jsx
     assert 'className="wf-execution-spinner"' in canvas_jsx
     assert 'aria-label={`运行 ${data.label}`}' in canvas_jsx
+    assert 'aria-label={`查看 ${data.label} 日志`}' in canvas_jsx
+    assert "data.onOpenLogs?.()" in canvas_jsx
     assert 'aria-label={`参数 ${data.label}`}' not in canvas_jsx
     assert "data.onOpenParameters?.()" not in canvas_jsx
     assert 'aria-label="运行当前节点"' in canvas_jsx
@@ -244,7 +246,9 @@ def test_workflow_editor_uses_fullscreen_react_flow_canvas():
     assert "onSave={() => editorNodeId && saveNode(editorNodeId)}" in canvas_jsx
     assert "setNodeSaveNotice" in canvas_jsx
     assert "wf-node-saved-state" in canvas_jsx
-    assert "setEditorInitialTab" not in canvas_jsx
+    assert "setEditorInitialTab('logs')" in canvas_jsx
+    assert "setEditorInitialTab('settings')" in canvas_jsx
+    assert 'initialTab={editorInitialTab}' in canvas_jsx
     assert "setTab(initialTab)" in canvas_jsx
     assert "const isScript = node.data.nodeType === 'SCRIPT'" in canvas_jsx
     assert "const showParametersTab = !isHttp && !isLlm && !isScript" in canvas_jsx
@@ -368,8 +372,8 @@ def test_http_node_editor_has_api_import_and_body_controls():
     assert "`${method} ${rawHttpRequestUrl(request)} HTTP/1.1`" in canvas_jsx
     assert "return [requestLine, ...headers, '', rawHttpRequestBody(request)].join('\\n')" in canvas_jsx
     assert 'return <HttpLogSection title="request" text={rawText} />' in canvas_jsx
-    assert "<HttpRequestLogSection request={run.request_body} />" in canvas_jsx
-    assert canvas_jsx.count('title="response" text={run.response_body}') == 2
+    assert "<HttpRequestLogSection request={run.request} />" in canvas_jsx
+    assert '<HttpLogSection title="response" text={responseContent} />' in canvas_jsx
     assert '<HttpLogSection title="request" text={requestContent} />' in canvas_jsx
     assert "复制字段路径" not in canvas_jsx
     assert "复制字段值" not in canvas_jsx
@@ -395,7 +399,7 @@ def test_http_node_editor_has_api_import_and_body_controls():
     assert "font-size: var(--wf-raw-log-font-size)" in raw_log_rule
     http_log_branch = canvas_jsx[
         canvas_jsx.index("{nodeType === 'HTTP' ? ("):
-        canvas_jsx.index(") : nodeType === 'SCRIPT' ? (")
+        canvas_jsx.index(") : nodeType === 'SCRIPT' || nodeType === 'START' ? (")
     ]
     for excluded in ("wf-llm-run-meta", "run.stdout", "run.stderr", "tracebackContent"):
         assert excluded not in http_log_branch
@@ -592,29 +596,20 @@ def test_llm_node_uses_saved_models_and_framework_independent_parameters():
     assert "normalizeTokenCount(usage.output_tokens)" in canvas_jsx
     assert "nodeType === 'LLM' && <span className=\"wf-llm-run-token\"" in canvas_jsx
     assert "formatRunTokenUsage(run)" in canvas_jsx
-    assert '<HttpLogSection title="response" text={run.response_body} />' in canvas_jsx
-    assert "原始 stderr" in canvas_jsx
-    assert "Script 原始控制台" in canvas_jsx
-    assert '<textarea\n                                            className="wf-script-console"' in canvas_jsx
-    assert "readOnly\n                                            value={scriptConsole}" in canvas_jsx
-    assert "const scriptConsole" in canvas_jsx
-    assert "run.console" in canvas_jsx
-    assert "wf-script-console" in canvas_css
-    assert "copyConsole(event, run.id, scriptConsole)" in canvas_jsx
-    assert "控制台已复制" in canvas_jsx
-    assert "复制控制台" in canvas_jsx
+    assert '<HttpLogSection title="response" text={responseContent} />' in canvas_jsx
+    assert '<HttpLogSection title="inputs" text={inputsContent} />' in canvas_jsx
+    assert '<HttpLogSection title="outputs" text={outputsContent} />' in canvas_jsx
+    assert "nodeType === 'SCRIPT' || nodeType === 'START'" in canvas_jsx
+    assert "['START', 'HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes" in canvas_jsx
     assert "event.clipboardData.setData('text/plain', text)" in canvas_jsx
     assert "event.stopImmediatePropagation()" in canvas_jsx
     assert "fetch('/api/local/clipboard'" in canvas_jsx
     assert canvas_jsx.index("fetch('/api/local/clipboard'") < canvas_jsx.index("navigator.clipboard?.writeText")
-    assert ".wf-script-console-copy" in canvas_css
     assert "user-select: text" in canvas_css
-    assert "run.response_body" in canvas_jsx
+    assert "run.response" in canvas_jsx
     assert '<HttpLogSection title="request" text={requestContent} />' in canvas_jsx
-    assert "原始 stdout" in canvas_jsx
     assert "原始 response" not in canvas_jsx
-    assert "原始 stderr" in canvas_jsx
-    assert "错误 traceback" in canvas_jsx
+    assert "error details" in canvas_jsx
     assert "输入快照" not in canvas_jsx
     assert "Token usage" not in canvas_jsx
     assert 'role="switch" aria-label="流式输出"' in canvas_jsx
@@ -638,7 +633,7 @@ def test_llm_node_uses_saved_models_and_framework_independent_parameters():
     assert "const activeWorkflowId = await persistDraft({forNodeRun: true});" not in canvas_jsx
     assert "activeWorkflowId = await persistDraft();" in canvas_jsx
     assert "/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs" in canvas_jsx
-    assert "['HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType)" in canvas_jsx
+    assert "['START', 'HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType)" in canvas_jsx
     assert "apiKey" not in canvas_jsx
     assert "api_key" not in canvas_jsx
     assert "model_kwargs" not in canvas_jsx

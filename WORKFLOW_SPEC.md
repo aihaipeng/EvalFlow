@@ -2036,3 +2036,9 @@ CANCELLED NodeRun 的 error 结构沿用各节点 Run-Time 的通用 error 字�
 - The HTTP canvas exposes only contract-supported request body types (`none`,
   `raw`, `form_data`, `form_urlencoded`). Binary data remains a response parsing
   option, not a request-body upload mode in this iteration.
+- Each canvas node exposes a log entry that projects the latest WorkflowRun's
+  persisted NodeRun facts. START and SCRIPT show inputs/outputs; HTTP shows
+  inputs/request/response/outputs; LLM also shows model and usage. END has no
+  NodeRun by contract and therefore displays no runtime log. The panel does not
+  reconstruct deprecated `stdout`, `stderr`, `request_body`, or `response_body`
+  fields.

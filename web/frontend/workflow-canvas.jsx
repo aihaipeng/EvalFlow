@@ -378,20 +378,8 @@ function appendHttpParameters(searchParams, values) {
 }
 
 function rawHttpRequestUrl(request) {
-    const url = String(request?.url || '');
-    const params = request?.params;
-    if (!params || typeof params !== 'object' || Array.isArray(params) || !Object.keys(params).length) return url;
-    try {
-        const parsed = new URL(url);
-        appendHttpParameters(parsed.searchParams, params);
-        parsed.hash = '';
-        return parsed.toString();
-    } catch (_error) {
-        const searchParams = new URLSearchParams();
-        appendHttpParameters(searchParams, params);
-        const query = searchParams.toString();
-        return query ? `${url}${url.includes('?') ? '&' : '?'}${query}` : url;
-    }
+    // Run-Time request.url is already the fully encoded URL after query merging.
+    return String(request?.url || '');
 }
 
 function rawHttpRequestBody(request) {
@@ -433,7 +421,7 @@ function runResultSummary(run) {
         if (!liveText) return '正在接收原始响应…';
         return liveText.length > 160 ? `${liveText.slice(0, 157)}...` : liveText;
     }
-    const value = ['FAILED', 'INTERRUPTED'].includes(run.status) ? run.error?.message : run.output;
+    const value = ['FAILED', 'TIMEOUT', 'CANCELLED'].includes(run.status) ? run.error?.message : run.output;
     const text = parameterDataText(value).replace(/\s+/g, ' ').trim();
     if (!text) return '无最终结果';
     return text.length > 160 ? `${text.slice(0, 157)}...` : text;
@@ -699,6 +687,7 @@ function WorkflowNode({data, selected}) {
                 <span className="wf-node-icon"><Icon size={17} strokeWidth={2} /></span>
                 <span className="wf-node-caption">{meta.caption}</span>
                 <span className="wf-node-actions">
+                    <button type="button" title="日志" aria-label={`查看 ${data.label} 日志`} onClick={(event) => {event.stopPropagation(); data.onOpenLogs?.();}}><FileText size={13} /></button>
                     <button type="button" disabled={running} title="运行" aria-label={`运行 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onRun?.();}}><Play size={13} /></button>
                     <button type="button" disabled={!running} className="is-danger" title="中断" aria-label={`中断 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onInterrupt?.();}}><Square size={12} /></button>
                 </span>
@@ -901,35 +890,22 @@ function ModelSelector({
 
 function NodeRunHistory({runs, nodeType}) {
     const [expandedRunId, setExpandedRunId] = useState(null);
-    const [copiedRunId, setCopiedRunId] = useState(null);
-    const copyResetTimerRef = useRef(null);
-    useEffect(() => () => {
-        if (copyResetTimerRef.current !== null) window.clearTimeout(copyResetTimerRef.current);
-    }, []);
-    const copyConsole = async (event, runId, text) => {
-        event.stopPropagation();
-        try {
-            await copyTextToClipboard(text);
-            setCopiedRunId(runId);
-            if (copyResetTimerRef.current !== null) window.clearTimeout(copyResetTimerRef.current);
-            copyResetTimerRef.current = window.setTimeout(() => setCopiedRunId(null), 1600);
-            if (window.showToast) window.showToast('控制台已复制', 'success');
-        } catch (error) {
-            if (window.showToast) window.showToast(error instanceof Error ? error.message : '复制失败', 'error');
-        }
-    };
     if (!runs.length) return <div className="wf-node-log-empty">暂无运行日志</div>;
     return (
         <div className="wf-llm-run-list">
             {runs.slice(0, 10).map((run) => {
                 const expanded = expandedRunId === run.id;
-                const scriptConsole = typeof run.console === 'string' && run.console
-                    ? run.console
-                    : `${run.stdout || ''}${run.stderr || ''}`;
-                const requestContent = run.request_body && Object.keys(run.request_body).length
-                    ? parameterDataText(run.request_body, true)
+                const requestContent = run.request ? parameterDataText(run.request, true) : '';
+                const responseContent = run.response === null || run.response === undefined
+                    ? ''
+                    : typeof run.response === 'string' ? run.response : parameterDataText(run.response, true);
+                const inputsContent = run.inputs && Object.keys(run.inputs).length
+                    ? parameterDataText(run.inputs, true)
                     : '';
-                const tracebackContent = run.error?.traceback || '';
+                const outputsContent = run.outputs && Object.keys(run.outputs).length
+                    ? parameterDataText(run.outputs, true)
+                    : '';
+                const errorDetails = run.error?.details ? parameterDataText(run.error.details, true) : '';
                 return (
                     <article className={`wf-llm-run is-${String(run.status || 'FAILED').toLowerCase()}`} key={run.id}>
                         <button type="button" className={`wf-llm-run-summary ${nodeType === 'LLM' ? 'has-token-usage' : ''}`} aria-expanded={expanded} onClick={() => setExpandedRunId(expanded ? null : run.id)}>
@@ -944,43 +920,28 @@ function NodeRunHistory({runs, nodeType}) {
                             <div className="wf-llm-run-detail">
                                 {nodeType === 'HTTP' ? (
                                     <>
-                                        {requestContent && <HttpRequestLogSection request={run.request_body} />}
-                                        {run.response_body && <HttpLogSection title="response" text={run.response_body} />}
+                                        {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
+                                        {run.request && <HttpRequestLogSection request={run.request} />}
+                                        {responseContent && <HttpLogSection title="response" text={responseContent} />}
+                                        {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
                                     </>
-                                ) : nodeType === 'SCRIPT' ? (
-                                    <div className="wf-script-console-wrap">
-                                        <button
-                                            type="button"
-                                            className="wf-script-console-copy"
-                                            onClick={(event) => copyConsole(event, run.id, scriptConsole)}
-                                            title={copiedRunId === run.id ? '已复制' : '复制控制台'}
-                                            aria-label={`复制控制台 ${formatRunDate(run.finished_at || run.started_at)}`}
-                                        >
-                                            {copiedRunId === run.id ? <Check size={14} /> : <Copy size={14} />}
-                                        </button>
-                                        <textarea
-                                            className="wf-script-console"
-                                            aria-label="Script 原始控制台"
-                                            readOnly
-                                            value={scriptConsole}
-                                            onPointerDown={(event) => event.stopPropagation()}
-                                            onCopy={(event) => event.stopPropagation()}
-                                        />
-                                    </div>
+                                ) : nodeType === 'SCRIPT' || nodeType === 'START' ? (
+                                    <>
+                                        {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
+                                        {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
+                                    </>
                                 ) : (
                                     <>
                                         <div className="wf-llm-run-meta">
-                                            <span>{run.provider_name ? `${run.provider_name} / ${run.model_name || '未知模型'}` : nodeType}</span>
-                                            {run.http_status && <span>HTTP {run.http_status}</span>}
-                                            {run.request_id && <code>{run.request_id}</code>}
+                                            <span>{run.model ? `${run.model.provider_id} / ${run.model.model_name}` : nodeType}</span>
                                         </div>
+                                        {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
                                         {requestContent && <HttpLogSection title="request" text={requestContent} />}
-                                        {run.stdout && <section><strong>原始 stdout</strong><pre>{run.stdout}</pre></section>}
-                                        {run.response_body && <HttpLogSection title="response" text={run.response_body} />}
-                                        {run.stderr && <section className="is-error"><strong>原始 stderr</strong><pre>{run.stderr}</pre></section>}
-                                        {tracebackContent && <section className="is-error"><strong>错误 traceback</strong><pre>{tracebackContent}</pre></section>}
+                                        {responseContent && <HttpLogSection title="response" text={responseContent} />}
+                                        {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
                                     </>
                                 )}
+                                {errorDetails && <HttpLogSection title="error details" text={errorDetails} />}
                             </div>
                         )}
                     </article>
@@ -1524,6 +1485,7 @@ function WorkflowStudio({options}) {
     const [selectedNodeIds, setSelectedNodeIds] = useState([]);
     const [selectedEdgeIds, setSelectedEdgeIds] = useState([]);
     const [editorNodeId, setEditorNodeId] = useState(null);
+    const [editorInitialTab, setEditorInitialTab] = useState('settings');
     const [contextMenu, setContextMenu] = useState(null);
     const [insertEdgeId, setInsertEdgeId] = useState(null);
     const [clipboard, setClipboard] = useState(null);
@@ -1808,7 +1770,7 @@ function WorkflowStudio({options}) {
 
     useEffect(() => {
         const targetNode = nodes.find((node) => node.id === editorNodeId);
-        if (['HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType) && workflowId) {
+        if (['START', 'HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType) && workflowId) {
             loadNodeRuns(targetNode.id);
         }
     }, [editorNodeId, loadNodeRuns, workflowId]);
@@ -2028,6 +1990,10 @@ function WorkflowStudio({options}) {
             ...node.data,
             onRun: runAll,
             onInterrupt: interruptWorkflow,
+            onOpenLogs: () => {
+                setEditorInitialTab('logs');
+                setEditorNodeId(node.id);
+            },
         },
     })), [interruptWorkflow, nodes, runAll]);
 
@@ -2342,6 +2308,7 @@ function WorkflowStudio({options}) {
                     onNodeDoubleClick={(event, node) => {
                         event.preventDefault();
                         closeMenus();
+                        setEditorInitialTab('settings');
                         setEditorNodeId(node.id);
                     }}
                     onPaneContextMenu={(event) => {
@@ -2413,13 +2380,14 @@ function WorkflowStudio({options}) {
                     onAdd={(type) => contextMenu?.flowPosition && addNodeAt(type, contextMenu.flowPosition)}
                 />
                 <Inspector
-                    key={editorNodeId || 'none'}
+                    key={`${editorNodeId || 'none'}:${editorInitialTab}`}
                     node={editorNode}
                     providers={modelProviders}
                     providerLoadState={providerLoadState}
                     providerLoadError={providerLoadError}
                     onRefreshProviders={loadModelProviders}
                     onLoadVariables={() => editorNodeId ? loadNodeVariables(editorNodeId) : []}
+                    initialTab={editorInitialTab}
                     onRun={() => window.showToast && window.showToast('请使用画布右上角运行 Workflow', 'error')}
                     onInterrupt={() => window.showToast && window.showToast('请使用画布右上角中断 Workflow', 'error')}
                     onSave={() => editorNodeId && saveNode(editorNodeId)}
