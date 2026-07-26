@@ -1,9 +1,26 @@
 /* ===== API Client ===== */
+async function apiResponsePayload(res) {
+    var text = await res.text();
+    var payload = null;
+    if (text) {
+        try { payload = JSON.parse(text); } catch (_error) { payload = null; }
+    }
+    if (!res.ok) {
+        var detail = payload && payload.detail;
+        if (Array.isArray(detail)) {
+            detail = detail.map(function (item) { return item.msg || String(item); }).join('；');
+        } else if (detail && typeof detail === 'object') {
+            detail = detail.message || JSON.stringify(detail);
+        }
+        throw new Error(detail || text || res.statusText || ('HTTP ' + res.status));
+    }
+    return payload;
+}
+
 var API = {
     get: async function (url) {
         var res = await fetch(url);
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
     post: async function (url, body, options) {
         var res = await fetch(url, {
@@ -12,8 +29,7 @@ var API = {
             body: JSON.stringify(body),
             signal: options && options.signal,
         });
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
     put: async function (url, body) {
         var res = await fetch(url, {
@@ -21,8 +37,7 @@ var API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
     patch: async function (url, body) {
         var res = await fetch(url, {
@@ -30,18 +45,15 @@ var API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
     upload: async function (url, formData) {
         var res = await fetch(url, { method: 'POST', body: formData });
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
     del: async function (url) {
         var res = await fetch(url, { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-        return res.json();
+        return apiResponsePayload(res);
     },
 };
 
@@ -1267,7 +1279,12 @@ function formatSize(bytes) {
 }
 
 function formatDateTime(value) {
-    return value ? String(value).replace('T', ' ') : '';
+    if (!value) return '';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).replace('T', ' ');
+    var pad = function (part) { return String(part).padStart(2, '0'); };
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' +
+        pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
 }
 
 function fileStem(filename) {

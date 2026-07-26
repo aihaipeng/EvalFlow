@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 import { build } from "esbuild";
 
@@ -23,4 +24,22 @@ for (const path of [`${outputBase}.js`, `${outputBase}.css`, `${outputBase}.js.L
   if (normalized !== content) {
     await writeFile(path, normalized, "utf8");
   }
+}
+
+const bundleContent = await readFile(`${outputBase}.js`, "utf8");
+const bundleVersion = createHash("sha256").update(bundleContent).digest("hex").slice(0, 12);
+const executionContent = await readFile("web/static/execution.js", "utf8");
+const executionVersion = createHash("sha256").update(executionContent).digest("hex").slice(0, 12);
+const indexPath = "web/static/index.html";
+const indexContent = await readFile(indexPath, "utf8");
+const versionedWorkflowIndex = indexContent.replace(
+  /\/assets\/workflow-canvas\.js(?:\?v=[^"']+)?/,
+  `/assets/workflow-canvas.js?v=${bundleVersion}`,
+);
+const versionedIndex = versionedWorkflowIndex.replace(
+    /\/execution\.js(?:\?v=[^"']+)?/,
+    `/execution.js?v=${executionVersion}`,
+);
+if (versionedIndex !== indexContent) {
+  await writeFile(indexPath, versionedIndex, "utf8");
 }

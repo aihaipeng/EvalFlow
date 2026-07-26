@@ -155,6 +155,7 @@ def stream_tool_worker(
     on_log: Callable[[str], None],
     run_id: str,
     timeout_seconds: float = TOOL_EXECUTION_TIMEOUT_SECONDS,
+    on_console: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     if timeout_seconds <= 0:
         raise ToolExecutionError("执行超时必须大于 0 秒")
@@ -248,6 +249,8 @@ def stream_tool_worker(
                 stderr_parts.append(text)
                 console_parts.append(text)
                 on_log(text)
+                if on_console is not None:
+                    on_console("STDERR", text)
                 continue
             for event in _parse_worker_line(raw_line):
                 if event.get("type") == "log":
@@ -256,6 +259,8 @@ def stream_tool_worker(
                     (stderr_parts if stream == "stderr" else stdout_parts).append(text)
                     console_parts.append(text)
                     on_log(text)
+                    if on_console is not None:
+                        on_console("STDERR" if stream == "stderr" else "STDOUT", text)
                 elif event.get("type") == "result" and isinstance(event.get("result"), dict):
                     result = event["result"]
 

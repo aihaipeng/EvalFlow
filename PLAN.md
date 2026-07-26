@@ -1,5 +1,327 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.22 节点中断入口收敛与 HTTP Request Options 后端核验（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：Workflow 已明确只能整体中断，但节点卡片、右键菜单和 Inspector 仍暴露单节点中断，容易让用户误判调度语义；HTTP Request Options 虽能保存回读，也必须确认真实执行层使用这些配置。
+- Who / Where：Workflow 开发者在画布运行单节点草稿或完整 Workflow，并在 HTTP Inspector 配置 Proxy、Response Body、Redirects 和 SSL Verify。
+- What / When：P0 删除全部用户可见节点中断入口，保留关闭编辑器、删除节点/Workflow 和离开 Studio 时的内部 Worker 取消；P0 审计并修正 Request Options 从前端、Structural Model、执行器到 HTTP Worker 的完整传递与行为。
+- How to Measure：页面只保留 Workflow 全局中断；单节点运行期间不能重复启动且内部清理仍能终止 Worker；Proxy/SSL/Redirects 正确进入 httpx，Response Body 四种模式真实生效，HTTP 状态码只按 `retry_statuses` 重试；专项、构建、浏览器和完整回归通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.22.1 | 收敛节点中断 UI | 节点卡片、右键菜单、Inspector / 仅保留 Workflow 中断 | 前端源码专项、生产 DOM、内部取消回归 | 无 | completed |
+| 13.22.2 | 核验 Request Options | UI 配置 / httpx client 与响应事实 | 执行器 payload、Worker 响应模式、重试状态专项 | 无 | completed |
+| 13.22.3 | 生产构建与浏览器联调 | 新 bundle / 实际画布交互 | npm build、浏览器节点/顶栏检查 | 13.22.1-13.22.2 | completed |
+| 13.22.4 | 完整回归与规范收敛 | 全部受影响模块 | pytest、compileall、diff check、E2E | 13.22.3 | completed |
+
+### 当前核验结果
+
+- Proxy：SYSTEM 保留 httpx 系统环境代理，DIRECT 设置 `trust_env=false`，CUSTOM 设置 `trust_env=false` 并注入经过 URL 编码的用户名/密码；实现正确。
+- SSL Verify 与 Redirects：分别传入 httpx Client 的 `verify` 与 `follow_redirects`，且与 Proxy 模式独立；实现正确。
+- Response Body：原执行器未把 `response.mode` 传给 Worker，Worker 始终按 AUTO；现已传递并实现 JSON 严格解析、TEXT 严格解码、BINARY Base64 与 AUTO 逐级选择。显式 JSON/TEXT 解析失败使用 `HTTP_RESPONSE_PARSE_ERROR` 且不重试。
+- 状态码重试：原执行器保存但未使用 `retry_statuses`，导致所有失败状态码都可重试；现仅连接类失败或命中配置的失败状态码时重试，并继续受 HTTP Method/`retry_non_idempotent` 限制。
+- 默认超时：HTTP 与 HTTPS 不区分协议，均使用平台 `timeout_seconds=600` 秒的单次尝试默认值；每次重试重新获得完整单次超时，Worker 外层额外 2 秒只用于进程收敛，不是用户配置超时。
+- 第一阶段专项：`uv run pytest tests/test_tool_execution.py tests/test_workflow_execution.py tests/test_workflow_frontend.py -q` -> `53 passed`。
+- 生产构建与浏览器：`npm run build`、Python compileall 通过；真实新建草稿中节点卡片、节点右键菜单和 Inspector 的节点中断入口均为 0，顶栏 Workflow 中断为 1，控制台 error/warn 为 0，草稿未保存且未产生数据库记录。
+- 最终验证：严格响应解析专项 `40 passed`；`uv run pytest -q` -> `263 passed, 4 skipped, 1 warning`。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
+## T13.21 画布多节点对齐与 LLM 上下文降噪（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：复杂 Workflow 手工拖拽后缺少批量对齐能力，节点位置难以快速整理；LLM 上下文中重复解释消息顺序的提示占用编辑空间。
+- Who / Where：Workflow 开发者在桌面画布中通过 Ctrl 多选或框选多个节点，并在左上浮动工具栏整理布局；LLM 节点作者在 Inspector 中直接编辑消息卡片。
+- What / When：用户确认 1A/2A；选中至少两个节点后显示左对齐、水平居中、右对齐、顶部对齐、垂直居中、底部对齐六个图标按钮。对齐只修改节点坐标，保留选中、连线和执行拓扑，并进入撤销/重做历史。删除 LLM 上下文说明句和 `SYSTEM -> USER -> (ASSISTANT -> USER)...` 提示，但不改变消息顺序执行契约。
+- How to Measure：单选不显示对齐组，多选显示六项；每项按选中节点包围盒得到一致边界或中心，Workflow 标记未保存且一次撤销恢复原位置；LLM Inspector 不再渲染两行提示；构建、专项、浏览器和全量回归通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.21.1 | 六种节点坐标对齐 | 多选节点与实际尺寸 / 新 position | 前端专项、真实画布几何检查 | 13.16 | completed |
+| 13.21.2 | 浮动工具栏与历史 | 选中数量 / 条件工具组、undo/redo | 多选/单选浏览器交互、撤销检查 | 13.21.1 | completed |
+| 13.21.3 | LLM 上下文降噪 | 说明句、序列提示 / 删除后的消息列表 | 源码/CSS 扫描、生产 Inspector DOM | 13.18 | completed |
+| 13.21.4 | 完整回归 | 生产 bundle 与现有 Workflow 功能 | pytest、build、语法、diff check | 13.21.1-13.21.3 | completed |
+
+### 验证记录
+
+- 生产画布 Ctrl 多选两个节点后出现六个对齐按钮；取消到单选后 `.wf-alignment-actions` 数量为 0。左/右/水平中心/顶部/垂直中心/底部逐项实测，选中节点对应边界或中心一致；浏览器缩放后的 DOM 几何误差不超过 1 CSS px。
+- 每次对齐前写入现有历史栈，对齐后 Workflow 状态为“未保存”；实测点击“回退”恢复对齐前的不同坐标。
+- LLM Inspector 的上下文区域只保留消息卡片和“添加消息”，说明句、序列提示及 `.wf-llm-context-intro` 样式均已删除；消息结构和运行校验不变。
+- 临时验收 Workflow 已删除，浏览器 error/warn 为 0。
+- 构建与回归：前端专项 `14 passed`，`npm run build`、`compileall`、bundle/`execution.js` 语法检查和 `git diff --check` 通过；顺序全量回归 `255 passed, 4 skipped, 1 warning`。首次全量运行中既有 LLM Node Execution 轮询用例在 8 秒窗口内未读取到节点而失败，单独复跑通过，随后顺序全量复跑通过；4 项 skip 与 warning 仍为未注入真实供应商环境变量和既有 Starlette/httpx 弃用提示。
+
+## T13.20 Workflow 同名冲突友好化与执行 E2E 回归（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：Workflow 同名保存时旧接口直接暴露 SQLite `UNIQUE constraint`，用户无法快速判断应修改名称；本轮变更完成后还需重点确认单节点、串行与并行图的参数传递和执行正确性。
+- Who / Where：Workflow 开发者在新建、完整保存或修改元数据时可能与现有名称冲突；开发者也会通过单节点临时运行和完整 Workflow Run 验证编排结果。
+- What / When：名称冲突统一返回 `409` 和“Workflow 名称已存在，请使用其他名称”，不暴露数据库实现；完成后执行单节点、串行、多分支并行汇合三条真实 API 端到端链路。
+- How to Measure：页面展示固定友好文案且原记录不受影响；单节点输入输出准确且不创建持久化 Run；串行逐跳 Context 正确；并行分支可同时观测为 RUNNING，JOIN 同时获取两侧输出；所有节点和整图终态为 SUCCESS。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.20.1 | 名称冲突领域化 | SQLite 唯一约束 / `WorkflowNameConflictError` | Repository 专项与事务回滚断言 | 无 | completed |
+| 13.20.2 | API 与页面友好提示 | 同名创建、更新、metadata / `409` 文案 | API 专项、生产 API、浏览器保存 | 13.20.1 | completed |
+| 13.20.3 | 执行 E2E 回归 | 单节点、串行、并行汇合图 | 真实 `8010` API、SSE、Run/Node Execution 回读 | 13.20.2 | completed |
+| 13.20.4 | 权威规范同步 | URL 清理、名称冲突、E2E 验收结果 | `PLAN.md` 与 `WORKFLOW_SPEC.md` 交叉核对、diff check | 13.19-13.20.3 | completed |
+
+### 验证记录
+
+- Repository 将 `workflow_structural_models.name` 唯一约束统一映射为 `WorkflowNameConflictError`；API 创建、完整保存和 metadata 更新均将该领域错误转换为 `409`，其他结构错误继续返回 `400`。
+- 生产 API 同名创建返回 `409` 与 `Workflow 名称已存在，请使用其他名称`，保存前后 Workflow 数量保持 `1 -> 1`；生产浏览器保存同名草稿直接显示该文案，不再出现 SQLite 错误原文。
+- 单节点临时运行：输入 `{"value":"  transfer  "}`，输出 `{"result":"TRANSFER-OK"}`，`attempt_count=1`、状态 SUCCESS，持久化 Run 数量为 0。
+- 串行图 `START -> A -> B -> END`：A 输出 `ALPHA:3`，B 输入包含 `step_a=ALPHA:3`，最终 Context 为 `seed=alpha / count=3 / step_a=ALPHA:3 / serial_result=ALPHA:3:SERIAL`，全部节点 SUCCESS。
+- 并行汇合图 `START -> LEFT/RIGHT -> JOIN -> END`：实际观察 LEFT 与 RIGHT 同时 RUNNING；JOIN 输入包含 `left_value=fanout-L` 与 `right_value=fanout-R`，输出 `joined=fanout-L|fanout-R`，最终 Context 与全部节点状态正确。
+- 三份 E2E Workflow 删除均返回 `200`；用户原有 Workflow ID 保留，新增 ID 残留为空，执行目录随 Workflow 删除清理。
+- 完整回归：`uv run pytest -q` -> `254 passed, 4 skipped, 1 warning`；`compileall`、生产 bundle 与 `execution.js` 语法检查、`npm run build`、`git diff --check` 全部通过。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 规范同步：`WORKFLOW_SPEC.md` 已明确 HTTP Endpoint 的失焦、序列化和后端三级 trim 契约，以及 `WorkflowNameConflictError -> HTTP 409` 的保存错误映射；当前实施状态同步为 Structural/Execution/API/画布均已落地。规范只维护中文权威正文，已删除重复的 `Implementation Decisions (Rapid Iteration)` 英文摘要。
+
+## T13.19 HTTP Endpoint 首尾空白自动清理（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：用户从文档、终端或调试工具复制 Endpoint 时容易携带不可见的首尾空白，旧行为会在保存阶段把本可修复的输入判为非法 URL。
+- Who / Where：Workflow 开发者在生产 Workflow Studio 的 HTTP 节点 Endpoint 输入框中录入 URL；API 客户端也可能直接提交 HTTP Structural Model。
+- What / When：用户确认采用方案 A；Endpoint 失焦时立即删除首尾空白，Workflow 保存序列化和后端结构校验前再次兜底清理。只处理 Endpoint URL，不修改 URL 中间字符，也不扩展到 Proxy URL。
+- How to Measure：带空格 URL 失焦后输入框显示清理值；保存回读只包含清理后的 URL；直接调用 API 也获得相同结果；内部空白仍按无效 URL 拒绝。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.19.1 | 前端即时清理与保存兜底 | Endpoint 输入值 / `request.url` | 前端专项、生产构建、浏览器失焦检查 | 13.16 | completed |
+| 13.19.2 | 后端统一规范化 | API `request.url` / Structural Model URL | 结构模型专项、API 保存回读 | 13.19.1 | completed |
+| 13.19.3 | 完整回归 | UI 输入、保存、API 回读与现有流程 | 浏览器 E2E、全量 pytest、静态检查 | 13.19.1-13.19.2 | completed |
+
+### 验证记录
+
+- 生产浏览器输入 `   https://example.com/path?q=a%20b   `，失焦后输入值变为 `https://example.com/path?q=a%20b`；保存成功后 API 回读完全一致，浏览器 error/warn 为 0。
+- 临时验收 Workflow `HTTP URL Trim 联调` 已删除；用户原有“未命名工作流”及其 ID 保持不变。
+- 前端专项 `13 passed`，结构模型专项 `38 passed`，Workflow API 专项 `23 passed, 1 warning`；`npm run build` 通过。
+
+## T13.18 LLM Few-shot 生产接入与前后端联调（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：LLM 节点需要从单一系统/用户提示词升级为可表达多轮示例的有序消息上下文，让 Workflow 作者能直接配置 Few-shot 请求，而不再把示例塞进一段长文本。
+- Who / Where：Workflow 开发者在生产 Workflow Studio 的 LLM 节点设置页选择模型、编辑上下文消息、高级参数、运行配置和输出变量；完整运行与单节点临时测试都必须使用同一份 Structural Model。
+- What / When：P0 不兼容删除旧 `prompt.system / prompt.user`，生产协议统一为 `context.messages[]`；P0 顶层约束为 LLM 草稿即使模型、消息或高级参数 JSON 未完成也可以保存，只有运行按钮和执行到节点时要求模型有效、上下文完整、参数 JSON 合法。
+- How to Measure：保存/回读 LLM 节点时保留 `context.messages[]` 与 `generation.parameters_text`；运行前端按钮只在模型有效、消息最终为非空 USER、非 SYSTEM 消息非空且高级参数 JSON 合法时可用；后端执行请求按 `SYSTEM -> USER -> (ASSISTANT -> USER)...` 解析并发送，Anthropic 将非空 SYSTEM 拆到 `system`；非法参数草稿运行时不发起模型请求且 `attempt_count=0`。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.18.1 | 审计旧 prompt 残留 | `PLAN.md`、高保真原型、后端模型、执行器、前端适配器 | `rg` 扫描确认残留集中在执行器、`execution.js` 和生产 Inspector | 13.17 | completed |
+| 13.18.2 | 后端协议与执行改造 | `context.messages[]`、`generation.parameters_text` | 结构模型、API、执行专项测试；OpenAI/Anthropic 请求体断言 | 13.18.1 | completed |
+| 13.18.3 | 生产画布接入高保真交互 | 消息列表、折叠上下文、追加/删除、运行校验 | 前端静态专项、生产构建、bundle 语法检查 | 13.18.2 | completed |
+| 13.18.4 | 联调与回归 | 保存/回读、单节点测试、完整运行、非法参数草稿 | 专项组合、全量 pytest、compileall、diff check、构建 | 13.18.2-13.18.3 | completed |
+| 13.18.5 | 收敛 LLM 分区视觉层级 | 删除草稿期上下文整条警告；上下文与高级参数复用同级标题 | 前端专项、构建、生产浏览器计算样式与折叠交互 | 13.18.3 | completed |
+
+### 验证记录
+
+- 后端 Structural Model 增加 `generation.parameters_text` 用于保存高级参数编辑器草稿文本，允许暂存非法 JSON；执行前若非空则以该文本解析为 JSON object，解析失败使用 `LLM_CONFIGURATION_INCOMPLETE`，`missing_fields=["generation.parameters_text"]`，不发起模型请求且 `attempt_count=0`。
+- 执行器已删除旧 `node.prompt` 读取路径，改为按 `context.messages[]` 顺序解析 `${变量}`；空 SYSTEM 在最终请求中省略，非 SYSTEM 解析后为空使用 `LLM_MESSAGE_EMPTY`；OpenAI 类请求发送完整小写消息序列，Anthropic 请求把 SYSTEM 写入 `system` 并发送 USER/ASSISTANT 消息序列。
+- 生产 Inspector 已用消息列表替换系统/用户提示词两个文本框，支持默认 `SYSTEM -> USER`、追加 `ASSISTANT -> USER`、只从末尾删除、上下文折叠、角色提示和字符数。保存按钮不再因 LLM 模型、消息或参数草稿阻塞；运行按钮仍要求模型有效、上下文完整且参数 JSON 合法。
+- 2026-07-27 视觉收敛：删除上下文底部“当前草稿可以保存”整条警告；“上下文”和“高级参数”复用同一分区、标题按钮与折叠箭头样式。生产浏览器计算样式核对两者均为 `990x38`、透明背景、无边框、零内边距，旧警告节点数量为 0；高级参数展开后 JSON 编辑器唯一可见。
+- 构建与静态检查：`npm run build` 无 warning；`uv run python -m compileall -q execution web tests storage`、`node --check web/static/execution.js`、`node --check web/static/assets/workflow-canvas.js`、`git diff --check` 均通过。
+- 专项回归：`uv run pytest tests/test_node_structural_models.py tests/test_workflow_execution.py tests/test_workflow_api.py tests/test_workflow_frontend.py -q` -> `93 passed, 1 warning`。全量回归：`uv run pytest -q` -> `251 passed, 4 skipped, 1 warning`。4 项为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 首次把专项与全量 pytest 并行运行时触发 Windows `.pytest_tmp` 文件锁和既有 atomic replace 竞态；随后单独复跑受影响并行调度用例通过，专项组合与全量回归按顺序均通过。
+
+## T13.17 LLM 上下文与 Few-shot 高保真原型（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：现有 LLM 节点只有独立的系统提示词和用户提示词，无法直观表达多轮示例，Workflow 作者需要用接近 Dify 的消息序列编辑方式构建 Few-shot 上下文。
+- Who / Where：Workflow 开发者在 LLM 节点设置页选择模型后，按消息顺序编辑真实请求上下文；默认只处理 SYSTEM 与 USER，复杂任务再按需追加示例消息。
+- What / When：本阶段仅交付独立、可交互的桌面端高保真原型，不修改 Structural Model、Execution Model、API、生产画布或数据库；用户确认后再进入不兼容协议改造。
+- How to Measure：默认准确显示 SYSTEM、USER；上下文默认展开且可整体折叠/恢复；每次点击“添加消息”自动交替追加 ASSISTANT、USER；仅允许删除新增消息且删除后仍保持合法序列；可以编辑长文本和 `${变量名}`；空 SYSTEM 规则通过角色旁 `?` 提示，最后 USER 为空显示执行校验提示；页面无重叠、裁切和横向溢出，浏览器控制台无错误。
+
+### 高保真参考位置（后续生产改造必须参考）
+
+- 浏览地址：`http://127.0.0.1:8010/assets/llm-context-prototype.html`（需先通过 `uv run python run.py` 启动本机服务，默认端口 8010）。
+- 原型源码：`prototypes/llm-context-settings/index.jsx` 与 `prototypes/llm-context-settings/prototype.css`；后续修改交互或视觉时以这两个文件为权威来源。
+- 静态入口：`web/static/assets/llm-context-prototype.html`。
+- 构建产物：`web/static/assets/llm-context-prototype.js`、`web/static/assets/llm-context-prototype.css` 和 `web/static/assets/llm-context-prototype.js.LEGAL.txt`；构建产物不得作为后续手工修改源。
+- 原型构建命令：`npx esbuild prototypes/llm-context-settings/index.jsx --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=linked --outfile=web/static/assets/llm-context-prototype.js`。
+- 生产落地入口：确认实施后，将原型交互迁移到 `web/frontend/workflow-canvas.jsx` 与 `web/frontend/workflow-canvas.css`，并同步修改 LLM Structural Model、Execution Model、API 数据映射和测试；不得只复制静态构建产物或只替换 UI。
+- 当前状态：该地址是独立高保真，不读写 Workflow、Provider、Execution JSON 或数据库；生产 LLM 节点仍使用旧 `prompt.system / prompt.user`，不得把原型完成误记为生产协议已完成。
+
+### 已确认边界
+
+- 后续生产数据方向采用有序 `context.messages[]`，删除旧 `prompt.system / prompt.user`，不保留兼容层；本阶段只在原型中演示，不落地协议。
+- 默认消息固定为 `SYSTEM -> USER`；“添加消息”每次追加一条，角色按 `ASSISTANT -> USER` 自动交替。角色不可手动修改，消息不可拖动排序。
+- “上下文”使用默认展开的折叠区块；标题行显示当前消息数量，折叠只改变可见性，不清空或重排消息。
+- SYSTEM 的“可为空；执行时自动省略空 SYSTEM”和 USER 的“最终一条 USER 是模型本次需要回答的内容”仅通过角色标题右侧的 `?` 提示展示，不在消息框下重复占用空间。
+- 消息标题行进一步固定为“左侧角色名 + `?`，右侧字符数 + 可选 `×`”；删除序号、Few-shot 标签、中文角色说明、变量引用计数和消息框底部整行。默认 SYSTEM/首条 USER 不显示 `×`，新增消息仅在自身位于末尾时允许通过 `×` 删除。校验错误使用卡片错误边框和上下文级错误提示，不恢复消息框底部行。
+- 允许保存空草稿；SYSTEM 为空时执行请求省略该消息。最终 USER 必填，新增消息需要满足既定顺序及内容完整性，问题在执行到节点时以友好错误提示，不静默忽略空消息。
+- Few-shot 示例由一个或多个 `ASSISTANT + USER` 片段构成；默认 SYSTEM 和首条 USER 不允许删除，新增消息提供删除操作。
+- 模型配置、高级参数、公共运行配置和输出变量继续保留；原型重点验证上下文区域，不改变这些模块的业务含义。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.17.1 | 冻结上下文原型规则 | 用户选择 1A/2B/3A；形成原型交互契约 | 对照默认顺序、追加、删除、空值和执行提示逐项审阅 | 无 | completed |
+| 13.17.2 | 实现独立高保真 | 新增 `/assets/llm-context-prototype.html` 及独立样式/脚本 | 静态资源 200、脚本语法检查、按钮和字段可交互 | 13.17.1 | completed |
+| 13.17.3 | 桌面浏览器验收 | 真实页面截图与交互结果 | 检查角色交替、删除约束、空值提示、滚动、溢出和控制台 | 13.17.2 | completed |
+
+### 验证记录
+
+- 交付 `/assets/llm-context-prototype.html` 独立页面；源码位于 `prototypes/llm-context-settings/`，使用 React 与既有 `lucide-react` 图标，不读取或写入 Workflow、Provider、Execution JSON 或数据库。
+- 默认角色序列实测为 `SYSTEM -> USER`；连续点击“添加消息”后依次得到 `ASSISTANT -> USER`，按钮同步提示下一条角色。默认消息锁定；只有末尾新增消息允许删除，中间新增消息的删除按钮禁用；从末尾连续删除后恢复默认序列。
+- 上下文默认展开，标题显示消息数量；折叠后消息编辑区完全隐藏，重新展开后两条默认消息及其文本完整保留。折叠不影响高级参数和后续运行配置区块。
+- 角色说明已收敛到标题右侧的 `?` 悬停提示；标题左侧仅显示角色与 `?`，右侧显示实时字符数及新增消息的可选 `×`。消息框底部整行已删除；校验失败通过卡片错误边框和上下文级友好提示展示。
+- 空 Few-shot USER 场景下，“保存草稿”正常提示已保存；点击运行时只标记一条错误消息，并显示“当前草稿可以保存，但需补全标记的消息后才能运行”，验证保存与执行校验边界分离。
+- 桌面浏览器实测 Inspector 宽约 1064px；页面、Inspector 内容区和消息列表横向溢出均为 0。消息标题左侧仅保留角色与 `?`，右侧为实时字符数和新增消息的可选 `×`；序号、Few-shot 标签、中文角色说明、变量计数及消息框底部行均不存在。角色边色、锁定/删除状态、长文本编辑和运行配置无重叠或裁切；浏览器控制台 error/warn 为 0。
+- 静态与回归：原型 bundle `node --check`、生产 `npm run build`、Python `compileall` 和 `git diff --check` 通过；Workflow 前端专项 `11 passed`；全量 `242 passed, 4 skipped, 1 warning`。4 项为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 当前边界：本任务只确认高保真交互，不代表 `context.messages[]` 已进入 Structural Model、Execution Model、API 或生产画布；用户确认原型后再执行不兼容协议改造。
+
+## T13.16 HTTP 高保真生产接入与节点公共格式统一（已完成，2026-07-27）
+
+### 业务目标与验收边界
+
+- Why：独立 HTTP 原型已经完成桌面视觉与交互确认，下一步必须接入真实 Workflow Studio，解决生产 HTTP 节点仍使用旧 `API / HEADERS / PARAMS / BODY / NETWORK` 平铺布局的问题；同时防止各节点的公共运行配置、字段间距、紧凑枚举和区块分隔继续分叉。
+- Who / Where：Workflow 开发者在生产画布中编辑并临时测试 HTTP、LLM、SCRIPT、START 和 END 节点；HTTP 请求配置需要高频增删键值、切换 Body/网络选项并保存回读，其他节点需要稳定一致的公共字段与运行配置。
+- What / Priority：P0 接入已确认的 HTTP 请求设置布局且不改变 Structural/Execution Model；P1 审计并修复所有节点的公共格式偏差，不重做节点专属业务界面。独立原型保留为设计基准，生产接入完成前不删除。
+- How to Measure：真实 HTTP 节点完整保存、关闭和重开后字段不丢失；Headers/Params/Body/Request Options 折叠及增删正常；一级区块只有一条全宽分隔线；公共字段间距为 10px，紧凑枚举为 96px；SCRIPT/LLM/HTTP 运行配置结构一致；构建、专项测试、真实浏览器流程和全量回归通过。
+
+### 子任务与验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 13.16.1 | 审计生产节点与数据映射 | 原型、生产 Inspector、httpConfig；差异与字段映射清单 | 源码/CSS/Structural Model 交叉扫描 | 无 | completed |
+| 13.16.2 | 接入生产 HTTP 请求设置 | 既有 httpConfig；新三段式生产 UI | 前端构建、静态测试、浏览器保存/重开 | 13.16.1 | completed |
+| 13.16.3 | 统一其他节点公共格式 | 10px 间距、96px 紧凑枚举、单分隔线、公共运行配置 | SCRIPT/LLM/START/END/HTTP 浏览器逐节点扫描 | 13.16.2 | completed |
+| 13.16.4 | 完整回归 | 生产 bundle、API、Execution 和桌面业务流 | pytest、compileall、npm build、浏览器 E2E、SQLite/端口检查 | 13.16.2-13.16.3 | completed |
+
+### 13.16.1 审计记录
+
+- HTTP 生产字段完整覆盖原型，不新增也不迁移协议：`method / url / headers / params / bodyType / bodyText / bodyFields / proxyMode / proxyUrl / proxyUsername / proxyPassword / followRedirects / verifySsl / responseBodyType` 可原位复用，cURL 导入继续写入同一 `httpConfig`。
+- 生产 HTTP 当前仍为旧版 `API / HEADERS / PARAMS / BODY / NETWORK` 平铺结构；Headers/Params 表头常驻，Body/Network 不可按原型折叠，Redirects/SSL Verify 使用普通 checkbox，属于 P0 生产视觉与交互差距。
+- SCRIPT、LLM、HTTP 已共享唯一 `.wf-config-section` 运行配置实现，后续不得复制 HTTP 专属运行配置；START 只展示输入，END 无业务配置，继续遵守节点语义边界。
+- 公共格式偏差：基础字段与运行字段已是 10px，但 HTTP Endpoint 为 9px、Request Options 为 4-8px；START/输出类型下拉为自适应宽度；LLM/HTTP 专属区与运行配置存在各自边框和间距规则。13.16.3 统一这些公共视觉约束，但模型选择器等内容型控件继续自适应。
+- 节点 Inspector 固定为白色工作面，因此其中所有原生下拉框必须显式使用 `color-scheme: light`、白色背景、深色文字和浅灰边框；不得跟随全局暗色主题变成黑底。该规则统一覆盖 HTTP Request Options、START 类型和所有节点输出类型。
+- 生产构建必须同时为 `workflow-canvas.js` 与负责 Structural Model 转换的 `execution.js` 写入内容哈希查询参数；两者任一继续使用旧缓存都会造成 UI 与数据适配器版本错配。浏览器回读验收必须使用两个最新哈希，不能依赖手工强制刷新。
+
+### 13.16.2 验证记录
+
+- 生产 Inspector 已将旧 `API / HEADERS / PARAMS / BODY / NETWORK` 替换为已确认的“请求设置 / Endpoint / Headers / Params / Body / Request Options”结构；Headers、Params 和 Body 键值区使用深色表头并支持增删，Body/Request Options 可独立折叠，Redirects/SSL Verify 使用无表格容器开关。
+- 所有生产字段继续写入既有 `httpConfig`，后端 Structural Model 无变更。真实 Workflow 保存并重载后回读：Method `PUT`、URL、Params `scope=production`、Raw Body、Proxy `CUSTOM` 及 URL/认证、Response Body `JSON`、SSL Verify `false`、输出 `http_result / response.body / object` 均正确。
+- 浏览器实测 Method/Proxy/Response Body 均为 96px，字段间距均为 10px；Request Options 底边为 0、运行配置顶边为唯一 1px `#dfe5ed` 分隔；页面、Inspector、请求区和输出变量行横向溢出均为 0。
+- 暗色主题下曾发现原生 Proxy/Response Body 下拉跟随系统变成黑底；现统一声明 `color-scheme: light` 并显式白底深色字。计算样式为背景 `rgb(255,255,255)`、文字 `rgb(23,32,51)`，START/输出类型共用该规则。
+- 首次回读曾因 `/execution.js` 无版本号命中旧缓存，表现为 Structural Model 已保存 CUSTOM 但旧适配器显示 SYSTEM；构建现同时写入 workflow bundle 与 execution.js 的 12 位内容哈希。新增静态断言后专项 `34 passed, 1 warning`。
+
+### 13.16.3 验证记录
+
+- 公共变量固化为 `--wf-control-gap: 10px / --wf-compact-select-width: 96px / --wf-section-divider: #dfe5ed`；基础字段、运行字段、START 类型、节点输出类型、HTTP 紧凑枚举和单节点测试类型均复用，模型选择器继续按内容自适应。
+- START：类型下拉 96px、标签间距 10px、白底 light color-scheme、横向溢出 0；按节点语义不显示运行配置。SCRIPT：Python 编辑器保留，运行字段间距 10px、输出类型 96px/10px、横向溢出 0。
+- LLM：模型选择器实测自适应宽 892px；模型配置底边为 0，运行配置顶边为唯一 1px `#dfe5ed` 且两区连续；运行字段 10px、输出类型 96px/10px、横向溢出 0。END：只显示名称/说明，基本字段间距 10px，无 select、无运行配置、横向溢出 0。
+- HTTP：输出类型 96px/10px、白底 light color-scheme、横向溢出 0；与生产请求设置的公共规则一致。旧 `.wf-http-api-section / .wf-http-kv-* / .wf-http-network-*` 死样式已删除，避免重新覆盖新结构。
+- 新增静态回归锁定生产 HTTP 组件、禁止旧 API/NETWORK 标题和死选择器，并断言公共变量、LLM/HTTP 单分隔、输出/测试类型宽度及双 bundle 哈希。组合专项最终 `36 passed, 1 warning`；首次运行中既有 Workflow 执行用例瞬时 FAILED，单独复跑通过，第二次组合全通过，保留已知 Windows 文件持久化竞态风险。
+
+### 13.16.4 完整验证记录
+
+- 静态与构建：`npm run build`、`node --check web/static/execution.js`、Workflow bundle `node --check`、`uv run python -m compileall -q execution web tests storage` 和 `git diff --check` 全部通过；`index.html` 同时携带两个最新 12 位内容哈希。
+- 全量回归：`uv run pytest -q` -> `242 passed, 4 skipped, 1 warning in 21.17s`。4 项为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 生产浏览器 E2E：真实 HTTP Structural Model 完成全字段保存/重开，五类节点公共格式逐一实测；暗色主题下所有 Inspector 原生下拉白底深色字；页面、Inspector 和相关配置行横向溢出均为 0；最终控制台 error/warn 为 0。
+- 数据与环境：`run_storage/agent_bench.sqlite3` 的 `integrity_check=ok / foreign_key_check=[]`，只包含 Structural Model 与既有 Provider/Target 表；验收 Workflow `HTTP生产布局验收-20260727` 已定点删除且无 Execution 目录。用户当前“未命名工作流”保留；只监听 `127.0.0.1:8010` 一个项目端口。
+
+## T13.15 HTTP 节点设置界面高保真重设计（原型阶段）
+
+### 业务背景与目标
+
+- Workflow 作者需要像使用 Postman/Apifox 一样快速完成 Endpoint、Headers、Params 和 Body 配置，同时只在需要时展开代理、响应解析和传输选项。
+- 当前 HTTP 设置把键值列头、Body 类型和 Network 字段平铺在同一层级，重复标签占用空间，代理与布尔选项扫描路径不清晰；本阶段先交付独立高保真原型，用户确认后才替换生产前端。
+
+### 已确认原型边界
+
+- 文案改为 `Endpoint / Headers / Params / Body / Request Options`；`Redirects / SSL Verify` 使用开关。
+- Endpoint 不使用图标或独立标题行，固定放在 Method 左侧并与 Headers、Params、Body、Request Options 标题左对齐；名称和说明均使用左侧标签、右侧输入框的横向布局。
+- 紧凑枚举下拉框建立后续全局公共规格：固定为 96px 宽，正常使用 10-11px 字号和清晰下拉箭头，完整容纳 `OPTIONS / SYSTEM / CUSTOM / integer / boolean` 等已知最长值；模型名称等内容型选择器使用自适应宽度，不强行套用紧凑枚举宽度。
+- 所有字段标题到对应输入框或下拉框的间距统一为 10px；本阶段先在 HTTP 高保真原型验证，用户确认替换生产前端时作为所有节点的公共样式约定复用。
+- Headers、Params 使用折叠面板；面板展开后才显示顶层 `key / value` 表头，并支持逐行新增和删除。
+- Body 与 Headers、Params 一样使用折叠面板，标题行显示当前 Body 类型；展开后四种类型拉开间距，`form-data` 与 `x-www-form-urlencoded` 复用相同键值表格，`raw` 使用 JSON 编辑区，`none` 显示空态。
+- Request Options 使用折叠面板，重新组织 Proxy、Response Body、Redirects 与 SSL Verify；CUSTOM Proxy 的 URL、用户名和密码按条件展示。Redirects 与 SSL Verify 是独立布尔设置，使用无外框、无表格底色、无中间分隔线的自然宽度水平开关组。
+- HTTP 专属 Request Options 之后必须完整保留所有业务节点共有的运行配置：单次超时、最大重试次数、重试间隔和延迟执行，单位继续为秒；输出变量同样保留，不属于 HTTP 重设计的删除范围。
+- 名称/说明之后新增一级“请求设置”分组，视觉规格与“运行配置”一致；Endpoint、Headers、Params、Body、Request Options 全部作为请求设置的子标题，不再直接与运行配置并列。
+- 设置页固定分为基础信息、请求设置、运行配置三个一级区块；基础信息区不显示额外标题，直接展示名称和说明，请求设置与运行配置保留独立标题行；区块之间使用完整分隔线，字段不得跨区。
+- 一级区块之间只允许一条全宽 `1px` 分隔线：由后一区块的顶边绘制。请求设置最后一个 Request Options 不绘制底边，避免与运行配置顶边形成两条平行线；该格式与基础信息到请求设置的分隔完全一致。
+- HTTP 原型的公共运行配置不得单独设计：直接参考 SCRIPT/LLM 的现有公共组件，使用 Settings2 图标、白底区块、两列超时与重试面板，以及标签式输出变量行；HTTP 重设计只作用于请求设置。
+- 超时与重试严格复用 LLM 公共字段布局：两列网格内每项使用 `64px 标签 + 10px 间距 + 自适应输入框`，标题不得放在输入框上方；Request Options 的 Proxy/Response Body 标签按文字实际宽度占位，与固定 96px 紧凑枚举下拉框保持 10px 间距。
+- 公共输出变量继续使用 LLM 的变量名/提取表达式/类型/操作结构；类型属于紧凑枚举，下拉框固定为 96px，字段标签到控件保持 10px。
+- “请求设置”使用与 HTTP 节点一致的 Globe 图标；Request Options 作为普通子标题不显示独立图标，与 Headers、Params、Body 保持同级。
+- 原型不读取/写入 Workflow，不调用保存或运行 API，不替换现有 HTTP 节点；只用于桌面端视觉与交互确认。
+
+### 子任务与验证
+
+1. **现有界面与业务层级基线**（已完成，2026-07-27）
+   - 现状：编辑器约 `640×896`，HTTP 主网格为 `70px / 96px / minmax(180px, 1fr) / 34px`；Headers/Params 列头常驻，Body 类型间距为 14px，Network 使用无层级的双列字段平铺。
+   - 设计结论：保留现有编辑器壳、字体密度和蓝色焦点体系，将请求主路径保持展开，把集合字段与高级传输选项改为按需折叠。
+2. **独立可交互高保真原型**（已完成，2026-07-27）
+   - 交付：`/assets/http-node-prototype.html` 独立页面；源文件位于 `prototypes/http-node-settings/`，使用 React 与项目既有 lucide-react 图标构建，不接入生产 Workflow 状态。
+   - HTTP 专属区：Endpoint、Headers、Params、Body、Request Options 全部按确认层级实现；Headers/Params/Body 表格支持新增和删除，raw 提供 JSON 编辑器与 Beautify，CUSTOM Proxy 条件显示 URL/Username/Password。
+   - 公共区：保留“运行配置 / 超时与重试”的单次超时、最大重试次数、重试间隔、延迟执行四项，并保留可展开的输出变量配置；默认值为 600/0/0/0。
+   - 交互验证：Params 新增后出现第三行、删除后恢复两行；Body 在 form-data 与 raw 之间正确切换；CUSTOM Proxy 三项条件字段出现；Redirects 和 SSL Verify 均可切换。
+3. **桌面视觉、交互和溢出验收**（已完成，2026-07-27）
+   - 视口：1440×1000；编辑器为 760×900，页面与编辑器横向溢出均为 0，键值表格、开关区、Body 折叠标题和四列运行配置内部溢出均为 0。
+   - Body：标题行显示当前 `form-data` 模式；收起后四种类型和内容完全隐藏，重新展开后模式与两条 Body 数据保持不变。
+   - 标签布局：名称与说明均为左侧标签、右侧输入框；Endpoint 取消图标和独立标题行，放在 Method 左侧。浏览器计算 Endpoint、Headers、Params、Body 标题起点均为 365px。
+   - 分组层级：设置页固定为基础信息、请求设置、运行配置三个连续一级区块，区块宽度均为 748px；基础信息不显示额外标题，请求设置和运行配置标题行均为 44px，后两个区块使用完整全宽分隔线。名称/说明只属于基础信息区，Endpoint、Headers、Params、Body、Request Options 只属于请求设置，超时重试和输出变量只属于运行配置。
+   - 分隔线回归：Request Options 末项底边为 0，运行配置顶边为唯一的全宽 1px 分隔线；基础信息→请求设置与请求设置→运行配置均使用相同 `#dfe5ed` 样式，不出现双线或重复留白。
+   - 公共配置统一：运行配置为白底公共区，超时与重试计算列宽为 `328px / 328px`，输出变量使用标签式配置行且横向溢出为 0；请求设置使用一个 HTTP Globe 图标，Request Options 不存在前置图标。
+   - 横向字段：所有字段标题到输入框/下拉框统一为 10px；Method、Proxy、Response Body 和输出类型等紧凑枚举下拉框统一为 96px。验收必须同时检查真实文字呈现、标题/控件重叠与页面溢出。
+   - 类型列回归：输出类型标签与下拉框间距为 10px，下拉框固定为 96px；行、面板和页面横向溢出均为 0。
+   - Method 与表头：Method 固定为 96px，Endpoint 到 Method 间距为 10px；表头背景为 `rgb(232, 237, 244)`、文字为 `rgb(51, 65, 88)`，数据行保持白底。
+   - Method 展开层：自定义 listbox 的按钮和菜单均固定为 96px，七个选项保持居中；选择后同步值并关闭，Escape 和点击外部均能关闭。最长 `OPTIONS` 必须以浏览器实测确认可读性。
+   - 公共尺寸实测：Method、Proxy、Response Body 和输出类型均为 96px；基础信息、Endpoint、Request Options、运行配置和输出类型的标题到控件距离均为 10px。`OPTIONS / SYSTEM / AUTO / string` 内容溢出为 0，Method 文字与箭头不重叠，页面及输出变量行横向溢出均为 0。
+   - 视觉：Headers、Params、Body、Request Options 使用统一折叠层级；Body 四种模式间距为 30px，最长 `x-www-form-urlencoded` 完整显示；Redirects/SSL Verify 使用无表格容器的自然宽度水平开关组；运行配置与输出变量作为公共区块独立保留。
+   - 浏览器：折叠、增删、Body 切换、CUSTOM Proxy 条件字段和开关均通过；控制台 error/warn 为 0；原型页面返回 HTTP 200。
+   - 构建与回归：原型 bundle `node --check`、生产 `npm run build` 和 `git diff --check` 均通过；前端专项 `13 passed, 1 warning`；本轮完整回归 `240 passed, 4 skipped, 1 warning`。4 项为未注入供应商环境变量的 live 用例，warning 为既有 Starlette/httpx 弃用提示。
+   - 预览：首屏、Method 展开菜单和 Request Options/运行配置区域截图保存在 `prototypes/http-node-settings/preview-top.png`、`preview-method-menu.png` 与 `preview-options.png`。
+
+## T13.14 LLM 输出 Python 整数下标兼容（已完成）
+
+### 业务背景与目标
+
+- Workflow 作者无法预知模型供应商返回的 `choices` 数量，需要使用 `response.choices[-1].message.content` 稳定读取最后一条回复。
+- 输出表达式必须遵循受限且可预测的 Python 整数下标语义，避免有效负下标被误判为对象字段，也避免切片或任意表达式进入执行器。
+
+### 已确认边界与验收标准
+
+- 支持正负十进制整数下标，例如 `[0]`、`[1]`、`[-1]` 和 `[-2]`；`[-1]` 必须返回数组最后一项。
+- 空数组或正负下标越界时不返回 `null`，而是使输出提取失败；LLM 使用 `LLM_OUTPUT_SOURCE_EVALUATION_ERROR`。
+- 不支持切片、算术表达式或任意 Python 执行，例如 `[1:]`、`[::2]` 和 `[1+1]` 必须拒绝。
+- 类型转换失败继续使用 `LLM_OUTPUT_TYPE_MISMATCH`，不得与 source 语法、下标或求值错误混淆。
+
+### 子任务与验证
+
+1. **共享输出解析器整数下标语义**（已完成，2026-07-27）
+   - 输出：解析器支持 Python 正负整数下标；空数组及正负越界显式失败；方括号键只接受整数、标识符或 JSON 双引号字段名，切片和表达式明确拒绝。
+   - 验证：`uv run pytest tests/test_workflow_values.py -q` -> `29 passed`；覆盖用户原始表达式、多条 choices、正负越界、切片和算术表达式。
+2. **LLM/HTTP source 与 type 错误码分类**（已完成，2026-07-27）
+   - 输出：共享层使用独立的 source 求值异常与 outputs.type 转换异常；LLM/HTTP 执行器分别映射到 `*_OUTPUT_SOURCE_EVALUATION_ERROR` 和 `*_OUTPUT_TYPE_MISMATCH`。
+   - 真实流程验证：本地 OpenAI-compatible 服务返回完整 `choices`；`[-1]` 成功提取，`[-2]` 越界使用 source 错误码，对象转 integer 使用 type 错误码。两种失败均保留完整 response、最终 attempt 为 SUCCESS、节点为 FAILED、outputs 为空且只调用一次供应商。
+   - 验证：`uv run pytest tests/test_workflow_values.py tests/test_workflow_execution.py -q` -> `48 passed`。
+3. **规范同步、构建与完整回归**（已完成，2026-07-27）
+   - 规范：LLM/HTTP 均明确正负整数下标、越界失败以及不支持切片/表达式；对象字段或过滤器零匹配仍保持 null。
+   - 回归修复：首次全量回归暴露既有全局中断竞争窗口。取消可能发生在节点检查中断之后、Worker 注册之前；`_ExecutionController.add_worker()` 现会在注册 Worker 的同一临界区读取取消状态，并利用 Worker 运行时的预取消机制阻止迟到进程启动。
+   - 定向验证：Worker 注册前取消、真实 SCRIPT 全局中断及输出专项合计 `51 passed`。
+   - 受影响回归：Workflow API、Structural Model、Execution Model 和输出解析共 `111 passed, 1 warning`。
+   - 完整回归：`uv run pytest -q` -> `240 passed, 4 skipped, 1 warning`；4 项为未注入供应商环境变量的 live 用例，warning 为既有 Starlette/httpx 弃用提示。
+   - 静态与构建：Python `compileall`、`npm run build`、Workflow bundle `node --check` 和 `git diff --check` 全部通过。
+   - 端到端价值验证：本机真实 HTTP Server 分别模拟 OpenAI-compatible 模型响应和 HTTP 节点响应；LLM `response.choices[-1].message.content` 从完整 response 提取最后一条并提交 Context，越界与类型不匹配均保留供应商原始 response、只调用一次且按稳定错误码 Fail-Fast。
+   - 本机服务：停止修改前启动且无热重载的旧进程后，当前代码已重新启动在唯一端口 `http://127.0.0.1:8010/`；`GET /api/workflows` 返回 HTTP 200，用户既有 Workflow 正常回读。
+   - 未覆盖与风险：本轮未使用真实公网模型凭据，供应商 live 用例保持跳过；负整数下标属于平台本地 response 求值，不依赖供应商协议，因此已由完整真实 HTTP Body 端到端覆盖。切片和任意 Python 表达式按确认边界明确不支持。
+
 ## T13.11 Workflow 创建元数据与顶部说明（已完成）
 
 ### 业务背景与目标
@@ -1583,8 +1905,8 @@ T13.2.1-T13.2.6 已完成
 ##### 已确认需求（What）
 
 - 画布运行期间禁用重复运行；运行按钮左侧显示累计计时器；顶部“全局变量”右侧和画布右键菜单均提供中断入口；中断后可重新从头运行。
-- 节点运行期间禁用该节点所有运行入口；节点卡片、节点右键菜单和编辑器标题栏均提供中断入口；未运行或已结束节点点击中断不改变状态；中断后可重新运行节点。
-- 节点中断后，本次 Workflow 中该节点的后续节点不再执行；四类节点的原始日志和错误追溯规则继续适用。
+- 历史需求曾要求节点卡片、节点右键菜单和编辑器标题栏提供中断入口；该用户入口已由 T13.22 全部废止，当前只保留节点运行锁和系统内部清理取消。
+- 历史节点中断调度语义已废止；当前完整 Workflow 只能全局中断，单节点临时测试不提供用户中断。
 
 ##### 实现前必须确认
 
@@ -1617,7 +1939,7 @@ T13.2.1-T13.2.6 已完成
 - 调度规则：运行入口依据 Workflow 连线构建前驱表；无前驱节点同时进入就绪队列，独立分支通过 `Promise.race` 并行推进；只有节点返回 `SUCCESS` 才会解锁后继节点。
 - 失败隔离：节点返回 `FAILED` 或 `INTERRUPTED` 时，仅将其图后代标记为本次未执行并保持 UI `PENDING`；没有依赖关系的分支继续执行。Workflow 级中断会设置全局中断标记，停止活动节点且不再启动剩余节点。
 - 运行锁：Workflow 活动期间 `运行` 按钮禁用；同一节点通过 ref 活动表避免重复调用，节点运行结束或中断后可再次启动。节点卡片、右键菜单和编辑器标题栏共享同一中断回调。
-- 控件：画布运行按钮左侧显示累计耗时；“全局变量”右侧新增画布中断按钮；画布右键新增“中断测试”；节点卡片保留运行并新增中断，节点右键新增“中断此步骤”，编辑器标题栏同步提供运行/中断锁定状态。
+- 控件（历史实现）：当时曾在节点卡片、节点右键菜单和编辑器标题栏提供节点中断；T13.22 已删除三处入口，仅保留 Workflow 全局中断与节点运行锁。
 - 状态：前端统一展示 `PENDING / RUNNING / SUCCESS / FAILED / INTERRUPTED`，节点运行历史摘要对 `INTERRUPTED` 显示中断错误而非伪造成功结果。
 - 验证：`npm run build`、`node --check web/static/assets/workflow-canvas.js`、`git diff --check` 通过；资源版本断言同步为 `v=28` 后，`uv run pytest tests/test_execution_frontend.py tests/test_workflow_node_runs.py tests/test_llm_node_runs.py tests/test_workflow_drafts.py -q` 结果为 `31 passed, 1 warning`，覆盖前端契约、Script/HTTP/LLM 执行和取消协议。
 
@@ -1630,6 +1952,8 @@ T13.2.1-T13.2.6 已完成
 - 依赖结论：画布运行锁、累计计时、两处中断入口和中断后重跑已通过真实浏览器验收，可以进入节点三入口验收。
 
 ##### 14.4 节点级控制（completed，2026-07-22）
+
+> 本节是 2026-07-22 的历史验收记录；其中用户节点中断入口已由 T13.22 废止，不代表当前产品能力。
 
 - 编辑器入口：30 秒 Script 运行时，编辑器运行按钮禁用、中断按钮启用，卡片耗时从 `0ms` 累加；点击编辑器中断后节点进入 `INTERRUPTED`，运行按钮恢复且中断按钮禁用。
 - 卡片入口：卡片运行后同样禁用重复运行并启用中断；点击卡片中断后状态为 `INTERRUPTED`，运行入口重新可用。
@@ -2193,3 +2517,387 @@ T13.2.1-T13.2.6 已完成
 - What / When：请求/响应标题统一为 `request / response`，标题字号与日志行时间同为 `14px`，标题行最右侧提供复制完整内容的图标按钮。OpenAI-compatible 流式请求由平台写入 `stream_options.include_usage=true`；流结束后从 OpenAI usage 事件或 Anthropic `message_start / message_delta` 事件合并 usage 并持久化。
 - 边界：流式 response 仍保存并展示脱敏后的原始 SSE，不提取流式输出变量；usage 解析失败或供应商未返回 usage 时保持 `None`，不把估算值冒充真实 token。历史记录若 `usage` 为空但原始 SSE 含 usage，前端只为展示提取该真实值，不回写或改造历史数据。
 - 验收：HTTP 与 LLM 日志均显示 `request / response`、复制按钮位于标题最右侧且复制完整正文；OpenAI 流式运行记录保存 `total_tokens`，Anthropic 保存合并后的 `input_tokens / output_tokens`，前端日志行显示对应 token 总数。
+
+## 23. Node Structural Model 独立持久化（completed，2026-07-26）
+
+### 23.1 新节点表、模型与 Repository（completed）
+
+- Why：Node Structural Model 必须成为关系型数据库中的独立权威定义，与旧 Workflow JSON 聚合存储和本地 Execution JSON 完全解耦。
+- Who / Where：本机 Workflow Studio 后续保存 START / SCRIPT / LLM / HTTP / END 节点时，通过 `execution/node_structural_models.py` 写入 `run_storage/agent_bench.sqlite3`。
+- What：采用用户确认的 `1A / 2A / 3=旧链路全部删除`。节点当前不存 `workflow_id`；公共字段使用关系列，类型专属字段保存为严格校验后的 `definition_json`；不迁移旧 Workflow 数据。
+- 表：`node_structural_models(id, type, name, description, definition_json, created_at, updated_at)`；`type` 和 JSON object 由 SQLite CHECK 约束，`type/updated_at/id` 建联合索引。
+- 类与字段说明：所有节点 Pydantic 类和 Repository 领域异常均提供中文职责 docstring，全部 Pydantic 字段通过 `Field(description=...)` 提供业务说明；数据库表与全部七列通过 `NODE_STRUCTURAL_TABLE_DESCRIPTION` 和 `NODE_STRUCTURAL_COLUMN_DESCRIPTIONS` 提供可直接生成数据字典的程序可读详细说明。
+- Repository：支持 initialize/create/get/list/update/delete；写入前使用 START/SCRIPT/LLM/HTTP/END 判别联合模型严格验证，额外字段拒绝，UUIDv4、变量类型、输出绑定、HTTP 网络与请求结构分别校验；`id` 和 `type` 创建后不可修改。
+- 不兼容清理入口：Repository 初始化按依赖顺序删除 `workflow_node_runs / workflow_drafts / workflow_node_runs_v2 / workflow_runs_v2 / workflow_definitions_v2`。
+- 验证：`uv run pytest tests/test_node_structural_models.py -q` -> `11 passed`。覆盖真实 SQLite Schema、字段说明完整性、五类节点重启恢复、公共列/definition_json 边界、CRUD、`type` 不可变、数据库 CHECK 与旧表删除。
+
+### 23.2 旧 Workflow 后端与前端耦合链路删除（completed）
+
+- 结果：已删除旧 Workflow contract/repository/engine/adapter/API 和相关测试；首页删除“工作流管理”入口及 Workflow bundle 加载，`execution.js` 收敛为 Target 管理，不再调用 `/api/workflows`。
+- 保留边界：`web/frontend/workflow-canvas.jsx`、对应 CSS 以及现有构建产物仍保留，但不从首页加载、不连接已删除 API，待新节点 API 和未来 Workflow 关联模型确认后再接入。
+- 路由验收：`/api/workflows` 与 `/api/workflow-drafts` 均返回 404；未保留兼容层。
+- 验证：`uv run pytest tests/test_web_app.py tests/test_targets.py tests/test_set_frontend.py tests/test_model_providers_frontend.py tests/test_faq_frontend.py tests/test_theme_frontend.py -q` -> `49 passed, 1 warning`；warning 为既有 Starlette/httpx 弃用提示。
+- 依赖：23.1 已验证通过。
+
+### 23.3 Node Structural Model 数据字典与真实数据库初始化（completed）
+
+- 目标：在 `WORKFLOW_SPEC.md` 记录代码类、全部字段、SQLite 表、全部列、JSON 边界及五类 definition 的详细说明，并只对真实数据库定点初始化新表和删除旧 Workflow 表。
+- 文档完成：`WORKFLOW_SPEC.md` 第 2.3 节已经逐类说明所有节点结构类、逐字段说明公共/START/SCRIPT/LLM/HTTP/END 及嵌套结构，记录 Repository 返回字段与 CRUD，并给出 SQLite 七列、约束、索引和各 type 的 `definition_json` 顶层字段边界。
+- 范围纠正：删除规范中已过时的 Workflow/Edge Structural Model 持久化示例，明确当前没有 Workflow/Edge 表、Repository、API 或 Workflow Execution，不得向独立节点表补入 `workflow_id`。
+- 防回归验证：新增反射测试，要求 `execution/node_structural_models.py` 中每个定义类都有 docstring、每个 Pydantic 字段都有 description；`uv run pytest tests/test_node_structural_models.py -q` -> `12 passed`。
+- 旧表范围复核：真实数据库还存在两代更早的 Workflow/Run/评测流水线表；现行代码全仓检索确认无引用后，显式旧表清单扩展为 16 张表，并增加“删除旧表但保留 Target 表和数据”的自动化测试。
+- Repository 交叉回归：`uv run pytest tests/test_node_structural_models.py tests/test_targets.py tests/test_model_providers.py -q` -> `67 passed, 1 warning`；warning 为既有 Starlette/httpx 弃用提示。
+- 真实数据库：已对 `run_storage/agent_bench.sqlite3` 执行 `NodeStructuralRepository.initialize()`。新表七列顺序为 `id/type/name/description/definition_json/created_at/updated_at`，索引存在，16 张旧表剩余数为 0。
+- 数据保全：初始化前后 `targets=0`、`model_providers=4`，计数一致；初始化后现行表仅为 `model_providers / node_structural_models / targets`。
+- 依赖：23.1、23.2 已验证通过。
+
+### 23.4 完整回归与交付检查（completed）
+
+- 目标：运行全量 pytest、Python 编译检查、前端构建、FastAPI 路由和桌面完整业务流程回归，并检查 Git diff 与未覆盖风险。
+- 单元与模块回归：`uv run pytest` -> `131 passed, 4 skipped, 1 warning`。4 项 skipped 是当前进程未注入真实模型密钥的 live 用例；warning 为既有 Starlette/httpx 弃用提示。
+- 静态与构建：`uv run python -m compileall -q execution web storage` 成功；`npm run build` 成功生成保留但不加载的 Workflow Studio bundle；`git diff --check` 通过。
+- 数据库验收：真实 SQLite `PRAGMA integrity_check=ok`，`PRAGMA foreign_key_check=[]`；节点表 SQL、七列和联合索引与文档一致。
+- 浏览器 E2E：在 `http://127.0.0.1:8010/` 真实桌面页面确认一级导航只包含测试集、Target、模型管理和 FAQ；Target 管理可加载；模型管理仍显示 4 个供应商；浏览器控制台无 error。
+- 未覆盖范围：没有运行需要真实供应商凭据的 4 项 live 模型测试；Node Structural Model 尚未提供 Web CRUD API，也未重新接入保留的 React Flow Studio，这两项均符合本阶段只建节点类、Repository 和数据库表的已确认范围。
+- 依赖：23.1 至 23.3 已验证通过。
+
+## 24. Workflow Structural Model 与 Execution Model（design in progress，2026-07-26）
+
+### 24.1 业务背景、目标与范围
+
+- Why：Workflow 管理的目标是让用户开发、调试和反复验证一张可执行 DAG；工作流结构必须成为数据库中的当前权威定义，每次手动执行必须形成可离线回溯且不污染结构定义的本地 JSON 事实。
+- Who / Where：当前用户是本机 Workflow 管理页面中的工作流开发者；在画布中创建、编辑、保存、单节点测试、手动运行完整 Workflow，并从真实 Context、节点结果、错误和原始日志判断 Workflow 是否可用。
+- What / When（P0）：实现 Workflow/Node/Edge 关系型持久化、完整图校验、手动 Workflow Execution、全局中断、Fail-Fast、Context 传递、Execution JSON、节点原始日志和执行记录目录入口。
+- What / When（后续模块，不进入当前 P0）：导入 Excel、读取用例与期望结果、选择已验证 Workflow、把每行数据映射为输入、调度高并发执行和汇总批量结果。
+- 顶层隔离：数据库严格只保存 Structural Model；Workflow/Node/未来 Batch Execution 严格只保存本机 JSON。不得创建 Execution 数据库表、索引、摘要或日志表。
+
+### 24.2 Workflow Structural Model 已确认契约
+
+- 表结构采用三张严格关系表：
+  - `workflow_structural_models(id, name, description, created_at, updated_at)`。
+  - `workflow_node_bindings(workflow_id, node_id, position_x, position_y)`，复合主键 `(workflow_id,node_id)`，`node_id` 全局 UNIQUE。
+  - `workflow_edges(id, workflow_id, source_node_id, target_node_id)`，`(workflow_id,source_node_id,target_node_id)` UNIQUE。
+- `node_structural_models` 不增加 workflow_id。Workflow 通过 binding 引用 Node；一个 Node 实例只能属于一个 Workflow，复用时必须复制为新的 Node。
+- Workflow 模型只保存 binding 引用和坐标，不嵌入 Node 完整定义；后端读取画布时通过 JOIN 组装。Execution structural_snapshot 为离线自包含而展开完整 Node。
+- Workflow 名称全局唯一，保留用户输入的首尾空白并按完整原文比较；纯空白名称无效。一级列表业务字段只展示名称、说明、更新时间。
+- 类边界：`WorkflowStructuralModel` 保存 id/name/description/nodes/edges；`WorkflowStructuralRecord` 组合 workflow 与数据库管理的 created_at/updated_at；binding 使用 `node_id/position_x/position_y`；Edge 使用 `id/source_node_id/target_node_id`。
+- 数据库完整性：Workflow 删除级联 binding/Edge；Node 删除级联 binding；Edge source/target 使用 `(workflow_id,node_id)` 复合外键引用 binding，保证两端属于同一 Workflow。
+- 不允许长期存在未绑定 Node。新增画布 Node 时在同一事务创建 Node 和 binding；已绑定 Node 的所有修改统一经过 `WorkflowStructuralRepository`。
+- 前端编辑只是会话草稿；用户点击保存时执行完整校验，并用一个数据库事务原子保存 Workflow、Node、binding 和 Edge。失败全部回滚，成功后立即成为新 Execution 使用的当前定义。
+- 从当前 Workflow 删除 Node 时删除当前 Node/binding/Edge，但保留历史 Execution JSON；删除整个 Workflow 时才清理全部历史 Execution。存在活动 Execution 时禁止删除 Workflow，必须先全局中断并等待终态。
+
+### 24.3 图结构与 START/END 已确认契约
+
+- 每个可保存、执行的 Workflow 必须恰好包含一个 START 和一个 END；前端未保存草稿可以暂时不完整，但不完整结构不能进入数据库。
+- START 是唯一根节点、无入边并能到达所有其他节点；END 是唯一叶节点、无出边且所有其他节点都能到达 END。
+- 整图必须是一个弱连通 DAG；拒绝空 Workflow、只有 START/END、游离节点、独立子图、自环、重复 Edge 和有向环。至少包含一个 SCRIPT/LLM/HTTP 业务节点。
+- 多上游节点固定使用 AND Join；所有直接上游 SUCCESS 后才具备运行资格。所有同轮具备资格的节点并发启动，不设置 Workflow 级节点并发上限。
+- START inputs 固定为 `name / type / value`；value 是用户在 START 编辑表单填写并保存到 Structural Model 的严格 JSON 值，不使用 source/default/required，不在运行弹窗临时覆盖。
+- START value 必须与 type 严格匹配，不执行隐式转换；inputs 成功时全部变量原子提交到空 Context。`inputs=[]` 仍创建立即 SUCCESS 的空 START Node Execution，但不产生 Context commit。
+- END 不读取 Context、不声明 outputs、不执行用户代码或网络调用。END 创建立即 SUCCESS 的空 Node Execution，inputs/outputs 均为 `{}`，不产生 Context commit。
+- Workflow SUCCESS 的唯一判定标志是 END Node Execution SUCCESS。
+
+### 24.4 Workflow Execution Model 已确认契约
+
+- 同一个 Workflow 允许多个 Execution 并发运行，每次使用独立 ID、结构快照、Context 和目录。Workflow 管理画布只限制当前手动 Execution 期间重复点击；未来外部批量调度器可并发创建同一 Workflow 的多个 Execution。
+- 本地目录固定为：
+
+```text
+run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
+├── workflow.json
+└── nodes/{node_execution_id}.json
+```
+
+- workflow.json 顶层字段固定为 `id / workflow_id / trigger / status / structural_snapshot / created_at / started_at / finished_at / duration_ms / context / nodes / error`。
+- 当前 trigger 只保存 `{"type":"MANUAL"}`；未来 Batch 模块可扩展 `BATCH + batch_execution_id + case_id`，但这些字段不进入 Workflow Structural Model。
+- 当前明确不保存顶层 inputs、updated_at、metadata、config、summary、structural_hash 或 scheduling.events。
+- Execution 时间统一保存 UTC ISO-8601 毫秒格式；前端转换为 Asia/Shanghai 并显示 `MM-DD HH:mm:ss`。
+- structural_snapshot 自包含 Workflow id/name/description、全部 Node 完整定义、坐标和 Edge；不包含数据库 created_at/updated_at。运行开始后只读取该快照，数据库后续修改不影响本次执行或重试。
+- context 只保存 `commits / final`，不保存固定为空的 initial。非空 outputs 成功提交时追加 `sequence/node_id/node_execution_id/committed_at/values`，values 与 final 原子一致；零输出节点不生成 commit。
+- workflow.json.nodes 只保存 `node_id/node_execution_id/state/reason`；state 固定为 `WAITING/RUNNING/FINISHED/NOT_STARTED`。READY 是执行器内部瞬时状态，不持久化，节点具体状态和时间从 Node Execution JSON 读取。
+- 每个 Node Execution 保存最小 transitions 数组，用 `status/at/reason` 离线还原 PENDING、RUNNING 和终态变化；Workflow JSON 不重复保存完整调度事件。
+- Workflow 状态固定为 `PENDING/RUNNING/SUCCESS/FAILED/INTERRUPTED`；error code 固定为 `NODE_FAILED/USER_INTERRUPTED/PROCESS_RESTARTED/PERSISTENCE_FAILED`。
+- 节点内部中间尝试失败不终止 Workflow；只有 Node Execution 最终 FAILED 才触发全局 Fail-Fast。Fail-Fast 停止启动新节点，终止所有其他 RUNNING 节点并写入 `INTERRUPTED + WORKFLOW_ABORTED`；未启动节点不创建 Node Execution，在 workflow.json.nodes 中写入 `NOT_STARTED + WORKFLOW_FAILED`。
+- 全局中断停止新调度并终止全部 RUNNING Worker；已 SUCCESS/FAILED 节点保持原状态。完整 Workflow 运行时禁止用户单独中断节点，单节点中断只属于前端临时测试。
+- JSON 每次更新必须使用同目录临时文件、flush、fsync 和原子替换。Node 终态先落盘，再更新 workflow.json 的引用和 Context。
+- 服务重启不自动续跑。遗留 PENDING/RUNNING Workflow 终结为 `FAILED + PROCESS_RESTARTED`，无终态 Node 终结为 `FAILED + RUNTIME_LOST`。
+- Execution JSON 全部保留，界面最多展示最近 10 次。删除 Workflow 时先把该 Workflow 的 Execution 根目录原子移动到临时回收目录，再提交结构删除事务；事务失败恢复目录，成功后彻底清理。
+
+### 24.5 Workflow 管理交互已确认契约
+
+- 一级 Workflow 管理只服务开发和测试迭代，不承担 Excel、期望结果或批量调度。列表业务字段只显示名称、说明、更新时间。
+- 用户可以从画布编辑和保存完整结构；完整 Workflow 手动运行直接使用已保存 START values，不弹出临时输入覆盖表单。
+- 当前画布手动 Execution 未结束前运行按钮禁用，防止重复点击；底层引擎仍支持外部并发执行。
+- 画布提供最近 10 次 Workflow Execution 的查看能力；列表行显示时间、状态、耗时，展开读取最终 Context、节点结果和 Workflow error。
+- 新增“执行记录”按钮，点击后打开保存 Workflow/Node Execution JSON 的本地目录。日志和历史界面全部从 Execution JSON 映射，不创建独立日志文件或数据库记录。
+- Node 单节点测试继续只形成前端临时快照，不创建 Workflow/Node Execution JSON，不进入历史；节点原始输出、请求、响应和错误遵守各节点现有日志契约。
+
+### 24.6 执行阶段最终确认（completed，2026-07-26）
+
+1. END 不在 Workflow 启动时创建。全部直接上游 SUCCESS、DAG 实际调度到 END 时才创建空 Node Execution，并立即 SUCCESS；随后 Workflow 才进入 SUCCESS。
+2. 画布最近 10 次 Workflow Execution 历史继续保留；“执行记录”按钮固定打开当前 Workflow 的 Execution 根目录 `run_storage/workflow_executions/{workflow_id}/`，不跳入最近一次或选中的单次目录。
+
+### 24.7 实施拆分（in progress）
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 |
+| --- | --- | --- | --- | --- |
+| 24.7.1（completed，2026-07-26） | Workflow Structural 类、三张表与 Repository | 当前 Node 表；Workflow/Binding/Edge 模型与事务 CRUD | 真实 SQLite Schema、FK、级联、唯一名称、重启恢复、事务回滚测试 | 无；结构层不依赖 24.6 的执行交互决策 |
+| 24.7.2（completed，2026-07-26） | Workflow API 与完整校验 | Structural Repository；CRUD/保存/读取/删除 API | API CRUD、START/END、连通、DAG、变量唯一和模型引用测试 | 24.7.1 |
+| 24.7.3（completed，2026-07-26） | Workflow 管理页面重新接入 | 保留 React Flow 源码；新版 API | 桌面浏览器创建、编辑、保存、重载、删除和错误提示 E2E | 24.7.2 |
+| 24.7.4（completed，2026-07-26） | Workflow/Node Execution JSON 与调度器 | Structural snapshot；节点执行适配器 | 串行、并行、AND Join、Context、Fail-Fast、全局中断、原子写入、重启收敛测试 | 24.7.2、24.6 |
+| 24.7.5（completed，2026-07-26） | 手动运行、单节点临时测试、执行记录与日志 | Execution JSON；画布入口 | START/END 空执行、单节点草稿/中断/零持久化、完整运行、失败、中断、最近 10 次、打开目录和原始节点日志 E2E | 24.7.3、24.7.4 |
+| 24.7.6（completed，2026-07-26） | 全量回归 | 全部当前模块 | pytest、compileall、npm build、SQLite integrity、桌面完整流程 | 24.7.1-24.7.5 |
+
+#### 24.7.1 验证记录
+
+- 新增 `execution/workflow_structural_models.py`：定义 `WorkflowStructuralModel`、`WorkflowNodeBinding`、`WorkflowEdge`、record/summary、完整图校验和 `WorkflowStructuralRepository`；全部类和字段都有业务说明。
+- 真实创建 `workflow_structural_models / workflow_node_bindings / workflow_edges`，通过复合外键保证 Edge 两端属于同一 Workflow；数据库不创建任何 Execution 或日志表。
+- create/update/delete 将 Workflow、Node、binding、Edge 放在一个 `BEGIN IMMEDIATE` 事务内；更新失败回滚全部结构，删除 Workflow 同事务删除当前所属 Node。
+- 保存前显式拒绝缺少/重复 START 或 END、纯系统节点、bindings 与 Node 不一致、自环、重复 Edge、有向环、非唯一根叶、不可达节点、重复 Context 变量和无效 LLM 模型引用。
+- 验证命令：`uv run pytest tests/test_workflow_structural_models.py tests/test_node_structural_models.py -q`。
+- 验证结果：`22 passed in 0.35s`。
+
+#### 24.7.2 验证记录
+
+- 新增 `web/routes_workflows.py` 并注册 `/api/workflows`：提供摘要列表、完整创建、详情读取、完整更新、元数据更新和删除。
+- API 请求只接受完整 Node Structural Model、坐标和 Edge；明确拒绝旧草稿的 `global_variables`、节点 `config` 等额外字段，不提供独立 Node CRUD 入口。
+- POST 由服务端生成 Workflow UUIDv4；PUT 复用路径 ID，名称保留首尾空白；列表响应只返回 `id/name/description/updated_at`。
+- 无效图、重复名称和无效 LLM 模型引用返回明确 400，Pydantic 契约外字段返回 422，任何失败均不产生部分结构写入。
+- 验证命令：`uv run pytest tests/test_workflow_api.py tests/test_workflow_structural_models.py tests/test_node_structural_models.py tests/test_web_app.py -q`。
+- 验证结果：`31 passed, 1 warning in 0.79s`；warning 为既有 Starlette/httpx 弃用提示。
+- 已在真实 `run_storage/agent_bench.sqlite3` 初始化三张 Workflow Structural 表；查询结果为 `workflow_edges / workflow_node_bindings / workflow_structural_models`，`PRAGMA integrity_check` 返回 `ok`。
+
+#### 24.7.3 验证记录
+
+- 一级导航重新接入 Workflow 管理；列表业务字段仅展示名称、说明、按本地 Asia/Shanghai 转换的更新时间，操作列提供编辑和应用内确认删除。
+- React Flow 画布通过新版 `/api/workflows` 读取和保存完整 Structural Model；新建默认图固定为合法 `START → SCRIPT → END`，刷新后从数据库恢复相同 3 个节点、2 条 Edge 和坐标。
+- 前端同步删除过时 AGENT、`global_variables` 和 LLM 流式开关；START 在节点设置中使用 `name/type/value`，SCRIPT/LLM/HTTP 输出统一使用 `name/type/source`。
+- 当前 Structural 阶段显式禁用完整 Workflow 运行按钮，不请求尚未实施的 `/runs`，因此打开节点不会产生 `Not Found` 伪日志；24.7.4/24.7.5 完成后由真实执行接口启用。
+- 非法图在前端保存前明确显示原因并进入“保存失败”，不会静默不保存；后端仍执行同一套权威校验作为最终防线。
+- 构建与自动回归：`npm run build` 成功；`uv run pytest tests/test_workflow_frontend.py tests/test_workflow_api.py tests/test_workflow_structural_models.py tests/test_node_structural_models.py tests/test_web_app.py -q` -> `34 passed, 1 warning`。
+- 浏览器 E2E：真实完成新增、保存、返回列表、重新打开、恢复 3 Node/2 Edge、START `question=请审核这段内容` 保存与重载、删除结构后的非法图提示、应用内确认删除、空列表恢复；最终浏览器 console error 为 0。
+- 视觉验证：桌面列表和全屏画布截图无文字/控件重叠；画布首屏完整展示 START、SCRIPT、END 和两条连线。
+- E2E 创建的临时 Workflow 已删除；真实数据库四张 Structural 表记录数均为 0，`PRAGMA integrity_check` 返回 `ok`。
+- 本阶段完整回归：`uv run pytest -q` -> `149 passed, 4 skipped, 1 warning in 10.34s`；4 项跳过为未注入真实供应商凭据的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 静态与构建：`uv run python -m compileall execution web tests`、`npm run build`、`git diff --check` 全部成功。
+
+#### 24.7.4 验证记录
+
+- 新增 `execution/workflow_execution.py`：Execution JSON 原子存储、进程重启收敛、Structural Snapshot、Context commits/final、同轮并发 DAG 调度、AND Join、Fail-Fast、全局中断和 START/END/SCRIPT/LLM/HTTP 执行适配器。
+- Execution 唯一事实固定写入 `run_storage/workflow_executions/{workflow_id}/{execution_id}/workflow.json + nodes/{node_execution_id}.json`；未创建任何 Execution、日志或状态数据库表。
+- END 只在全部直接上游 SUCCESS、调度器实际选中后创建 PENDING/RUNNING/SUCCESS 空 Node Execution；任一上游失败或全局中断时 END 不创建文件。
+- SCRIPT 复用可中断 Python Worker，顶层注入只读 `context`，保留原始 STDOUT/STDERR/traceback，按声明采集多个顶层变量；缺失输出、类型失败和序列化失败不重试。
+- 新增统一变量模块 `execution/workflow_values.py`：大小写敏感 `${name.path[index]}`、request/response 字段/下标/过滤表达式、`< > <= >= == != contain` 和第 3.3 节七种目标类型隐式转换矩阵。
+- HTTP 与 LLM 均通过可中断子进程发出真实阻塞 HTTP 请求；LLM 支持 OpenAI-compatible 与 Anthropic，强制 `stream=false`，按“模型默认 Body < 节点参数”构造实际供应商请求并保存原始 response。
+- 新增运行 API：启动、最近 10 次、Execution 详情、Node Execution 列表、幂等全局中断和打开固定 Workflow Execution 根目录；活动 Execution 存在时拒绝删除 Workflow。
+- 验证命令：`uv run pytest tests/test_workflow_execution.py tests/test_workflow_values.py tests/test_tool_execution.py -q` -> `38 passed`；`uv run pytest tests/test_workflow_api.py tests/test_workflow_execution.py -q` -> `17 passed, 1 warning`。
+- 真实场景覆盖：串行 Context 传递、并行双 SCRIPT、输出缺失 Fail-Fast、30 秒脚本进程树中断、重启恢复、真实本机 HTTP GET、OpenAI POST 与 Anthropic Messages POST；warning 为既有 Starlette/httpx 弃用提示。
+
+#### 24.7.5 阶段验证记录
+
+- 已完成后端单节点临时测试：新增进程内 Node Test 会话、SSE 实时快照、节点级中断和删除 Workflow/Node 前的活动 Worker 收敛；START/SCRIPT/LLM/HTTP 复用完整执行的真实节点路径，END 明确拒绝测试。
+- 测试请求直接携带当前未保存 Node Structural 草稿和本次临时 Context，不执行整图校验、上游、下游或 DAG 调度；同一 Workflow/Node 活动期间重复启动返回同一 test_id。
+- 服务端只在 Worker 生命周期内保存有界事件队列；最终前端快照剥离 workflow_execution_id、node_execution_id、structural_snapshot 和 transitions，终态 SSE 交付后释放会话。
+- 零持久化验证：单节点测试结束后 `/runs` 仍为空、`run_storage/workflow_executions/{workflow_id}` 不存在、数据库中的已保存 SCRIPT 仍保持测试前源码。
+- 专项验证：`uv run pytest tests/test_workflow_api.py -q` -> `12 passed, 1 warning`。覆盖未保存 SCRIPT 草稿与临时 Context、START 空 Context、重复启动幂等、30 秒 Worker 真实中断、END 拒绝和删除 Workflow 前中断；warning 为既有 Starlette/httpx 弃用提示。
+- 已完成前端单节点测试对接：START 使用当前草稿直接测试；SCRIPT/LLM/HTTP 打开仅本次有效的变量表，按 START inputs 自动预填 name/type/value，并允许新增、删除和覆盖；提交时严格构造大小写敏感 JSON Context。
+- 节点卡片、节点右键菜单和编辑器运行/中断均绑定 Node Test API，不再触发 runAll 或全局中断；END 不展示运行/中断按钮。节点计时器在 RUNNING 期间累加，终态快照以“临时”标记独立展示，不写入 runHistory 或最近 10 次。
+- 全新未保存 Workflow 使用前端临时 Workflow UUID 隔离 Node Test，因此测试不会为取得后端路径而隐式创建 Structural Model；显式保存后切换到真实 Workflow ID。
+- 自动化与构建：`npm run build` 成功；`uv run pytest tests/test_workflow_frontend.py tests/test_workflow_api.py -q` 连续两轮均为 `16 passed, 1 warning`。warning 为既有 Starlette/httpx 弃用提示。
+- 桌面单节点 E2E：在既有 Workflow 中把当前未保存 SCRIPT 草稿改为读取预填 START 变量 `name=123`，运行成功且临时日志展开显示 `inputs={name:123}`、原始 `console=123`、`outputs={abc:123}`；草稿无需保存。随后测试 30 秒 SCRIPT，卡片和编辑器运行按钮禁用、计时累加，节点中断真实终止 Worker 并进入 INTERRUPTED；关闭编辑器后临时快照从页面清除。
+- 桌面完整 Workflow E2E：保存 1 秒 SCRIPT 后点击画布运行，运行按钮在终态前禁用、全局中断启用、顶栏计时累加；START 先 SUCCESS、SCRIPT RUNNING、END PENDING，最终 START/SCRIPT/END 全部 SUCCESS，END 仅在上游成功后生成，Workflow 总耗时 1.5s。
+- 历史和日志 E2E：最近执行历史显示本地月日时间/SUCCESS/耗时，展开后 `context.final={name:123,abc:123}` 且包含三个真实 Node Execution；SCRIPT 持久日志只映射最终 Execution，展开显示 inputs、原始 console `123` 和 outputs。执行记录按钮返回“已打开执行记录目录”。
+- 清理 E2E：删除测试 Workflow 后一级列表为 0；对应 `run_storage/workflow_executions/{workflow_id}` 不存在，四张 Structural 表计数均为 0，`PRAGMA integrity_check=ok`、`foreign_key_check=[]`。
+- 视觉修复：浏览器截图发现顶栏五个操作按钮被压成两行；已调整三列最小宽度并令操作按钮禁止收缩和换行，重新构建及桌面截图确认“运行 / 历史 / 执行记录 / 中断 / 保存”均为单行且无重叠。
+
+#### 24.7.6 验证记录
+
+- 全量自动回归：`uv run pytest -q` -> `188 passed, 4 skipped, 1 warning in 15.47s`。4 项 skipped 为当前进程未注入真实供应商 API Key 的 live 用例；warning 为既有 Starlette/httpx 弃用提示。
+- 静态与构建：`uv run python -m compileall -q execution web tests storage` 成功；`npm run build` 成功，生成 Workflow JS 948.9 KiB、CSS 63.8 KiB；`git diff --check` 无空白错误，只有 Windows 工作区既有 LF/CRLF 转换提示。
+- 数据库：真实 `run_storage/agent_bench.sqlite3` 的 `PRAGMA integrity_check=ok`、`foreign_key_check=[]`；按表名扫描不存在任何 execution 或 log 数据库表，继续严格只保存 Structural Model。
+- Execution 清理：完整 E2E 删除 Workflow 后 `run_storage/workflow_executions/{workflow_id}` 已定点删除，Execution 根目录为空；四张 Structural 表计数均为 0。
+- 进程：关闭旧 05:22 服务进程树后，以当前代码重启 `http://127.0.0.1:8010/`；最终仅一个监听进程 PID 26492，不存在重复项目端口。
+- Git 边界：未提交、未推送；工作区包含本轮开始前已有的不兼容 Workflow 重构删除和用户文档改动，全部按原状态保留且未回滚。
+
+### 24.8 可观测验收标准（How to Measure）
+
+- 保存后数据库只出现四类 Structural 表，不出现任何 Workflow/Node Execution、运行索引或日志表。
+- 非法图、缺失/重复 START 或 END、纯系统节点图、变量冲突和无效 Node 配置均显式拒绝保存和运行，不产生 Execution JSON。
+- 合法 Workflow 保存后重启服务仍可从三张 Workflow 表和 Node 表完整恢复相同节点、配置、坐标和 Edge。
+- 手动执行只读取启动快照；运行期间修改当前结构不改变已开始执行，历史 JSON 可在数据库结构被修改后独立离线读取。
+- START/END 均产生真实 Node Execution；START values 原子进入 Context，END SUCCESS 是 Workflow SUCCESS 的唯一标志。
+- 任一节点最终 FAILED 后不再启动新节点，其他 RUNNING Worker 被真实终止，Workflow/Node JSON、Context 和原始日志不存在部分成功或伪造状态。
+- 同一 Workflow 的多个 Execution 可以并发且目录、Context、状态和日志完全隔离；Workflow 管理页面不会因连续点击产生重复手动执行。
+- 一级 Workflow 列表只显示名称、说明、更新时间；执行记录入口能够打开真实 JSON 目录，日志内容全部来自对应 Execution JSON。
+
+### 24.9 可用变量映射最新 Node Execution（completed，2026-07-27）
+
+- Why：工作流开发者执行完整 Workflow 后，需要立即从节点右上角“可用变量”确认本节点实际写入 Context 的结果；此前面板只读取 Structural Model 的输出声明，并把业务节点值固定为 `null / 尚无值`，与真实 Execution 和日志相矛盾。
+- Who / Where：Workflow Studio 中执行完整 Workflow 后，打开 START/SCRIPT/LLM/HTTP 节点编辑器并点击右上角“变量”。
+- What / Priority：P0 展示正确性缺陷。变量面板不再从卡片 `runHistory` 状态副本猜测值；每次打开时以 `cache: no-store` 读取最新 Workflow Execution 和所属 Node Execution JSON，按 `node_id + outputs.name` 映射实际结果。找不到输出键时才显示“尚无值”。
+- 值语义：是否可用使用 `hasOwnProperty` 判断，因此空字符串、`0`、`false` 和 `null` 都属于真实可用值并允许复制，不能被 truthy 判断误判为空。
+- 缓存修复：`index.html` 为 Workflow bundle 增加 `?v=20260727-variables`，避免浏览器继续复用修复前的同名静态 JS。
+- 真实数据核对：最近三次 SCRIPT Node Execution 均保存 `structural_snapshot.outputs=[{name:msg,type:string,source:msg}]`、`outputs={msg:"介绍一下自己"}` 和原始 console；数据库和 Execution Model 无需修改。
+- 浏览器 E2E：刷新后打开“规则校验”变量面板，`msg` 立即显示“介绍一下自己”，复制按钮启用；点击后页面提示“已复制变量 msg”。
+- 自动验证：`npm run build` 成功；专项回归 `26 passed, 1 warning`；最终 `uv run pytest -q` -> `190 passed, 4 skipped, 1 warning in 16.50s`；Python compileall 和 `git diff --check` 通过。4 项 skipped 仍为未注入真实供应商密钥的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
+### 24.10 全节点变量作用域与草稿实时同步（completed，2026-07-27）
+
+- Why：工作流开发者新增输出声明或完成单节点临时测试后，必须立即确认当前节点和全部上游节点可向后传递的变量；旧实现只在按钮首次点击时生成静态列表，并按画布数组位置而非 DAG 依赖判断“之前节点”。
+- Who / Where：任意 START/SCRIPT/LLM/HTTP/END 节点编辑器右上角“变量”面板，覆盖未保存草稿、临时节点测试和完整 Workflow Execution 三种状态。
+- 顶层规则一：只要当前草稿定义了输出变量，面板必须显示变量名；尚无本次或持久化结果时显示“尚无值”，不能隐藏整条声明。临时测试 `temporaryRun.outputs` 优先于最新持久化 Node Execution `outputs`；关闭编辑器后临时快照按既有契约清除并回退到持久化值。
+- 顶层规则二：任意节点变量面板固定展示该节点全部 DAG 祖先和当前节点的变量。前端通过 Edge 反向遍历确定祖先集合，再对子图执行拓扑排序；不再使用 `nodes.slice(0, index)` 猜测作用域，也不展示不汇入当前节点的旁支变量。
+- 实时刷新：Inspector 使用稳定 ref 保存最新变量加载函数，只在面板开关、当前节点、输出声明或临时输出真正变化时刷新；新增、删除、重命名输出或临时测试终态无需关闭编辑器即可更新，避免父组件无关重渲染反复取消请求。
+- 值来源：完整运行仍直接读取最新 Workflow/Node Execution JSON；临时运行读取前端临时快照；声明层来自当前未保存 Node Structural 草稿。空字符串、`0`、`false`、`null` 继续按 key 存在性判断为可用值。
+- Bundle 一致性：构建脚本按生成 JS 内容计算 12 位 SHA-256，并自动回写 `index.html` 的 `workflow-canvas.js?v={hash}`；后续每次 `npm run build` 都会自然失效浏览器旧缓存，不再人工维护固定版本号。
+- Windows 加固：专项回归暴露轮询读取 Execution JSON 与 `os.replace` 短暂冲突的 `PermissionError`；Store 对该瞬时窗口增加最多 5 次、每次 10ms 的限定重试，并新增明确测试，不吞掉持续权限错误。
+- 浏览器 E2E：完整 Workflow 运行后 `msg=介绍一下自己`；新增未执行的 `message` 立即显示为“尚无值”；SCRIPT 临时测试后 `message` 立即显示真实值；打开下游 END 可同时看到上游 SCRIPT 的 `msg/message`。验收 Workflow 已删除，测试前真实数据库已是 0 条 Workflow，清理后仍为 0。
+- 验证：`npm run build` 成功；专项 `29 passed, 1 warning`，Windows 原子读取场景单独复跑 `2 passed`；全量 `uv run pytest -q` -> `192 passed, 4 skipped, 1 warning in 15.76s`；compileall、`git diff --check`、`PRAGMA integrity_check=ok`、`foreign_key_check=[]` 均通过。
+
+### 24.11 节点秒级执行配置与首次延迟（completed，2026-07-27）
+
+#### 业务分析与已确认边界
+
+- Why：Workflow 开发者需要用符合真实使用习惯的秒单位配置节点超时、失败重试等待和首次延迟，避免前端手工换算毫秒，也必须明确区分“首次延迟”与“重试间隔”。
+- Who / Where：用户在 Workflow Studio 的 SCRIPT、LLM、HTTP 节点设置页配置执行策略；START/END 是即时系统标志节点，不加入执行等待配置。
+- What / Priority：P0 契约一致性改造。旧 `timeout_ms / delay_ms` 不兼容删除，Structural Model 改为必填 `timeout_seconds / max_attempts / retry_interval_seconds / delay_seconds`；三个秒字段支持小数，后端统一换算为整数毫秒。
+- 执行语义：`delay_seconds` 只在首次实际尝试前等待一次，等待期间 Node Execution 保持 PENDING；首次尝试开始后进入 RUNNING。后续重试不再叠加首次延迟，只等待 `retry_interval_seconds`；HTTP 唯一合法 Retry-After 可覆盖该次重试等待。
+- 计时语义：`timeout_seconds` 每次实际尝试独立计时；Node Execution `duration_ms` 包含首次延迟、全部实际尝试和重试等待。Execution Model 的事实耗时继续用整数毫秒，不把配置字段单位扩散到执行事实。
+
+#### 子任务与逐步验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 24.11.1 | 更新权威契约 | 已确认 1A/2A/3A；WORKFLOW_SPEC 秒字段和等待语义 | 扫描旧 `timeout_ms / delay_ms` 配置语义无残留 | 无 | completed |
+| 24.11.2 | 后端 Structural Model、存储和执行器改造 | 秒字段；统一毫秒换算、PENDING 首次延迟、独立重试间隔 | 模型/API/执行专项测试，覆盖小数秒、旧字段拒绝、延迟/重试/超时/中断 | 24.11.1 | completed |
+| 24.11.3 | 三类节点前端对接 | SCRIPT/LLM/HTTP 设置表单 | 构建、前端专项测试、保存与回显 E2E | 24.11.2 | completed |
+| 24.11.4 | 完整回归 | 后端、前端、SQLite、桌面业务流 | pytest、compileall、npm build、diff check、SQLite integrity、浏览器 E2E | 24.11.2-24.11.3 | completed |
+
+#### 验收标准
+
+- SCRIPT、LLM、HTTP 均以秒显示、保存和回显单次超时、重试间隔、首次延迟，支持例如 `0.25` 秒；START/END 不出现这些控件。
+- API/数据库只接受新字段，旧 `_ms` 字段得到明确校验错误，不做兼容迁移或静默换算。
+- 配置 `delay_seconds=0.2` 时首次 Worker/请求在约 200ms 后只启动一次；发生重试时只额外等待 `retry_interval_seconds`，不重复等待首次延迟。
+- 首次延迟可被全局中断或单节点临时测试中断，未开始尝试时 `attempt_count=0`；实际开始后状态和计数符合 Execution Model 契约。
+- 小数秒超时由后端统一转换为整数毫秒执行，超时、中断和最终原始日志保持真实；完整 Workflow 与单节点临时测试使用相同语义。
+
+#### 24.11.2 验证记录
+
+- `RetryExecution` 已改为严格的 `timeout_seconds / max_attempts / retry_interval_seconds / delay_seconds`；三个秒字段拒绝字符串、NaN/Infinity 和越界值，允许整数或小数 JSON number。
+- 新增唯一 `seconds_to_milliseconds()` 换算入口。SCRIPT、LLM、HTTP 的 Worker 超时、首次延迟和重试间隔都先换算为整数毫秒，再进入现有执行接口。
+- 完整 Workflow 的业务节点在首次延迟期间写入真实 PENDING Node Execution，Workflow 节点条目同步为 PENDING；延迟完成后才进入 RUNNING。用户中断或 Fail-Fast 能在无 Worker 的延迟期内收敛，且 `attempt_count=0`。
+- 完整 Workflow 与单节点临时测试复用 `_begin_business_node`，不存在两套延迟语义。Node Execution `duration_ms` 从 PENDING 生命周期开始累计，因此包含首次延迟。
+- 专项验证：`uv run pytest tests/test_node_structural_models.py tests/test_workflow_execution.py tests/test_workflow_api.py tests/test_workflow_structural_models.py -q` -> `53 passed, 1 warning in 7.17s`。warning 为既有 Starlette/httpx 弃用提示。
+- 新增回归覆盖：小数秒 round-trip、旧 `_ms` 字段拒绝、非法秒值、真实 PENDING 延迟、延迟期全局中断、首次延迟/重试间隔各调用一次、超时秒值统一换算。
+
+#### 24.11.3 验证记录
+
+- SCRIPT、LLM、HTTP 设置页统一使用“单次超时（秒）/最大重试次数/重试间隔（秒）/延迟执行（秒）”；START/END 仍为即时系统节点，不显示运行配置。
+- 前端保存和回读统一映射 `timeout_seconds / max_attempts / retry_interval_seconds / delay_seconds`，支持小数；构建产物及 `index.html` 的内容哈希已同步更新。
+- 前端专项验证：`uv run pytest tests/test_workflow_frontend.py tests/test_execution_frontend.py tests/test_workflow_api.py -q` -> `38 passed, 1 warning`；`npm run build` 成功。
+- 浏览器 E2E 在唯一临时 Workflow `秒级配置验收-20260727` 中保存 SCRIPT 配置 `0.5 / 0 / 0.2 / 0.25`，API Structural Model 与退出后重新打开的 Inspector 均精确回读四个值。
+- 真实 Workflow 执行观测到 SCRIPT 在启动后及 100ms 时均为 `PENDING / attempt_count=0 / started_at=null`，随后三个节点均为 SUCCESS；API 运行中 SCRIPT `duration_ms=462`，浏览器运行中显示 `485ms`，均包含 250ms 首次延迟。
+- 验收 Workflow 删除前执行目录存在，删除后 `run_storage/workflow_executions/{workflow_id}` 定点消失；原有用户 Workflow `未命名工作流` 保持不变。
+
+#### 24.11.4 验证记录
+
+- 全量回归：`uv run pytest -q` -> `202 passed, 4 skipped, 1 warning in 16.67s`；4 项跳过为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 静态与构建：`uv run python -m compileall -q execution web tests storage` 成功；`npm run build` 成功；`git diff --check` 成功。
+- SQLite：`PRAGMA integrity_check` 返回 `ok`；`PRAGMA foreign_key_check` 返回空；数据库表仅包含 Structural Model 与既有模型供应商/Target 表，不存在 Execution 或日志表。
+- 运行环境：验收结束后只保留 `127.0.0.1:8010` 一个项目监听端口，测试创建的 Workflow 和 Execution JSON 均已清理，用户原有 Workflow 未修改。
+
+### 24.12 业务节点十分钟系统默认超时（completed，2026-07-27）
+
+#### 业务分析与已确认边界
+
+- Why：默认执行策略必须由后端契约统一提供，确保画布、直接 API 和后续批量调度创建的节点行为一致；十分钟默认超时兼顾真实 LLM、HTTP 和 Python 任务耗时，同时避免无限执行。
+- Who / Where：Workflow 开发者在画布新建 SCRIPT、LLM、HTTP 节点，或其他模块通过新版 Workflow API 创建节点；START/END 仍为即时系统标志节点。
+- What / Priority：P0 契约一致性。平台默认 `timeout_seconds=600 / max_attempts=0 / retry_interval_seconds=0 / delay_seconds=0`；省略整个 `execution`、提交空对象或只提交部分字段时由后端补齐，显式字段覆盖同名默认值。
+- How to Measure：三类业务节点在模型/API 中省略与部分覆盖均得到预期完整值；前端新节点显示 600 秒；保存、回读和真实执行使用同一值；START/END 无运行配置且既有日志与状态语义不变。
+
+#### 子任务与逐步验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 24.12.1 | 更新权威契约 | 用户确认十分钟默认值与显式字段覆盖 | 扫描“无默认值/必须显式填写”和 120 秒默认语义无残留 | 无 | completed |
+| 24.12.2 | 后端系统默认策略 | Pydantic 默认值、整体省略与部分覆盖 | 模型/API 专项测试 | 24.12.1 | completed |
+| 24.12.3 | 前端统一 | 新节点和异常回读兜底改为 600 秒 | 前端专项测试、生产构建、浏览器 E2E | 24.12.2 | completed |
+| 24.12.4 | 完整回归 | 全量后端、前端、SQLite 与运行环境 | pytest、compileall、build、diff check、数据库和端口检查 | 24.12.2-24.12.3 | completed |
+
+#### 24.12.1 验证记录
+
+- `WORKFLOW_SPEC.md` 顶层边界、公共字段表、三类节点字段表、SCRIPT/LLM execution 章节和重试顶层规则均已统一为平台默认 `600 / 0 / 0 / 0`。
+- 契约明确支持省略整个 `execution`、提交空对象及部分字段覆盖；显式字段只覆盖同名默认值，未提交字段继续使用平台默认值。
+- 文档扫描确认“必须显式填写且无契约默认值”和 120 秒默认语义无残留；HTTP 章节中的 30 秒仅作为显式覆盖示例保留。
+
+#### 24.12.2 验证记录
+
+- `RetryExecution` 在后端权威模型中定义 `timeout_seconds=600 / max_attempts=0 / retry_interval_seconds=0 / delay_seconds=0`，继续保留严格 JSON number/integer、有限数和范围校验。
+- SCRIPT、LLM、HTTP 的 `execution` 分别使用 `RetryExecution` 或 `HttpExecution` 默认工厂；省略整个对象、提交 `{}` 和部分字段覆盖均得到完整策略，HTTP 专属重试字段继续使用既有默认值。
+- API 创建 Workflow 时会把后端补齐后的完整执行策略写入 Structural Model 并原样返回，不依赖画布补值。
+- 专项验证：`uv run pytest tests/test_node_structural_models.py tests/test_workflow_api.py -q` -> `39 passed, 1 warning in 2.31s`；warning 为既有 Starlette/httpx 弃用提示。
+
+#### 24.12.3 验证记录
+
+- Workflow Canvas 新节点初始化、运行配置输入兜底和 Structural Model 回读兜底均已从 120 秒统一为 600 秒；重试次数、重试间隔和延迟执行继续默认为 0。
+- `npm run build` 成功并更新 Workflow bundle 与内容哈希；专项 `uv run pytest tests/test_workflow_frontend.py tests/test_workflow_api.py tests/test_node_structural_models.py -q` -> `47 passed, 1 warning in 2.10s`。
+- 浏览器 E2E 在未保存临时草稿中逐一新增并打开 SCRIPT、LLM、HTTP，三者均显示 `600 / 0 / 0 / 0`；START/END 不显示运行配置。
+- 临时草稿退出时未保存，数据库 Workflow 列表保持用户原有两条，未创建或删除用户数据。
+
+#### 24.12.4 验证记录
+
+- 第二次全量回归：`uv run pytest -q` -> `211 passed, 4 skipped, 1 warning in 16.57s`；4 项跳过为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- 首次全量回归中 `test_missing_script_output_fails_fast_and_never_creates_end_execution` 曾一次得到瞬时 `PERSISTENCE_FAILED`；该用例立即单独复跑通过、第二次全量通过，并连续复跑 10 次全部通过。未发现本次默认策略变更引入的稳定回归，保留 Windows 文件持久化瞬时竞态作为已知残余风险。
+- `uv run python -m compileall -q execution web tests storage`、`npm run build` 和 `git diff --check` 均成功。
+- SQLite `integrity_check=ok`、`foreign_key_check=[]`，不存在 Execution 或日志数据库表；Execution Model 继续只保存在本地 JSON。
+- 运行环境只监听 `127.0.0.1:8010`；浏览器临时草稿未保存，用户现有两条 Workflow 均保留。
+
+### 24.13 允许保存不完整业务节点并在到达节点时友好失败（completed，2026-07-27）
+
+#### 业务分析与已确认边界
+
+- Why：Workflow 管理用于开发和测试迭代，用户必须能够先保存完整合法的图结构，再逐步配置和测试业务节点；保存不能等同于可执行性校验。
+- Who / Where：开发者在 Workflow Studio 保存包含未配置 SCRIPT、LLM 或 HTTP 的合法 DAG，并通过完整运行或单节点临时测试发现当前节点配置问题。
+- What / Priority：P0 可用性。保存继续严格校验 START/END、循环、游离节点、连线、类型及非空格式；不引入 DRAFT/READY。调度到缺配置节点时创建 PENDING -> FAILED 的真实 Node Execution，attempt_count=0、不重试并 Fail-Fast；临时测试复用同一逻辑但只保留前端快照。
+- How to Measure：三类空白节点均可保存和回读；非法非空 URL 等仍拒绝；完整运行只在到达对应节点时失败且后代 NOT_STARTED；三类错误均提供稳定 code、中文 message、missing_fields 和 suggestion；临时测试一致且不写 JSON。
+
+#### 子任务与逐步验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 24.13.1 | 更新权威契约 | 1A/2A/3A 与错误码 | 矛盾语义和错误码扫描 | 无 | completed |
+| 24.13.2 | Structural Model 与保存 | 空白 SCRIPT/LLM/HTTP 可持久化，图结构仍严格 | 模型、Repository、API 专项测试 | 24.13.1 | completed |
+| 24.13.3 | Execution Model 与临时测试 | PENDING -> FAILED、attempt_count=0、友好错误、Fail-Fast | 执行器与 API SSE 专项测试 | 24.13.2 | completed |
+| 24.13.4 | 前端与完整回归 | 保存成功、日志/Toast 友好、浏览器真实流程 | 构建、浏览器 E2E、pytest、SQLite、端口检查 | 24.13.3 | completed |
+
+#### 24.13.1 验证记录
+
+- 权威契约明确不引入 DRAFT/READY；保存和启动只严格校验合法 DAG、字段类型及非空配置格式，业务节点缺少运行配置不阻断持久化。
+- 调度到当前节点时才校验运行必需配置，缺失时创建 PENDING -> FAILED、attempt_count=0、started_at=null 的 Node Execution，不启动真实执行且不重试，随后按 Fail-Fast 停止后代。
+- 新增 `SCRIPT_CONFIGURATION_INCOMPLETE / LLM_CONFIGURATION_INCOMPLETE / HTTP_CONFIGURATION_INCOMPLETE`，并统一 `missing_fields / suggestion` 友好详情；非空失效模型继续使用 `LLM_MODEL_NOT_FOUND`。
+- 文档扫描确认“保存与运行前完整配置校验”“模型引用保存时必须有效”等旧语义无残留。
+
+#### 24.13.2 验证记录
+
+- SCRIPT.script、LLM model/prompt、HTTP request/network/response 均提供可持久化空白默认结构；HTTP 空 URL 和 CUSTOM 空 Proxy URL 允许保存，但填写后的非法非空 URL 仍按 Structural Model 格式校验拒绝。
+- Workflow Repository 保存与更新不再访问模型仓库校验弱引用；空引用和非空失效引用都能保存，等待调度到 LLM 节点时判定。
+- API 在合法 START -> 业务节点 -> END 图中分别保存并回读完全空白 SCRIPT、LLM、HTTP；已有 START/END、循环、游离节点和连线校验保持不变。
+- 专项验证：`uv run pytest tests/test_node_structural_models.py tests/test_workflow_structural_models.py tests/test_workflow_api.py -q` -> `58 passed, 1 warning in 2.55s`；warning 为既有 Starlette/httpx 弃用提示。
+
+#### 24.13.3 验证记录
+
+- 三类业务执行入口均在首次 delay 和真实尝试前检查当前节点：空 SCRIPT、空 LLM 模型/用户提示词、空 HTTP URL 或 CUSTOM Proxy URL 直接写入 PENDING 后终结为 FAILED，不调用 Worker。
+- 配置失败保持 `started_at=null / duration_ms=null / attempt_count=0 / attempts=[]`，transitions 精确为 PENDING -> FAILED，错误包含稳定 code、节点名称、missing_fields 和 suggestion；不进入自动重试。
+- 非空但失效的 LLM 引用延后到该节点到达时使用 `LLM_MODEL_NOT_FOUND` 友好失败；后代 END 不创建 Node Execution，Workflow 按既有 Fail-Fast 进入 FAILED。
+- 单节点临时测试复用相同执行器，最终前端快照字段与完整 Node Execution 一致，但不创建 Workflow/Node Execution JSON。
+- 专项验证：`uv run pytest tests/test_workflow_execution.py tests/test_workflow_api.py -q` -> `38 passed, 1 warning in 7.55s`；首次运行发现测试夹具自动提供默认脚本，修正为空字符串后全套通过。
+
+#### 24.13.4 验证记录
+
+- 公共 API 客户端统一先读取 text 再尝试 JSON，JSON detail 数组会合并为可读 message，纯文本 500 直接展示原文，不再产生 `Unexpected token` 二次解析错误。
+- 单节点临时测试终态 FAILED 时立即 Toast Node Execution 的友好 message + suggestion；完整 Workflow FAILED 时优先读取最终 FAILED/TIMEOUT Node Execution，而不是只展示 Workflow 的笼统 NODE_FAILED。
+- 浏览器 E2E 创建独立 `START -> 空白 LLM -> END`：空白 LLM 成功保存并回读；点击运行后 START SUCCESS、LLM FAILED、END 保持未执行，Toast 显示“节点‘待配置模型’未完成模型配置”及模型选择建议。
+- 浏览器日志概览与展开内容均来自真实 LLM Node Execution：`PENDING -> FAILED / attempt_count=0 / started_at=null / duration_ms=null / attempts=[]`，错误包含三个 missing_fields 和 suggestion。验收 Workflow 与 Execution 目录随后定点删除，用户 Workflow 未删除。
+- 专项前端及 Workflow 回归 `87 passed, 1 warning`；全量 `uv run pytest -q` -> `228 passed, 4 skipped, 1 warning in 17.62s`。4 项跳过为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+- `uv run python -m compileall -q execution web tests storage`、`npm run build`、`git diff --check` 和契约矛盾扫描均通过；SQLite integrity=ok、foreign_key_check=[]，数据库无 Execution/日志表。
+- 运行服务已重启到当前代码，只保留 `127.0.0.1:8010` 一个监听端口；最终 Workflow 列表只保留用户当前 `未命名工作流`。

@@ -1,13 +1,40 @@
+import base64
 import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpx
+import pytest
+
+from web.tool_worker import _parse_raw_http_body
 from web.tool_runtime import (
     interrupt_tool_run,
     is_tool_run_active,
     stream_tool_worker,
 )
+
+
+@pytest.mark.parametrize(
+    ("mode", "content", "content_type", "expected"),
+    [
+        ("JSON", b'{"ok":true}', "application/json", ({"ok": True}, "JSON")),
+        ("TEXT", "中文".encode(), "text/plain; charset=utf-8", ("中文", "TEXT")),
+        ("BINARY", b"\xff\x00", "application/octet-stream", (base64.b64encode(b"\xff\x00").decode(), "BINARY")),
+        ("AUTO", b"\xff\x00", "application/octet-stream", (base64.b64encode(b"\xff\x00").decode(), "BINARY")),
+    ],
+)
+def test_raw_http_response_mode_controls_body_representation(mode, content, content_type, expected):
+    response = httpx.Response(200, content=content, headers={"content-type": content_type})
+
+    assert _parse_raw_http_body(response, mode) == expected
+
+
+def test_raw_http_explicit_json_mode_rejects_non_json_body():
+    response = httpx.Response(200, text="not-json")
+
+    with pytest.raises(ValueError):
+        _parse_raw_http_body(response, "JSON")
 
 
 def _python_payload(code: str, config=None, inputs=None) -> dict:

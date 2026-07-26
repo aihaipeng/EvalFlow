@@ -1,8 +1,8 @@
-/* Target management and the persistent Workflow Studio. */
+/* Target management and Workflow Structural Model UI. */
 var executionState = {
     targets: [],
-    workflows: [],
     editingTargetId: null,
+    workflows: [],
 };
 
 function executionEmpty(title, actionLabel, actionId) {
@@ -219,46 +219,264 @@ async function deleteTarget(targetId) {
     }
 }
 
-function filteredWorkflows() {
-    var search = document.getElementById('workflow-search');
-    var query = search ? search.value.trim().toLowerCase() : '';
-    return executionState.workflows.filter(function (workflow) {
-        return !query || (workflow.name + ' ' + (workflow.description || '')).toLowerCase().includes(query);
+function workflowOutputRows(outputs) {
+    var rows = (outputs || []).map(function (output) {
+        return {id: crypto.randomUUID(), name: output.name, type: output.type, value: output.source};
     });
+    return rows.length ? rows : [{id: crypto.randomUUID(), name: '', type: 'string', value: ''}];
+}
+
+function workflowLlmMessages(messages) {
+    var source = messages && messages.length ? messages : [
+        {role: 'SYSTEM', content: ''},
+        {role: 'USER', content: ''},
+    ];
+    return source.map(function (message) {
+        return {
+            id: crypto.randomUUID(),
+            role: message.role,
+            content: message.content || '',
+            fixed: false,
+        };
+    }).map(function (message, index) {
+        message.fixed = index < 2;
+        return message;
+    });
+}
+
+function workflowNodeData(node) {
+    var base = {
+        nodeType: node.type,
+        label: node.name,
+        description: node.description || '',
+        timeoutSeconds: node.execution ? node.execution.timeout_seconds : 600,
+        retryCount: node.execution && node.execution.max_attempts || 0,
+        retryIntervalSeconds: node.execution ? node.execution.retry_interval_seconds : 0,
+        delaySeconds: node.execution ? node.execution.delay_seconds : 0,
+        outputVariables: workflowOutputRows(node.outputs),
+        parameterRecords: [],
+    };
+    if (node.type === 'START') {
+        base.startInputs = (node.inputs || []).map(function (input) {
+            return {
+                id: crypto.randomUUID(), name: input.name, type: input.type,
+                value: input.type === 'string' ? input.value : JSON.stringify(input.value),
+            };
+        });
+        if (!base.startInputs.length) base.startInputs = [{id: crypto.randomUUID(), name: '', type: 'string', value: ''}];
+    } else if (node.type === 'SCRIPT') {
+        base.mainPy = node.script;
+    } else if (node.type === 'LLM') {
+        base.providerId = node.model.provider_id;
+        base.modelName = node.model.model_name;
+        base.llmMessages = workflowLlmMessages(node.context && node.context.messages);
+        base.modelParameters = node.generation.parameters || {};
+        base.modelParametersText = node.generation.parameters_text || '';
+    } else if (node.type === 'HTTP') {
+        var bodyType = {form_data: 'form-data', form_urlencoded: 'x-www-form-urlencoded'}[node.request.body.type] || node.request.body.type;
+        base.httpConfig = {
+            method: node.request.method,
+            url: node.request.url,
+            headers: (node.request.headers || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: row.value}; }),
+            params: (node.request.params || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: row.value === null ? '' : String(row.value)}; }),
+            bodyType: bodyType,
+            bodyText: bodyType === 'raw' ? JSON.stringify(node.request.body.content, null, 2) : '',
+            bodyFields: ['form-data', 'x-www-form-urlencoded'].indexOf(bodyType) >= 0
+                ? (node.request.body.content || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: String(row.value)}; }) : [],
+            followRedirects: node.request.follow_redirects,
+            proxyMode: node.network.proxy.mode,
+            proxyUrl: node.network.proxy.url || '',
+            proxyUsername: node.network.proxy.username || '',
+            proxyPassword: node.network.proxy.password || '',
+            verifySsl: node.network.verify_ssl,
+            responseBodyType: String(node.response.mode || 'AUTO').toLowerCase(),
+        };
+    }
+    return base;
+}
+
+function workflowRecordToCanvas(record) {
+    var structural = record.workflow;
+    var bindings = new Map((structural.nodes || []).map(function (item) { return [item.node_id, item]; }));
+    return {
+        id: structural.id,
+        name: structural.name,
+        description: structural.description,
+        draft: {
+            description: structural.description,
+            nodes: (record.node_models || []).map(function (node) {
+                var binding = bindings.get(node.id);
+                return {
+                    id: node.id,
+                    type: 'workflowNode',
+                    position: {x: binding.position_x, y: binding.position_y},
+                    data: workflowNodeData(node),
+                };
+            }),
+            edges: (structural.edges || []).map(function (edge) {
+                return {id: edge.id, source: edge.source_node_id, target: edge.target_node_id, type: 'insertable'};
+            }),
+        },
+    };
+}
+
+function parseStartValue(row) {
+    var text = String(row.value === undefined || row.value === null ? '' : row.value);
+    if (row.type === 'string') return text;
+    if (row.type === 'null') {
+        if (text.trim() && text.trim() !== 'null') throw new Error('START 变量 ' + row.name + ' 的 null 值必须填写 null 或留空');
+        return null;
+    }
+    var value;
+    try { value = JSON.parse(text); } catch (_error) { throw new Error('START 变量 ' + row.name + ' 的值不是合法 JSON'); }
+    var valid = (
+        (row.type === 'integer' && Number.isInteger(value)) ||
+        (row.type === 'number' && typeof value === 'number' && Number.isFinite(value)) ||
+        (row.type === 'boolean' && typeof value === 'boolean') ||
+        (row.type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) ||
+        (row.type === 'array' && Array.isArray(value))
+    );
+    if (!valid) throw new Error('START 变量 ' + row.name + ' 的值与类型 ' + row.type + ' 不匹配');
+    return value;
+}
+
+function outputBindings(node) {
+    return (node.data.outputVariables || []).filter(function (row) {
+        return String(row.name || '').trim() || String(row.value || '').trim();
+    }).map(function (row) {
+        if (!String(row.name || '').trim()) throw new Error(node.data.label + ' 的输出变量名不能为空');
+        if (!String(row.value || '').trim()) throw new Error(node.data.label + ' 的输出 source 不能为空');
+        return {name: row.name, type: row.type || 'string', source: row.value};
+    });
+}
+
+function filteredKeyValueRows(rows, label) {
+    return (rows || []).filter(function (row) { return row.key || row.value; }).map(function (row) {
+        if (!row.key) throw new Error(label + ' 的 key 不能为空');
+        return {key: row.key, value: row.value};
+    });
+}
+
+function workflowCanvasNode(node) {
+    var data = node.data || {};
+    var common = {id: node.id, type: data.nodeType, name: data.label, description: data.description || ''};
+    if (!String(common.name || '').trim()) throw new Error('节点名称不能为空');
+    if (data.nodeType === 'START') {
+        var inputs = (data.startInputs || []).filter(function (row) { return row.name || String(row.value || '').trim(); }).map(function (row) {
+            if (!String(row.name || '').trim()) throw new Error('START 变量名不能为空');
+            return {name: row.name, type: row.type, value: parseStartValue(row)};
+        });
+        return Object.assign(common, {inputs: inputs});
+    }
+    if (data.nodeType === 'END') return common;
+    var timeoutSeconds = Number(data.timeoutSeconds);
+    var maxAttempts = Number(data.retryCount);
+    var retryIntervalSeconds = Number(data.retryIntervalSeconds);
+    var delaySeconds = Number(data.delaySeconds);
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0.001) throw new Error(data.label + ' 的单次超时必须大于等于 0.001 秒');
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 10) throw new Error(data.label + ' 的最大重试次数必须是 0 到 10 的整数');
+    if (!Number.isFinite(retryIntervalSeconds) || retryIntervalSeconds < 0 || retryIntervalSeconds > 600) throw new Error(data.label + ' 的重试间隔必须是 0 到 600 秒');
+    if (!Number.isFinite(delaySeconds) || delaySeconds < 0 || delaySeconds > 600) throw new Error(data.label + ' 的延迟执行必须是 0 到 600 秒');
+    var execution = {
+        timeout_seconds: timeoutSeconds,
+        max_attempts: maxAttempts,
+        retry_interval_seconds: retryIntervalSeconds,
+        delay_seconds: delaySeconds,
+    };
+    if (data.nodeType === 'SCRIPT') {
+        return Object.assign(common, {script: data.mainPy || '', execution: execution, outputs: outputBindings(node)});
+    }
+    if (data.nodeType === 'LLM') {
+        var parameters = Object.assign({}, data.modelParameters || {});
+        delete parameters.stream;
+        return Object.assign(common, {
+            model: {provider_id: data.providerId || '', model_name: data.modelName || ''},
+            context: {
+                messages: (data.llmMessages && data.llmMessages.length ? data.llmMessages : workflowLlmMessages([])).map(function (message) {
+                    return {role: message.role, content: message.content || ''};
+                }),
+            },
+            generation: {parameters: parameters, parameters_text: data.modelParametersText || ''}, execution: execution, outputs: outputBindings(node),
+        });
+    }
+    if (data.nodeType === 'HTTP') {
+        var config = data.httpConfig || {};
+        var bodyType = {'form-data': 'form_data', 'x-www-form-urlencoded': 'form_urlencoded'}[config.bodyType] || config.bodyType;
+        var bodyContent = null;
+        if (bodyType === 'raw') {
+            try { bodyContent = JSON.parse(config.bodyText); } catch (_error) { throw new Error(data.label + ' 的 Raw Body 必须是合法 JSON'); }
+        } else if (bodyType === 'form_data' || bodyType === 'form_urlencoded') {
+            bodyContent = filteredKeyValueRows(config.bodyFields, data.label + ' Body');
+        }
+        return Object.assign(common, {
+            request: {
+                method: config.method, url: String(config.url || '').trim(), follow_redirects: Boolean(config.followRedirects),
+                headers: filteredKeyValueRows(config.headers, data.label + ' Header'),
+                params: filteredKeyValueRows(config.params, data.label + ' Query'),
+                body: {type: bodyType || 'none', content: bodyContent},
+            },
+            network: {proxy: {
+                mode: config.proxyMode || 'SYSTEM',
+                url: config.proxyMode === 'CUSTOM' ? config.proxyUrl || null : null,
+                username: config.proxyMode === 'CUSTOM' ? config.proxyUsername || null : null,
+                password: config.proxyMode === 'CUSTOM' ? config.proxyPassword || null : null,
+            }, verify_ssl: config.verifySsl !== false},
+            response: {mode: String(config.responseBodyType || 'auto').toUpperCase(), success_statuses: ['200-299']},
+            execution: Object.assign(execution, {
+                retry_non_idempotent: false,
+                retry_statuses: [408, 429, 500, 502, 503, 504],
+            }),
+            outputs: outputBindings(node),
+        });
+    }
+    throw new Error('不支持的节点类型: ' + data.nodeType);
+}
+
+function workflowCanvasSaveBody(draft) {
+    return {
+        name: draft.name,
+        description: draft.description || '',
+        nodes: (draft.nodes || []).map(function (node) {
+            return {node: workflowCanvasNode(node), position_x: node.position.x, position_y: node.position.y};
+        }),
+        edges: (draft.edges || []).map(function (edge) {
+            return {id: edge.id, source_node_id: edge.source, target_node_id: edge.target};
+        }),
+    };
 }
 
 function renderWorkflowTable() {
     var body = document.getElementById('workflow-list-body');
     var count = document.getElementById('workflow-count');
     if (!body || !count) return;
-    var workflows = filteredWorkflows();
     count.textContent = executionState.workflows.length + ' 个 Workflow';
-    if (!workflows.length) {
-        body.innerHTML = '<tr><td colspan="5">' + executionEmpty(
-            executionState.workflows.length ? '没有匹配的 Workflow' : '尚未创建 Workflow',
-            executionState.workflows.length ? '' : '新建 Workflow', 'workflow-empty-add'
-        ) + '</td></tr>';
-        var emptyAdd = document.getElementById('workflow-empty-add');
-        if (emptyAdd) emptyAdd.addEventListener('click', openWorkflowCreateDialog);
+    if (!executionState.workflows.length) {
+        body.innerHTML = '<tr><td colspan="4">' + executionEmpty('尚未创建 Workflow', '新增 Workflow', 'workflow-empty-add') + '</td></tr>';
+        document.getElementById('workflow-empty-add').addEventListener('click', function () { openWorkflowCanvas(); });
         return;
     }
-    body.innerHTML = workflows.map(function (workflow) {
-        return '<tr><td><button class="execution-name-button" type="button" data-workflow-edit="' + esc(workflow.id) + '">' + esc(workflow.name) + '</button>' +
-            '<div class="execution-id">' + esc(workflow.id) + '</div></td>' +
-            '<td>' + esc(workflow.description || '—') + '</td>' +
-            '<td><span class="execution-badge workflow-valid">已持久化</span></td>' +
+    body.innerHTML = executionState.workflows.map(function (workflow) {
+        return '<tr>' +
+            '<td><button class="execution-name-button" type="button" data-workflow-open="' + esc(workflow.id) + '">' + esc(workflow.name) + '</button></td>' +
+            '<td class="workflow-description-cell">' + esc(workflow.description || '—') + '</td>' +
             '<td>' + esc(formatDateTime(workflow.updated_at)) + '</td>' +
-            '<td><button class="btn-icon" type="button" data-workflow-edit="' + esc(workflow.id) + '" title="编辑 Workflow">' + icon('edit') + '</button></td></tr>';
+            '<td><div class="execution-row-actions">' +
+                '<button class="btn-icon" type="button" data-workflow-open="' + esc(workflow.id) + '" title="编辑 Workflow" aria-label="编辑 Workflow">' + icon('edit') + '</button>' +
+                '<button class="btn-icon" type="button" data-workflow-delete="' + esc(workflow.id) + '" title="删除 Workflow" aria-label="删除 Workflow">' + icon('trash') + '</button>' +
+            '</div></td></tr>';
     }).join('');
-    body.querySelectorAll('[data-workflow-edit]').forEach(function (button) {
-        button.addEventListener('click', function () { openWorkflowEditor(button.getAttribute('data-workflow-edit')); });
+    body.querySelectorAll('[data-workflow-open]').forEach(function (button) {
+        button.addEventListener('click', function () { openWorkflowCanvas(button.getAttribute('data-workflow-open')); });
+    });
+    body.querySelectorAll('[data-workflow-delete]').forEach(function (button) {
+        button.addEventListener('click', function () { deleteWorkflow(button.getAttribute('data-workflow-delete')); });
     });
 }
 
 async function loadWorkflows() {
     try {
-        var data = await API.get('/api/workflows');
-        executionState.workflows = (data.workflows || []).map(normalizeWorkflowRecord);
+        var payload = await API.get('/api/workflows');
+        executionState.workflows = payload.workflows || [];
         renderWorkflowTable();
     } catch (error) {
         showToast(executionErrorMessage(error), 'error');
@@ -268,214 +486,73 @@ async function loadWorkflows() {
 function viewWorkflows() {
     currentView = 'workflows';
     contentArea.innerHTML =
-        '<section class="execution-page workflow-management-page" aria-label="工作流管理">' +
+        '<section class="execution-page" aria-labelledby="workflows-title">' +
+            '<header class="execution-page-header"><div><h1 id="workflows-title">Workflow 管理</h1><p>开发、保存和手动验证工作流结构</p></div><span class="execution-count" id="workflow-count">0 个 Workflow</span></header>' +
             '<div class="toolbar execution-toolbar" id="workflows-toolbar">' +
-                '<button class="btn btn-sm btn-primary" id="btn-workflow-add" type="button">' + icon('add') + '新增工作流</button>' +
-                '<button class="btn btn-sm" id="btn-workflow-refresh" type="button">' + icon('refresh') + '刷新</button>' +
-                '<input type="search" class="input toolbar-search" id="workflow-search" placeholder="按名称搜索..." aria-label="搜索工作流" />' +
-                '<select class="input toolbar-control" id="workflow-status-filter" aria-label="筛选工作流状态" disabled><option>已持久化</option></select>' +
-                '<span class="toolbar-sep"></span><span class="execution-count workflow-list-count" id="workflow-count">0 个 Workflow</span>' +
+                '<button class="btn btn-primary" id="btn-workflow-add" type="button">' + icon('add') + '新增 Workflow</button>' +
+                '<button class="btn" id="btn-workflow-refresh" type="button">' + icon('refresh') + '刷新</button>' +
             '</div>' +
-            '<div class="table-wrap" id="workflows-table-wrap"><table class="table workflow-table" id="workflows-table">' +
-                '<thead><tr><th>名称</th><th>说明</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead>' +
-                '<tbody id="workflow-list-body"></tbody>' +
-            '</table></div>' +
+            '<div class="table-wrap execution-table-wrap"><table class="table execution-table workflow-table"><thead><tr><th>名称</th><th>说明</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="workflow-list-body"></tbody></table></div>' +
         '</section>';
-    document.getElementById('btn-workflow-add').addEventListener('click', openWorkflowCreateDialog);
+    document.getElementById('btn-workflow-add').addEventListener('click', function () { openWorkflowCanvas(); });
     document.getElementById('btn-workflow-refresh').addEventListener('click', loadWorkflows);
-    document.getElementById('workflow-search').addEventListener('input', renderWorkflowTable);
     loadWorkflows();
 }
 
-function workflowCreateFormHtml() {
-    return '<div class="execution-form-grid">' +
-        '<label class="form-row form-row-full"><span class="form-label">名称 <b class="required">*</b></span><input class="input" id="workflow-create-name" maxlength="120" autocomplete="off" /></label>' +
-        '<label class="form-row form-row-full"><span class="form-label">说明</span><textarea class="input execution-code-input" id="workflow-create-description" maxlength="2000" rows="5"></textarea></label>' +
-        '<div class="execution-form-error form-row-full hidden" id="workflow-create-error" role="alert"></div>' +
-    '</div>';
-}
-
-function showWorkflowCreateError(message) {
-    var error = document.getElementById('workflow-create-error');
-    error.textContent = message;
-    error.classList.remove('hidden');
-}
-
-function openWorkflowCreateDialog() {
-    openExecutionModal('新增工作流', workflowCreateFormHtml(), async function () {
-        var nameInput = document.getElementById('workflow-create-name');
-        var name = nameInput.value.trim();
-        var description = document.getElementById('workflow-create-description').value.trim();
-        if (!name) {
-            showWorkflowCreateError('名称不能为空');
-            nameInput.focus();
-            return;
-        }
-        closeExecutionModal();
-        await openWorkflowEditor(null, {name: name, description: description});
-    }, '创建');
-}
-
-function rememberWorkflow(workflow) {
-    workflow = normalizeWorkflowRecord(workflow);
-    var existingIndex = executionState.workflows.findIndex(function (item) {
-        return item.id === workflow.id;
-    });
-    if (existingIndex >= 0) executionState.workflows[existingIndex] = workflow;
-    else executionState.workflows.unshift(workflow);
-}
-
-function normalizeWorkflowRecord(workflow) {
-    return Object.assign({}, workflow, {id: workflow.workflow_id || workflow.id});
-}
-
-function outputType(value) {
-    var normalized = String(value || 'string').toLowerCase();
-    return ['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'].includes(normalized) ? normalized : 'string';
-}
-
-function outputDefinitions(data, http) {
-    return (data.outputVariables || []).filter(function (row) { return String(row.name || '').trim(); }).map(function (row) {
-        var output = {name: String(row.name).trim().toLowerCase(), type: outputType(row.type)};
-        if (http) output.path = String(row.value || '$.response.body').trim();
-        return output;
-    });
-}
-
-function executionDefinition(data) {
-    return {
-        timeout_ms: Math.max(1, Math.round(Number(data.timeoutMs) || 120000)),
-        max_attempts: Math.max(0, Math.min(10, Math.round(Number(data.retryCount) || 0))),
-        delay_ms: Math.max(0, Math.min(600000, Math.round(Number(data.retryIntervalMs) || 0))),
-    };
-}
-
-function canvasNodeToContract(node, globalVariables) {
-    var data = node.data || {};
-    var type = String(data.nodeType || '').toUpperCase();
-    var base = {id: node.id, type: type, name: String(data.label || type).trim(), description: String(data.description || '').trim()};
-    if (type === 'START') {
-        base.inputs = (globalVariables || []).filter(function (row) { return String(row.name || '').trim(); }).map(function (row) {
-            return {name: String(row.name).trim().toLowerCase(), type: outputType(row.type), data: row.value};
-        });
-        return base;
-    }
-    if (type === 'END') return base;
-    if (type === 'SCRIPT') {
-        base.script = String(data.mainPy || '');
-        base.execution = executionDefinition(data);
-        base.outputs = outputDefinitions(data, false);
-        return base;
-    }
-    if (type === 'LLM') {
-        var parameters = Object.assign({}, data.modelParameters || {});
-        var stream = parameters.stream === true;
-        delete parameters.stream;
-        base.model = {provider_id: String(data.providerId || '').trim(), model_name: String(data.modelName || '').trim()};
-        base.prompt = {system: String(data.systemPrompt || ''), user: String(data.userPrompt || '')};
-        base.generation = {stream: stream, parameters: parameters};
-        base.execution = executionDefinition(data);
-        base.outputs = outputDefinitions(data, false).slice(0, 1);
-        return base;
-    }
-    if (type === 'HTTP') {
-        var config = data.httpConfig || {};
-        var bodyType = String(config.bodyType || 'none').replace(/-/g, '_');
-        var content = null;
-        if (bodyType === 'raw') {
-            try { content = JSON.parse(config.bodyText || ''); } catch (_error) { content = String(config.bodyText || ''); }
-        } else if (bodyType === 'form_data' || bodyType === 'form_urlencoded') {
-            content = (config.bodyFields || []).map(function (row) { return {key: row.key || '', value: row.value || ''}; });
-        }
-        base.request = {
-            method: String(config.method || 'GET').toUpperCase(),
-            url: String(config.url || ''),
-            follow_redirects: config.followRedirects !== false,
-            headers: (config.headers || []).filter(function (row) { return row.key; }).map(function (row) { return {key: row.key, value: String(row.value || '')}; }),
-            params: (config.params || []).filter(function (row) { return row.key; }).map(function (row) { return {key: row.key, value: row.value}; }),
-            body: {type: bodyType, content: content},
-        };
-        base.network = {proxy: {mode: String(config.proxyMode || 'SYSTEM').toUpperCase(), url: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyUrl || '') : null, username: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyUsername || '') || null : null, password: String(config.proxyMode || 'SYSTEM').toUpperCase() === 'CUSTOM' ? String(config.proxyPassword || '') || null : null}, verify_ssl: config.verifySsl !== false};
-        base.response = {body_type: String(config.responseBodyType || 'json')};
-        base.execution = executionDefinition(data);
-        base.outputs = outputDefinitions(data, true);
-        return base;
-    }
-    throw new Error('当前 Workflow 契约暂不支持节点类型: ' + type);
-}
-
-function canvasDraftToContract(draft) {
-    var workflowId = draft.id || window.crypto.randomUUID();
-    return {
-        workflow_id: workflowId,
-        name: draft.name,
-        description: draft.description || '',
-        nodes: (draft.nodes || []).map(function (node) { return canvasNodeToContract(node, draft.global_variables || []); }),
-        edges: (draft.edges || []).map(function (edge) { return {edge_id: edge.id, source: edge.source, target: edge.target}; }),
-    };
-}
-
-function contractToCanvasDraft(workflow) {
-    var start = (workflow.nodes || []).find(function (node) { return node.type === 'START'; });
-    return {
-        name: workflow.name,
-        description: workflow.description || '',
-        nodes: (workflow.nodes || []).map(function (node) {
-            var data = {nodeType: node.type, label: node.name, description: node.description || '', timeoutMs: node.execution ? node.execution.timeout_ms : 120000, retryCount: node.execution ? node.execution.max_attempts : 0, retryIntervalMs: node.execution ? node.execution.delay_ms : 0};
-            if (node.type === 'SCRIPT') { data.mainPy = node.script; data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: ''}; }); }
-            if (node.type === 'LLM') { data.providerId = node.model.provider_id; data.modelName = node.model.model_name; data.systemPrompt = node.prompt.system; data.userPrompt = node.prompt.user; data.modelParameters = Object.assign({}, node.generation.parameters, {stream: node.generation.stream}); data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: ''}; }); }
-            if (node.type === 'HTTP') { data.httpConfig = {method: node.request.method, url: node.request.url, headers: node.request.headers, params: node.request.params, bodyType: node.request.body.type.replace(/_/g, '-'), bodyText: typeof node.request.body.content === 'string' ? node.request.body.content : JSON.stringify(node.request.body.content, null, 2), bodyFields: Array.isArray(node.request.body.content) ? node.request.body.content : [], followRedirects: node.request.follow_redirects !== false, proxyMode: node.network.proxy.mode, proxyUrl: node.network.proxy.url || '', proxyUsername: node.network.proxy.username || '', proxyPassword: node.network.proxy.password || '', verifySsl: node.network.verify_ssl !== false, responseBodyType: node.response.body_type}; data.outputVariables = (node.outputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: item.path}; }); }
-            return {id: node.id, type: 'workflowNode', data: data};
-        }),
-        edges: (workflow.edges || []).map(function (edge) { return {id: edge.edge_id, source: edge.source, target: edge.target, type: 'insertable'}; }),
-        global_variables: start ? (start.inputs || []).map(function (item) { return {id: window.crypto.randomUUID(), name: item.name, type: item.type, value: item.data}; }) : [],
-    };
-}
-
-async function openWorkflowEditor(workflowId, initialMetadata) {
-    currentView = 'workflows';
+async function openWorkflowCanvas(workflowId) {
     if (!window.AgentBenchWorkflowCanvas) {
-        showToast('工作流画布资源加载失败', 'error');
+        showToast('Workflow 画布资源未加载', 'error');
         return;
     }
-    var workflow = null;
-    if (workflowId) {
-        try {
-            workflow = (await API.get('/api/workflows/' + encodeURIComponent(workflowId))).workflow;
-        } catch (error) {
-            showToast(executionErrorMessage(error), 'error');
-            return;
+    var options = {name: '未命名工作流', description: '', draft: null, createOnMount: false, executionEnabled: true};
+    try {
+        if (workflowId) {
+            var payload = await API.get('/api/workflows/' + encodeURIComponent(workflowId));
+            options = workflowRecordToCanvas(payload.workflow);
+            options.executionEnabled = true;
         }
-    }
-    window.AgentBenchWorkflowCanvas.mount({
-        id: workflowId || null,
-        name: workflow ? workflow.name : initialMetadata.name,
-        description: workflow ? workflow.description : initialMetadata.description,
-        draft: workflow ? contractToCanvasDraft(workflow) : null,
-        createOnMount: false,
-        onPersist: async function (draft) {
-            var body = canvasDraftToContract(draft);
-            var data = draft.id
+        options.onPersist = async function (draft) {
+            var body = workflowCanvasSaveBody(draft);
+            var result = draft.id
                 ? await API.put('/api/workflows/' + encodeURIComponent(draft.id), body)
                 : await API.post('/api/workflows', body);
-            workflow = normalizeWorkflowRecord(data.workflow);
-            rememberWorkflow(workflow);
-            return workflow;
+            var record = result.workflow;
+            return {id: record.workflow.id, name: record.workflow.name, description: record.workflow.description};
+        };
+        options.onPersistMetadata = async function (metadata) {
+            var result = await API.put('/api/workflows/' + encodeURIComponent(metadata.id) + '/metadata', {
+                name: metadata.name, description: metadata.description,
+            });
+            var record = result.workflow;
+            return {id: record.workflow.id, name: record.workflow.name, description: record.workflow.description};
+        };
+        options.serializeNode = workflowCanvasNode;
+        options.onClose = function () {
+            window.AgentBenchWorkflowCanvas.unmount();
+            viewWorkflows();
+        };
+        window.AgentBenchWorkflowCanvas.mount(options);
+    } catch (error) {
+        showToast(executionErrorMessage(error), 'error');
+    }
+}
+
+function deleteWorkflow(workflowId) {
+    var workflow = executionState.workflows.find(function (item) { return item.id === workflowId; });
+    if (!workflow) return;
+    openExecutionModal(
+        '删除 Workflow',
+        '<p>确定删除 Workflow“<strong>' + esc(workflow.name) + '</strong>”吗？</p><p class="info-text" style="margin-top:8px">当前节点和连线将一并删除。</p>',
+        async function () {
+            try {
+                await API.del('/api/workflows/' + encodeURIComponent(workflowId));
+                closeExecutionModal();
+                showToast('Workflow 已删除', 'success');
+                await loadWorkflows();
+            } catch (error) {
+                showToast(executionErrorMessage(error), 'error');
+            }
         },
-        onPersistMetadata: async function (metadata) {
-            var body = Object.assign({}, workflow, {name: metadata.name, description: metadata.description});
-            delete body.created_at;
-            delete body.updated_at;
-            var data = await API.put('/api/workflows/' + encodeURIComponent(metadata.id), body);
-            workflow = normalizeWorkflowRecord(data.workflow);
-            rememberWorkflow(workflow);
-            return workflow;
-        },
-        onClose: function () {
-            window.setTimeout(function () {
-                window.AgentBenchWorkflowCanvas.unmount();
-                viewWorkflows();
-            }, 0);
-        },
-    });
+        '删除'
+    );
 }

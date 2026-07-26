@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import sys
 import threading
 import traceback
+from copy import deepcopy
 from contextlib import redirect_stderr, redirect_stdout
+from types import MappingProxyType
 from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, TypeAdapter
@@ -23,6 +27,10 @@ class _HttpResponseError(RuntimeError):
         super().__init__(f"HTTP {status_code}")
         self.status_code = status_code
         self.response = response
+
+
+class _RawHttpResponseParseError(ValueError):
+    pass
 
 
 def _emit_event(event: dict[str, Any]) -> None:
@@ -110,6 +118,8 @@ def _execute_python(payload: dict[str, Any]) -> tuple[Any, dict[str, Any] | None
         "inputs": payload["inputs"],
         "config": payload["config"],
     }
+    if "context" in payload:
+        namespace["context"] = MappingProxyType(deepcopy(payload["context"]))
     if requested_names is None:
         namespace["response"] = None
     exec(compile(code, "<workflow-node-main.py>", "exec"), namespace, namespace)
@@ -120,9 +130,11 @@ def _execute_python(payload: dict[str, Any]) -> tuple[Any, dict[str, Any] | None
     ):
         raise ValueError("output_variable_names 必须是非空字符串数组")
     captured: dict[str, Any] = {}
+    missing_names: list[str] = []
     for name in requested_names:
         if name not in namespace:
             captured[name] = None
+            missing_names.append(name)
             print(
                 f"[WARNING] Python 顶层变量不存在，输出 null: {name}",
                 file=sys.stderr,
@@ -130,7 +142,133 @@ def _execute_python(payload: dict[str, Any]) -> tuple[Any, dict[str, Any] | None
             )
         else:
             captured[name] = namespace[name]
+    payload["_missing_variable_names"] = missing_names
     return None, captured
+
+
+def _proxy_url_with_auth(url: str, username: str | None, password: str | None) -> str:
+    if not username:
+        return url
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    credentials = quote(username, safe="")
+    if password is not None:
+        credentials += ":" + quote(password, safe="")
+    return urlunsplit((parsed.scheme, f"{credentials}@{host}{port}", parsed.path, "", ""))
+
+
+def _execute_raw_http(payload: dict[str, Any]) -> dict[str, Any]:
+    request = payload["request"]
+    network = payload.get("network") or {}
+    proxy = network.get("proxy") or {}
+    client_options: dict[str, Any] = {
+        "timeout": float(payload["config"].get("timeout_seconds", 120)),
+        "follow_redirects": bool(request.get("follow_redirects", True)),
+        "verify": bool(network.get("verify_ssl", True)),
+    }
+    mode = proxy.get("mode", "SYSTEM")
+    if mode == "DIRECT":
+        client_options["trust_env"] = False
+    elif mode == "CUSTOM":
+        if not proxy.get("url"):
+            raise ValueError("CUSTOM Proxy 缺少 URL")
+        client_options["trust_env"] = False
+        client_options["proxy"] = _proxy_url_with_auth(
+            proxy["url"], proxy.get("username"), proxy.get("password")
+        )
+    elif mode != "SYSTEM":
+        raise ValueError(f"不支持的 Proxy 模式: {mode}")
+
+    kwargs: dict[str, Any] = {}
+    if request.get("headers"):
+        headers = request["headers"]
+        kwargs["headers"] = [
+            (item["key"], item["value"]) if isinstance(item, dict) else tuple(item)
+            for item in headers
+        ] if isinstance(headers, list) else headers
+    if request.get("params"):
+        kwargs["params"] = request["params"]
+    body_mode = request.get("body_mode", "NONE")
+    if body_mode == "JSON":
+        kwargs["json"] = request.get("body")
+    elif body_mode == "CONTENT":
+        kwargs["content"] = request.get("body")
+    elif body_mode in {"FORM_DATA", "FORM_URLENCODED"}:
+        form = request.get("body") or []
+        kwargs["data"] = [
+            (item["key"], item["value"]) if isinstance(item, dict) else tuple(item)
+            for item in form
+        ] if isinstance(form, list) else form
+
+    with httpx.Client(**client_options) as client:
+        response = client.request(request["method"], request["url"], **kwargs)
+    response_body, response_body_type = _parse_raw_http_body(
+        response, request.get("response_mode", "AUTO")
+    )
+
+    def response_fact(item: httpx.Response) -> dict[str, Any]:
+        try:
+            body: Any = item.json()
+            body_type = "JSON"
+        except ValueError:
+            body = item.text
+            body_type = "TEXT"
+        return {
+            "status_code": item.status_code,
+            "headers": [{"key": key, "value": value} for key, value in item.headers.multi_items()],
+            "body_type": body_type,
+            "body": body,
+        }
+
+    return {
+        "request": {
+            "method": response.request.method,
+            "url": str(response.request.url),
+            "headers": [
+                {"key": key, "value": value}
+                for key, value in response.request.headers.multi_items()
+            ],
+            "body_type": request.get("execution_body_type", "none"),
+            "body": request.get("execution_body"),
+        },
+        "redirects": [response_fact(item) for item in response.history],
+        "response": {
+            "status_code": response.status_code,
+            "headers": [{"key": key, "value": value} for key, value in response.headers.multi_items()],
+            "body_type": response_body_type,
+            "body": response_body,
+        },
+    }
+
+
+def _parse_raw_http_body(response: httpx.Response, mode: str) -> tuple[Any, str]:
+    normalized_mode = str(mode).upper()
+    if normalized_mode == "JSON":
+        try:
+            return response.json(), "JSON"
+        except ValueError as exc:
+            raise _RawHttpResponseParseError("响应 Body 不是合法 JSON") from exc
+    if normalized_mode == "TEXT":
+        encoding = response.encoding or "utf-8"
+        try:
+            return response.content.decode(encoding, errors="strict"), "TEXT"
+        except (LookupError, UnicodeDecodeError) as exc:
+            raise _RawHttpResponseParseError("响应 Body 无法按文本严格解码") from exc
+    if normalized_mode == "BINARY":
+        return base64.b64encode(response.content).decode("ascii"), "BINARY"
+    if normalized_mode != "AUTO":
+        raise ValueError(f"不支持的响应 Body 模式: {mode}")
+    try:
+        return response.json(), "JSON"
+    except ValueError:
+        encoding = response.encoding or "utf-8"
+        try:
+            return response.content.decode(encoding, errors="strict"), "TEXT"
+        except (LookupError, UnicodeDecodeError):
+            return base64.b64encode(response.content).decode("ascii"), "BINARY"
 
 
 def _serialize_python_variables(values: dict[str, Any]) -> dict[str, Any]:
@@ -199,6 +337,8 @@ def main() -> None:
         with redirect_stdout(stdout_writer), redirect_stderr(stderr_writer):
             if payload.get("mode") == "HTTP_CONFIG":
                 response = _execute_http(payload)
+            elif payload.get("mode") == "RAW_HTTP":
+                response = _execute_raw_http(payload)
             elif payload.get("mode") == "PYTHON":
                 response, python_variables = _execute_python(payload)
             else:
@@ -208,15 +348,21 @@ def main() -> None:
         result = {"ok": True, "response": _serialize_response(response)}
         if payload.get("mode") == "PYTHON" and python_variables is not None:
             result["python_variables"] = _serialize_python_variables(python_variables)
+            if payload.get("_missing_variable_names"):
+                result["missing_variable_names"] = payload["_missing_variable_names"]
     except Exception as exc:  # noqa: BLE001
+        traceback_text = traceback.format_exc()
         with redirect_stderr(stderr_writer):
-            traceback.print_exc()
+            print(traceback_text, end="", file=sys.stderr)
         stdout_writer.flush()
         stderr_writer.flush()
         result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        result["traceback"] = traceback_text
         if isinstance(exc, _HttpResponseError):
             result["response"] = _serialize_response(exc.response)
             result["http_status"] = exc.status_code
+        elif isinstance(exc, _RawHttpResponseParseError):
+            result["error_code"] = "HTTP_RESPONSE_PARSE_ERROR"
     _emit_event({"type": "result", "result": result})
 
 

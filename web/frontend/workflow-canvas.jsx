@@ -27,21 +27,31 @@ import {
     useReactFlow,
 } from '@xyflow/react';
 import {
+    AlignHorizontalJustifyCenter,
+    AlignHorizontalJustifyEnd,
+    AlignHorizontalJustifyStart,
+    AlignVerticalJustifyCenter,
+    AlignVerticalJustifyEnd,
+    AlignVerticalJustifyStart,
     ArrowLeft,
-    Bot,
     BrainCircuit,
     Check,
+    ChevronDown,
     ChevronRight,
+    CircleHelp,
     CirclePlay,
     Clipboard,
     Code2,
     Copy,
     ExternalLink,
     Eye,
+    FileClock,
     FileText,
+    FolderOpen,
     Globe2,
     LayoutGrid,
     LoaderCircle,
+    MessageSquareText,
     Play,
     Plus,
     Redo2,
@@ -49,7 +59,6 @@ import {
     Save,
     Search,
     Settings2,
-    SlidersHorizontal,
     Sparkles,
     Square,
     Trash2,
@@ -66,18 +75,16 @@ import './workflow-canvas.css';
 const NODE_TYPES = {
     START: {label: '开始', caption: 'START', icon: CirclePlay, color: '#16803c', executable: false},
     HTTP: {label: 'HTTP', caption: 'HTTP', icon: Globe2, color: '#2563eb', executable: true},
-    AGENT: {label: 'AGENT', caption: 'AGENT', icon: Bot, color: '#0f766e', executable: true},
     LLM: {label: 'LLM', caption: 'LLM', icon: BrainCircuit, color: '#7048c6', executable: true},
     SCRIPT: {label: 'SCRIPT', caption: 'SCRIPT', icon: Code2, color: '#c56a12', executable: true},
     END: {label: '结束', caption: 'END', icon: Check, color: '#3f4b5f', executable: false},
 };
 
-const INSERTABLE_TYPES = ['HTTP', 'AGENT', 'LLM', 'SCRIPT'];
-const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED'];
+const INSERTABLE_TYPES = ['HTTP', 'LLM', 'SCRIPT'];
+const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'INTERRUPTED'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw'];
-const OUTPUT_VARIABLE_TYPES = ['AUTO', 'STRING', 'INTEGER', 'NUMBER', 'BOOLEAN', 'OBJECT', 'ARRAY'];
-const DEFAULT_AGENT_MAIN_PY = 'response = inputs';
+const OUTPUT_VARIABLE_TYPES = ['string', 'integer', 'number', 'boolean', 'object', 'array', 'null'];
 const DEFAULT_SCRIPT_MAIN_PY = 'msg = "介绍一下自己"\nprint(msg)';
 const LLM_PARAMETERS_REFERENCE = JSON.stringify({
     thinking: {type: 'disabled'},
@@ -86,6 +93,15 @@ const LLM_PARAMETERS_REFERENCE = JSON.stringify({
     max_tokens: 1024,
     response_format: {type: 'json_object'},
 }, null, 2);
+const DEFAULT_LLM_MESSAGES = [
+    {role: 'SYSTEM', content: ''},
+    {role: 'USER', content: ''},
+];
+const LLM_MESSAGE_HINTS = {
+    SYSTEM: '可为空；执行时自动省略空 SYSTEM',
+    USER: '最终一条 USER 是模型本次需要回答的内容',
+    ASSISTANT: '用于告诉模型期望的回答方式或格式',
+};
 
 function nodeId(type) {
     return window.crypto.randomUUID();
@@ -162,24 +178,35 @@ function cloneValue(value) {
 }
 
 function validateWorkflowGraph(nodes, edges) {
-    if (!nodes.length) return 'Workflow 至少需要一个节点';
+    const starts = nodes.filter((node) => node.data?.nodeType === 'START');
+    const ends = nodes.filter((node) => node.data?.nodeType === 'END');
+    const business = nodes.filter((node) => INSERTABLE_TYPES.includes(node.data?.nodeType));
+    if (starts.length !== 1) return 'Workflow 必须恰好包含一个 START';
+    if (ends.length !== 1) return 'Workflow 必须恰好包含一个 END';
+    if (!business.length) return 'Workflow 至少包含一个 SCRIPT、LLM 或 HTTP 业务节点';
     const adjacency = new Map(nodes.map((node) => [node.id, new Set()]));
-    const degree = new Map(nodes.map((node) => [node.id, 0]));
     const indegree = new Map(nodes.map((node) => [node.id, 0]));
+    const outdegree = new Map(nodes.map((node) => [node.id, 0]));
+    const pairs = new Set();
     edges.forEach((edge) => {
         if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) return;
+        if (edge.source === edge.target) return;
+        const pair = `${edge.source}:${edge.target}`;
+        if (pairs.has(pair)) return;
+        pairs.add(pair);
         if (!adjacency.get(edge.source).has(edge.target)) {
             adjacency.get(edge.source).add(edge.target);
             indegree.set(edge.target, indegree.get(edge.target) + 1);
+            outdegree.set(edge.source, outdegree.get(edge.source) + 1);
         }
-        degree.set(edge.source, degree.get(edge.source) + 1);
-        degree.set(edge.target, degree.get(edge.target) + 1);
     });
-    const orphaned = nodes.length === 1 ? [] : nodes.filter((node) => degree.get(node.id) === 0);
-    if (orphaned.length) {
-        const labels = orphaned.map((node) => node.data?.label || node.id).join(', ');
-        return `Workflow 存在游离节点: ${labels}`;
-    }
+    if (edges.some((edge) => !adjacency.has(edge.source) || !adjacency.has(edge.target))) return '连线两端必须属于当前 Workflow';
+    if (edges.some((edge) => edge.source === edge.target)) return 'Workflow 不允许自环';
+    if (pairs.size !== edges.length) return 'Workflow 不允许重复连线';
+    const roots = nodes.filter((node) => indegree.get(node.id) === 0);
+    const leaves = nodes.filter((node) => outdegree.get(node.id) === 0);
+    if (roots.length !== 1 || roots[0].id !== starts[0].id) return 'START 必须是唯一根节点且不能有入边';
+    if (leaves.length !== 1 || leaves[0].id !== ends[0].id) return 'END 必须是唯一叶节点且不能有出边';
     const pending = nodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
     const processed = new Set();
     while (pending.length) {
@@ -197,8 +224,97 @@ function validateWorkflowGraph(nodes, edges) {
     return '';
 }
 
+function cloneLlmMessages(messages = DEFAULT_LLM_MESSAGES) {
+    const normalized = Array.isArray(messages) && messages.length ? messages : DEFAULT_LLM_MESSAGES;
+    return normalized.map((message) => ({
+        id: message.id || rowId(),
+        role: message.role,
+        content: message.content || '',
+        fixed: Boolean(message.fixed),
+    }));
+}
+
+function llmMessagesFromContext(context) {
+    const messages = Array.isArray(context?.messages) ? context.messages : DEFAULT_LLM_MESSAGES;
+    return cloneLlmMessages(messages).map((message, index) => ({
+        ...message,
+        fixed: index < 2,
+    }));
+}
+
+function llmMessagesForStructural(messages) {
+    const normalized = cloneLlmMessages(messages);
+    return normalized.map((message) => ({
+        role: message.role,
+        content: message.content || '',
+    }));
+}
+
+function nextLlmRole(messages) {
+    return messages.length <= 2 || messages.at(-1)?.role === 'USER' ? 'ASSISTANT' : 'USER';
+}
+
+function llmMessageErrors(messages) {
+    const errors = new Map();
+    messages.forEach((message, index) => {
+        if (index >= 2) {
+            const expected = index % 2 === 0 ? 'ASSISTANT' : 'USER';
+            if (message.role !== expected) errors.set(message.id, `此处必须是 ${expected}`);
+        }
+        if (message.role !== 'SYSTEM' && !String(message.content || '').trim()) {
+            errors.set(message.id, message.role === 'USER' ? 'USER 消息不能为空' : 'Few-shot 示例回答不能为空');
+        }
+    });
+    const last = messages.at(-1);
+    if (!last || last.role !== 'USER') {
+        if (last) errors.set(last.id, '上下文必须以 USER 消息结束后才能运行');
+    } else if (!String(last.content || '').trim()) {
+        errors.set(last.id, '最后一条 USER 消息不能为空');
+    }
+    return errors;
+}
+
 function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function variableScopeNodes(nodes, edges, targetNodeId) {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    if (!nodeById.has(targetNodeId)) return [];
+    const parents = new Map(nodes.map((node) => [node.id, []]));
+    edges.forEach((edge) => {
+        if (parents.has(edge.target) && nodeById.has(edge.source)) {
+            parents.get(edge.target).push(edge.source);
+        }
+    });
+    const included = new Set([targetNodeId]);
+    const pending = [targetNodeId];
+    while (pending.length) {
+        const current = pending.pop();
+        (parents.get(current) || []).forEach((parentId) => {
+            if (included.has(parentId)) return;
+            included.add(parentId);
+            pending.push(parentId);
+        });
+    }
+    const indegree = new Map(Array.from(included, (nodeId) => [nodeId, 0]));
+    const children = new Map(Array.from(included, (nodeId) => [nodeId, []]));
+    edges.forEach((edge) => {
+        if (!included.has(edge.source) || !included.has(edge.target)) return;
+        children.get(edge.source).push(edge.target);
+        indegree.set(edge.target, indegree.get(edge.target) + 1);
+    });
+    const ready = nodes.filter((node) => included.has(node.id) && indegree.get(node.id) === 0);
+    const ordered = [];
+    while (ready.length) {
+        const current = ready.shift();
+        ordered.push(current);
+        children.get(current.id).forEach((childId) => {
+            indegree.set(childId, indegree.get(childId) - 1);
+            if (indegree.get(childId) === 0) ready.push(nodeById.get(childId));
+        });
+    }
+    return ordered;
 }
 
 function modelProviderName(provider) {
@@ -421,14 +537,72 @@ function runResultSummary(run) {
         if (!liveText) return '正在接收原始响应…';
         return liveText.length > 160 ? `${liveText.slice(0, 157)}...` : liveText;
     }
-    const value = ['FAILED', 'TIMEOUT', 'CANCELLED'].includes(run.status) ? run.error?.message : run.output;
+    const value = ['FAILED', 'TIMEOUT', 'INTERRUPTED'].includes(run.status) ? run.error?.message : run.output;
     const text = parameterDataText(value).replace(/\s+/g, ' ').trim();
     if (!text) return '无最终结果';
     return text.length > 160 ? `${text.slice(0, 157)}...` : text;
 }
 
 function emptyMappingRow() {
-    return {id: rowId(), name: '', type: 'AUTO', value: '', pythonVariable: ''};
+    return {id: rowId(), name: '', type: 'string', value: ''};
+}
+
+function friendlyNodeError(error, fallback = '节点执行失败') {
+    if (!error) return fallback;
+    const message = error.message || fallback;
+    const suggestion = error.details?.suggestion;
+    return suggestion ? `${message}。${suggestion}` : message;
+}
+
+function nodeExecutionHistoryRun(execution) {
+    return {
+        ...execution,
+        id: execution.node_execution_id || execution.test_id || rowId(),
+        output: execution.outputs,
+        response_body: typeof execution.response === 'string'
+            ? execution.response
+            : JSON.stringify(execution.response ?? ''),
+    };
+}
+
+function nodeTestValueText(value, type) {
+    if (type === 'string') return String(value ?? '');
+    if (value === undefined) return type === 'null' ? 'null' : '';
+    if (typeof value === 'string') return value;
+    return JSON.stringify(value);
+}
+
+function parseNodeTestValue(row) {
+    const type = row.type || 'string';
+    const text = String(row.valueText ?? '');
+    if (type === 'string') return text;
+    if (type === 'boolean') {
+        if (text === 'true') return true;
+        if (text === 'false') return false;
+        throw new Error(`变量 ${row.name} 的 boolean 值必须是 true 或 false`);
+    }
+    if (type === 'null') {
+        if (text.trim() === 'null') return null;
+        throw new Error(`变量 ${row.name} 的 null 值必须是 null`);
+    }
+    let value;
+    try {
+        value = JSON.parse(text);
+    } catch (_error) {
+        throw new Error(`变量 ${row.name} 不是合法的 ${type} 值`);
+    }
+    const valid = (
+        (type === 'integer' && Number.isInteger(value))
+        || (type === 'number' && typeof value === 'number' && Number.isFinite(value))
+        || (type === 'object' && isPlainObject(value))
+        || (type === 'array' && Array.isArray(value))
+    );
+    if (!valid) throw new Error(`变量 ${row.name} 的值与类型 ${type} 不匹配`);
+    return value;
+}
+
+function emptyStartInput() {
+    return {id: rowId(), name: '', type: 'string', value: ''};
 }
 
 function emptyKeyValueRow(key = '', value = '') {
@@ -450,7 +624,7 @@ function defaultHttpConfig() {
         proxyUsername: '',
         proxyPassword: '',
         verifySsl: true,
-        responseBodyType: 'json',
+        responseBodyType: 'auto',
     };
 }
 
@@ -557,20 +731,21 @@ function makeNode(type, position, overrides = {}) {
             description: '',
             status: 'PENDING',
             executionDurationMs: 0,
-            timeoutMs: 120000,
+            timeoutSeconds: 600,
             retryCount: 0,
-            retryIntervalMs: 0,
+            retryIntervalSeconds: 0,
+            delaySeconds: 0,
             outputVariables: [emptyMappingRow()],
             parameterRecords: [],
+            ...(type === 'START' ? {startInputs: [emptyStartInput()]} : {}),
             ...(type === 'HTTP' ? {httpConfig: defaultHttpConfig()} : {}),
             ...(type === 'LLM' ? {
                 providerId: '',
                 modelName: '',
-                systemPrompt: '',
-                userPrompt: '',
+                llmMessages: cloneLlmMessages(DEFAULT_LLM_MESSAGES),
                 modelParameters: {},
+                modelParametersText: '',
             } : {}),
-            ...(type === 'AGENT' ? {mainPy: DEFAULT_AGENT_MAIN_PY} : {}),
             ...(type === 'SCRIPT' ? {mainPy: DEFAULT_SCRIPT_MAIN_PY} : {}),
             ...overrides,
         },
@@ -604,16 +779,56 @@ function layoutGraph(nodes, edges) {
 }
 
 function initialGraph() {
-    const request = makeNode('HTTP', {x: 360, y: 280}, {label: '调用业务接口'});
-    const llm = makeNode('LLM', {x: 675, y: 100}, {label: '模型质量判断'});
-    const script = makeNode('SCRIPT', {x: 675, y: 420}, {label: '规则校验'});
+    const start = makeNode('START', {x: 150, y: 280}, {label: '开始'});
+    const script = makeNode('SCRIPT', {x: 465, y: 280}, {label: '规则校验'});
+    const end = makeNode('END', {x: 780, y: 280}, {label: '结束'});
     return {
-        nodes: [request, llm, script],
+        nodes: [start, script, end],
         edges: [
-            makeEdge(request.id, llm.id),
-            makeEdge(request.id, script.id),
+            makeEdge(start.id, script.id),
+            makeEdge(script.id, end.id),
         ],
     };
+}
+
+function alignCanvasNodes(nodes, selectedNodeIds, alignment) {
+    const selectedIds = new Set(selectedNodeIds);
+    const selected = nodes.filter((node) => selectedIds.has(node.id));
+    if (selected.length < 2) return nodes;
+    const frames = selected.map((node) => {
+        const width = Number(node.measured?.width || node.width || 236);
+        const height = Number(node.measured?.height || node.height || 112);
+        return {
+            node,
+            width,
+            height,
+            left: node.position.x,
+            right: node.position.x + width,
+            top: node.position.y,
+            bottom: node.position.y + height,
+        };
+    });
+    const bounds = {
+        left: Math.min(...frames.map((frame) => frame.left)),
+        right: Math.max(...frames.map((frame) => frame.right)),
+        top: Math.min(...frames.map((frame) => frame.top)),
+        bottom: Math.max(...frames.map((frame) => frame.bottom)),
+    };
+    const horizontalCenter = (bounds.left + bounds.right) / 2;
+    const verticalCenter = (bounds.top + bounds.bottom) / 2;
+    const frameById = new Map(frames.map((frame) => [frame.node.id, frame]));
+    return nodes.map((node) => {
+        const frame = frameById.get(node.id);
+        if (!frame) return node;
+        let {x, y} = node.position;
+        if (alignment === 'left') x = bounds.left;
+        if (alignment === 'horizontal-center') x = horizontalCenter - frame.width / 2;
+        if (alignment === 'right') x = bounds.right - frame.width;
+        if (alignment === 'top') y = bounds.top;
+        if (alignment === 'vertical-center') y = verticalCenter - frame.height / 2;
+        if (alignment === 'bottom') y = bounds.bottom - frame.height;
+        return {...node, position: {x, y}};
+    });
 }
 
 function graphFromDraft(draft) {
@@ -623,13 +838,6 @@ function graphFromDraft(draft) {
         const type = stored.data?.nodeType || 'SCRIPT';
         const defaults = makeNode(type, stored.position || {x: 0, y: 0});
         const storedData = cloneValue(stored.data || {});
-        if (type === 'SCRIPT' && Array.isArray(storedData.outputVariables)) {
-            storedData.outputVariables = storedData.outputVariables.map((row) => (
-                row?.name && !row.pythonVariable && row.value
-                    ? {...row, pythonVariable: row.name, value: ''}
-                    : row
-            ));
-        }
         return {
             ...defaults,
             ...cloneValue(stored),
@@ -652,7 +860,7 @@ function graphFromDraft(draft) {
 
 function serializableNode(node) {
     const data = cloneValue(node.data || {});
-    for (const key of ('status executionDurationMs runHistory executionId savedAt isDirty'.split(' '))) {
+    for (const key of ('status executionDurationMs runHistory executionId savedAt isDirty temporaryRun nodeTestActive nodeTestId nodeTestStartedAt'.split(' '))) {
         delete data[key];
     }
     return {
@@ -679,7 +887,7 @@ function WorkflowNode({data, selected}) {
     const status = NODE_STATUSES.includes(data.status) ? data.status : 'PENDING';
     const statusClass = status.toLowerCase();
     const executionDuration = formatExecutionDuration(data.executionDurationMs);
-    const running = status === 'RUNNING';
+    const testRunning = Boolean(data.nodeTestActive);
     return (
         <article className={`wf-node ${selected ? 'is-selected' : ''} is-${statusClass}`} style={{'--node-accent': meta.color}}>
             {data.nodeType !== 'START' && <Handle type="target" position={Position.Left} className="wf-handle" />}
@@ -688,8 +896,7 @@ function WorkflowNode({data, selected}) {
                 <span className="wf-node-caption">{meta.caption}</span>
                 <span className="wf-node-actions">
                     <button type="button" title="日志" aria-label={`查看 ${data.label} 日志`} onClick={(event) => {event.stopPropagation(); data.onOpenLogs?.();}}><FileText size={13} /></button>
-                    <button type="button" disabled={running} title="运行" aria-label={`运行 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onRun?.();}}><Play size={13} /></button>
-                    <button type="button" disabled={!running} className="is-danger" title="中断" aria-label={`中断 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onInterrupt?.();}}><Square size={12} /></button>
+                    {data.nodeType !== 'END' && <button type="button" disabled={testRunning} title="运行" aria-label={`运行 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onRun?.();}}><Play size={13} /></button>}
                 </span>
             </header>
             <strong className="wf-node-title">{data.label}</strong>
@@ -765,8 +972,7 @@ function ContextMenu({menu, canPaste, onAction, onAdd}) {
     if (menu.kind === 'node') {
         return (
             <div className="wf-context-menu" style={{left: menu.x, top: menu.y}} role="menu" data-testid="node-context-menu">
-                <button type="button" onClick={() => onAction('run-node')}><Play size={15} /><span>运行此步骤</span></button>
-                <button type="button" className="is-danger" onClick={() => onAction('interrupt-node')}><Square size={15} /><span>中断此步骤</span></button>
+                {menu.nodeType !== 'END' && <button type="button" onClick={() => onAction('run-node')}><Play size={15} /><span>运行此步骤</span></button>}
                 <button type="button" onClick={() => onAction('copy-node')}><Copy size={15} /><span>拷贝</span></button>
                 <div className="wf-menu-separator" />
                 <button type="button" className="is-danger" onClick={() => onAction('delete-node')}><Trash2 size={15} /><span>删除</span></button>
@@ -782,6 +988,52 @@ function ContextMenu({menu, canPaste, onAction, onAdd}) {
             <button type="button" onClick={() => onAction('test-run')}><Zap size={15} /><span>测试运行</span></button>
             <button type="button" className="is-danger" onClick={() => onAction('interrupt-workflow')}><Square size={15} /><span>中断测试</span></button>
             <button type="button" disabled={!canPaste} onClick={() => onAction('paste-node')}><Clipboard size={15} /><span>粘贴节点</span></button>
+        </div>
+    );
+}
+
+function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
+    if (!dialog) return null;
+    const updateRow = (id, patch) => onRowsChange(dialog.rows.map((row) => (
+        row.id === id ? {...row, ...patch} : row
+    )));
+    const removeRow = (id) => onRowsChange(dialog.rows.filter((row) => row.id !== id));
+    const addRow = () => onRowsChange(dialog.rows.concat({
+        id: rowId(), name: '', type: 'string', valueText: '',
+    }));
+    return (
+        <div className="wf-node-test-overlay" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) onCancel();
+        }}>
+            <section className="wf-node-test-dialog" role="dialog" aria-modal="true" aria-labelledby="wf-node-test-title">
+                <header>
+                    <div><strong id="wf-node-test-title">临时测试变量</strong><span>{dialog.nodeLabel}</span></div>
+                    <button type="button" onClick={onCancel} title="关闭" aria-label="关闭临时测试变量"><X size={16} /></button>
+                </header>
+                <div className="wf-node-test-variable-heading"><span>变量名</span><span>类型</span><span>值</span><span /></div>
+                <div className="wf-node-test-variable-list">
+                    {dialog.rows.map((row, index) => (
+                        <div className="wf-node-test-variable-row" key={row.id}>
+                            <input aria-label={`测试变量名 ${index + 1}`} value={row.name} onChange={(event) => updateRow(row.id, {name: event.target.value})} />
+                            <select aria-label={`测试变量类型 ${index + 1}`} value={row.type} onChange={(event) => {
+                                const type = event.target.value;
+                                updateRow(row.id, {type, valueText: type === 'null' ? 'null' : row.valueText});
+                            }}>
+                                {OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}
+                            </select>
+                            <input aria-label={`测试变量值 ${index + 1}`} value={row.valueText} onChange={(event) => updateRow(row.id, {valueText: event.target.value})} />
+                            <button type="button" className="is-danger" onClick={() => removeRow(row.id)} title="删除变量" aria-label={`删除测试变量 ${index + 1}`}><Trash2 size={14} /></button>
+                        </div>
+                    ))}
+                    {!dialog.rows.length && <div className="wf-node-test-variable-empty">暂无变量</div>}
+                </div>
+                <footer>
+                    <button type="button" className="wf-node-test-add" onClick={addRow}><Plus size={14} />添加变量</button>
+                    <span />
+                    <button type="button" onClick={onCancel}>取消</button>
+                    <button type="button" className="is-primary" onClick={onSubmit}><Play size={14} />运行</button>
+                </footer>
+            </section>
         </div>
     );
 }
@@ -888,13 +1140,16 @@ function ModelSelector({
     );
 }
 
-function NodeRunHistory({runs, nodeType}) {
+function NodeRunHistory({runs, nodeType, temporaryRun = null}) {
     const [expandedRunId, setExpandedRunId] = useState(null);
-    if (!runs.length) return <div className="wf-node-log-empty">暂无运行日志</div>;
+    const visibleRuns = temporaryRun ? [temporaryRun, ...runs.slice(0, 10)] : runs.slice(0, 10);
+    if (!visibleRuns.length) return <div className="wf-node-log-empty">暂无运行日志</div>;
     return (
         <div className="wf-llm-run-list">
-            {runs.slice(0, 10).map((run) => {
+            {visibleRuns.map((run) => {
                 const expanded = expandedRunId === run.id;
+                const finalAttempt = run.logs?.attempts?.[Math.max(0, (run.attempt_count || 1) - 1)] || null;
+                const consoleContent = finalAttempt?.console?.map((item) => item.content || '').join('') || '';
                 const requestContent = run.request ? parameterDataText(run.request, true) : '';
                 const responseContent = run.response === null || run.response === undefined
                     ? ''
@@ -906,11 +1161,13 @@ function NodeRunHistory({runs, nodeType}) {
                     ? parameterDataText(run.outputs, true)
                     : '';
                 const errorDetails = run.error?.details ? parameterDataText(run.error.details, true) : '';
+                const errorContent = run.error ? parameterDataText(run.error, true) : '';
                 return (
                     <article className={`wf-llm-run is-${String(run.status || 'FAILED').toLowerCase()}`} key={run.id}>
-                        <button type="button" className={`wf-llm-run-summary ${nodeType === 'LLM' ? 'has-token-usage' : ''}`} aria-expanded={expanded} onClick={() => setExpandedRunId(expanded ? null : run.id)}>
+                        <button type="button" className={`wf-llm-run-summary ${nodeType === 'LLM' ? 'has-token-usage' : ''} ${run.isTemporary ? 'is-temporary' : ''}`} aria-expanded={expanded} onClick={() => setExpandedRunId(expanded ? null : run.id)}>
                             <ChevronRight className={expanded ? 'is-open' : ''} size={15} />
                             <time>{formatRunDate(run.finished_at || run.started_at)}</time>
+                            {run.isTemporary && <span className="wf-node-test-badge">临时</span>}
                             <strong>{run.status}</strong>
                             <span className="wf-llm-run-duration">{formatExecutionDuration(run.duration_ms)}</span>
                             {nodeType === 'LLM' && <span className="wf-llm-run-token">{formatRunTokenUsage(run)}</span>}
@@ -928,6 +1185,8 @@ function NodeRunHistory({runs, nodeType}) {
                                 ) : nodeType === 'SCRIPT' || nodeType === 'START' ? (
                                     <>
                                         {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
+                                        {nodeType === 'SCRIPT' && consoleContent && <HttpLogSection title="console" text={consoleContent} />}
+                                        {nodeType === 'SCRIPT' && finalAttempt?.traceback && <HttpLogSection title="traceback" text={finalAttempt.traceback} />}
                                         {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
                                     </>
                                 ) : (
@@ -941,13 +1200,93 @@ function NodeRunHistory({runs, nodeType}) {
                                         {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
                                     </>
                                 )}
-                                {errorDetails && <HttpLogSection title="error details" text={errorDetails} />}
+                                {errorContent && <HttpLogSection title="error" text={errorContent} />}
+                                {!errorContent && errorDetails && <HttpLogSection title="error details" text={errorDetails} />}
                             </div>
                         )}
                     </article>
                 );
             })}
         </div>
+    );
+}
+
+function HttpMethodSelector({value, onChange}) {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef(null);
+
+    useEffect(() => {
+        if (!open) return undefined;
+        const closeFromPointer = (event) => {
+            if (!rootRef.current?.contains(event.target)) setOpen(false);
+        };
+        const closeFromKeyboard = (event) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('pointerdown', closeFromPointer);
+        document.addEventListener('keydown', closeFromKeyboard);
+        return () => {
+            document.removeEventListener('pointerdown', closeFromPointer);
+            document.removeEventListener('keydown', closeFromKeyboard);
+        };
+    }, [open]);
+
+    const options = HTTP_METHODS.includes(value) ? HTTP_METHODS : [value, ...HTTP_METHODS];
+    return (
+        <div className="wf-http-method-selector" ref={rootRef}>
+            <button type="button" className="wf-http-method-trigger" aria-label="请求方式" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+                <span>{value}</span><ChevronDown size={14} />
+            </button>
+            {open && (
+                <div className="wf-http-method-menu" role="listbox" aria-label="请求方式选项">
+                    {options.map((method) => (
+                        <button type="button" role="option" aria-selected={method === value} className={method === value ? 'is-selected' : ''} key={method} onClick={() => {onChange(method); setOpen(false);}}>{method}</button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function HttpAccordion({title, count, tag, open, onToggle, isLast = false, children}) {
+    return (
+        <section className={`wf-http-accordion ${isLast ? 'is-last' : ''}`}>
+            <button type="button" className="wf-http-accordion-trigger" aria-expanded={open} onClick={onToggle}>
+                <span><strong>{title}</strong>{typeof count === 'number' && <i>{count}</i>}{tag && <i>{tag}</i>}</span>
+                <ChevronRight className={open ? 'is-open' : ''} size={15} />
+            </button>
+            {open && <div className="wf-http-accordion-panel">{children}</div>}
+        </section>
+    );
+}
+
+function HttpKeyValueTable({label, rows, onAdd, onUpdate, onRemove}) {
+    return (
+        <div className="wf-http-table" role="table" aria-label={`${label} key value table`}>
+            <div className="wf-http-table-row is-heading" role="row">
+                <span role="columnheader">key</span><span role="columnheader">value</span>
+                <button type="button" className="wf-inline-icon-button" onClick={onAdd} title={`新增 ${label}`} aria-label={`新增 ${label}`}><Plus size={14} /></button>
+            </div>
+            <div role="rowgroup">
+                {rows.map((row, index) => (
+                    <div className="wf-http-table-row" role="row" key={row.id}>
+                        <input role="cell" aria-label={`${label} key ${index + 1}`} value={row.key} onChange={(event) => onUpdate(row.id, {key: event.target.value})} />
+                        <input role="cell" aria-label={`${label} value ${index + 1}`} value={row.value} onChange={(event) => onUpdate(row.id, {value: event.target.value})} />
+                        <button type="button" className="wf-inline-icon-button is-danger" onClick={() => onRemove(row.id)} title={`删除 ${label}`} aria-label={`删除 ${label} ${index + 1}`}><Trash2 size={14} /></button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function HttpToggle({label, checked, onChange}) {
+    return (
+        <label className="wf-http-toggle">
+            <span>{label}</span>
+            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+            <i aria-hidden="true"><span /></i>
+        </label>
     );
 }
 
@@ -961,7 +1300,6 @@ function Inspector({
     initialTab = 'settings',
     onChange,
     onRun,
-    onInterrupt,
     onSave,
     onClose,
 }) {
@@ -974,16 +1312,25 @@ function Inspector({
     const [curlError, setCurlError] = useState('');
     const [headersOpen, setHeadersOpen] = useState(true);
     const [paramsOpen, setParamsOpen] = useState(true);
+    const [bodyOpen, setBodyOpen] = useState(true);
+    const [requestOptionsOpen, setRequestOptionsOpen] = useState(true);
     const [bodyMessage, setBodyMessage] = useState('');
     const [modelParametersText, setModelParametersText] = useState('');
     const [modelParametersError, setModelParametersError] = useState('');
     const [advancedOpen, setAdvancedOpen] = useState(false);
+    const [llmContextOpen, setLlmContextOpen] = useState(true);
     const [variablesOpen, setVariablesOpen] = useState(false);
     const [variableGroups, setVariableGroups] = useState([]);
     const [variableLoadState, setVariableLoadState] = useState('idle');
     const [variableLoadError, setVariableLoadError] = useState('');
     const [editorScale, setEditorScale] = useState(1);
     const editorBaseSizeRef = useRef(null);
+    const onLoadVariablesRef = useRef(onLoadVariables);
+    const variableDeclarationRevision = JSON.stringify(node?.data.outputVariables || []);
+    const temporaryOutputRevision = JSON.stringify(node?.data.temporaryRun?.outputs || {});
+    useEffect(() => {
+        onLoadVariablesRef.current = onLoadVariables;
+    }, [onLoadVariables]);
     useEffect(() => {
         setTab(initialTab);
         setCurlPanelOpen(false);
@@ -991,11 +1338,14 @@ function Inspector({
         setCurlError('');
         setHeadersOpen(true);
         setParamsOpen(true);
+        setBodyOpen(true);
+        setRequestOptionsOpen(true);
         setBodyMessage('');
         setSelectedParameterIndex(null);
-        setModelParametersText(modelParametersEditorText(node?.data.modelParameters));
+        setModelParametersText(node?.data.modelParametersText ?? modelParametersEditorText(node?.data.modelParameters));
         setModelParametersError('');
         setAdvancedOpen(false);
+        setLlmContextOpen(true);
         setVariablesOpen(false);
         setVariableGroups([]);
         setVariableLoadState('idle');
@@ -1003,26 +1353,52 @@ function Inspector({
         editorBaseSizeRef.current = null;
         setEditorScale(1);
     }, [node?.id, initialTab]);
+    useEffect(() => {
+        if (!variablesOpen || !node) return undefined;
+        let cancelled = false;
+        const timer = window.setTimeout(async () => {
+            setVariableLoadState('loading');
+            setVariableLoadError('');
+            try {
+                const groups = await onLoadVariablesRef.current();
+                if (cancelled) return;
+                setVariableGroups(Array.isArray(groups) ? groups : []);
+                setVariableLoadState('ready');
+            } catch (error) {
+                if (cancelled) return;
+                setVariableGroups([]);
+                setVariableLoadState('error');
+                setVariableLoadError(error instanceof Error ? error.message : '变量加载失败');
+            }
+        }, 80);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [node?.id, temporaryOutputRevision, variableDeclarationRevision, variablesOpen]);
     if (!node) return null;
     const meta = NODE_TYPES[node.data.nodeType] || NODE_TYPES.SCRIPT;
     const Icon = meta.icon;
     const isHttp = node.data.nodeType === 'HTTP';
     const isLlm = node.data.nodeType === 'LLM';
     const isScript = node.data.nodeType === 'SCRIPT';
+    const isStart = node.data.nodeType === 'START';
     const showCodeEditor = meta.executable && !isHttp && !isLlm;
-    const showParametersTab = !isHttp && !isLlm && !isScript;
-    const streamEnabled = isLlm && node.data.modelParameters?.stream === true;
-    const showOutputVariables = !isLlm || !streamEnabled;
+    const showParametersTab = false;
+    const showOutputVariables = meta.executable;
     const modelReference = modelReferenceStatus(
         providers,
         node.data.providerId || '',
         node.data.modelName || '',
     );
-    const llmConfigurationValid = !isLlm || (
+    const llmMessages = isLlm ? cloneLlmMessages(node.data.llmMessages) : [];
+    const llmErrors = llmMessageErrors(llmMessages);
+    const llmRunReady = !isLlm || (
         modelReference.state === 'valid'
         && !modelParametersError
-        && Boolean(String(node.data.userPrompt || '').trim())
+        && llmErrors.size === 0
     );
+    const llmSaveAllowed = true;
     const httpConfig = {...defaultHttpConfig(), ...(node.data.httpConfig || {})};
     const width = Math.min(Math.round(760 * 1.4), window.innerWidth - 56);
     const height = Math.min(Math.round(640 * 1.4), window.innerHeight - 58 - 28);
@@ -1070,24 +1446,40 @@ function Inspector({
     const removeHttpRow = (collection, id) => updateHttpConfig({
         [collection]: httpConfig[collection].filter((row) => row.id !== id),
     });
+    const startInputs = Array.isArray(node.data.startInputs) && node.data.startInputs.length
+        ? node.data.startInputs
+        : [emptyStartInput()];
+    const updateLlmMessage = (id, content) => onChange({
+        llmMessages: llmMessages.map((message) => message.id === id ? {...message, content} : message),
+    });
+    const addLlmMessage = () => onChange({
+        llmMessages: llmMessages.concat({
+            id: rowId(),
+            role: nextLlmRole(llmMessages),
+            content: '',
+            fixed: false,
+        }),
+    });
+    const removeLastLlmMessage = () => {
+        if (llmMessages.length <= 2) return;
+        onChange({llmMessages: llmMessages.slice(0, -1)});
+    };
     const updateModelParameters = (text) => {
         setModelParametersText(text);
         if (!text.trim()) {
-            const emptyParameters = {};
-            if (streamEnabled) emptyParameters.stream = true;
             setModelParametersError('');
-            onChange({modelParameters: emptyParameters});
+            onChange({modelParameters: {}, modelParametersText: ''});
             return;
         }
         try {
             const parsed = JSON.parse(text);
             if (!isPlainObject(parsed)) throw new Error('高级参数必须是 JSON 对象');
             delete parsed.stream;
-            if (streamEnabled) parsed.stream = true;
             setModelParametersError('');
-            onChange({modelParameters: parsed});
+            onChange({modelParameters: parsed, modelParametersText: text});
         } catch (error) {
             setModelParametersError(error instanceof SyntaxError ? '高级参数不是合法 JSON' : error.message);
+            onChange({modelParametersText: text});
         }
     };
     const beautifyModelParameters = () => {
@@ -1098,38 +1490,12 @@ function Inspector({
         try {
             const parsed = JSON.parse(modelParametersText);
             if (!isPlainObject(parsed)) throw new Error('高级参数必须是 JSON 对象');
-            delete parsed.stream;
             updateModelParameters(JSON.stringify(parsed, null, 2));
         } catch (error) {
             setModelParametersError(error instanceof SyntaxError ? '高级参数不是合法 JSON' : error.message);
         }
     };
-    const setStreamMode = (enabled) => {
-        const next = {...(node.data.modelParameters || {})};
-        if (enabled) next.stream = true;
-        else delete next.stream;
-        setModelParametersText(modelParametersEditorText(next));
-        setModelParametersError('');
-        onChange({modelParameters: next});
-    };
-    const toggleVariables = async () => {
-        if (variablesOpen) {
-            setVariablesOpen(false);
-            return;
-        }
-        setVariablesOpen(true);
-        setVariableLoadState('loading');
-        setVariableLoadError('');
-        try {
-            const groups = await onLoadVariables();
-            setVariableGroups(Array.isArray(groups) ? groups : []);
-            setVariableLoadState('ready');
-        } catch (error) {
-            setVariableGroups([]);
-            setVariableLoadState('error');
-            setVariableLoadError(error instanceof Error ? error.message : '变量加载失败');
-        }
-    };
+    const toggleVariables = () => setVariablesOpen((open) => !open);
     const updateOutputVariable = (id, patch) => onChange({
         outputVariables: outputVariables.map((row) => row.id === id ? {...row, ...patch} : row),
     });
@@ -1140,29 +1506,24 @@ function Inspector({
         const remaining = outputVariables.filter((row) => row.id !== id);
         onChange({outputVariables: remaining.length ? remaining : [emptyMappingRow()]});
     };
+    const updateStartInput = (id, patch) => onChange({
+        startInputs: startInputs.map((row) => row.id === id ? {...row, ...patch} : row),
+    });
+    const addStartInput = () => onChange({startInputs: startInputs.concat(emptyStartInput())});
+    const removeStartInput = (id) => {
+        const remaining = startInputs.filter((row) => row.id !== id);
+        onChange({startInputs: remaining.length ? remaining : [emptyStartInput()]});
+    };
     const httpKeyValueSection = (label, collection, open, setOpen) => (
-        <section className="wf-http-kv-section">
-            <div className="wf-http-kv-heading">
-                <button type="button" className="wf-http-collapse-button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-                    <ChevronRight className={open ? 'is-open' : ''} size={14} /><strong>{label}</strong>
-                </button>
-                <span>key</span>
-                <span>value</span>
-                <button type="button" className="wf-inline-icon-button" onClick={() => {setOpen(true); addHttpRow(collection);}} title={`新增 ${label}`} aria-label={`新增 ${label}`}><Plus size={14} /></button>
-            </div>
-            {open && (
-                <div className="wf-http-kv-rows">
-                    {httpConfig[collection].map((row, index) => (
-                        <div className="wf-http-kv-row" key={row.id}>
-                            <span aria-hidden="true" />
-                            <input aria-label={`${label} key ${index + 1}`} value={row.key} onChange={(event) => updateHttpRow(collection, row.id, {key: event.target.value})} />
-                            <input aria-label={`${label} value ${index + 1}`} value={row.value} onChange={(event) => updateHttpRow(collection, row.id, {value: event.target.value})} />
-                            <button type="button" className="wf-inline-icon-button is-danger" onClick={() => removeHttpRow(collection, row.id)} title={`删除 ${label}`} aria-label={`删除 ${label} ${index + 1}`}><Trash2 size={14} /></button>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </section>
+        <HttpAccordion title={label} count={httpConfig[collection].length} open={open} onToggle={() => setOpen((current) => !current)}>
+            <HttpKeyValueTable
+                label={label}
+                rows={httpConfig[collection]}
+                onAdd={() => addHttpRow(collection)}
+                onUpdate={(id, patch) => updateHttpRow(collection, id, patch)}
+                onRemove={(id) => removeHttpRow(collection, id)}
+            />
+        </HttpAccordion>
     );
     const applyCurlImport = () => {
         try {
@@ -1184,22 +1545,13 @@ function Inspector({
         }
     };
     const bodyFieldRows = () => (
-        <div className="wf-http-body-fields">
-            <div className="wf-http-kv-heading is-body">
-                <span />
-                <span>key</span>
-                <span>value</span>
-                <button type="button" className="wf-inline-icon-button" onClick={() => addHttpRow('bodyFields')} title="新增 Body 字段" aria-label="新增 Body 字段"><Plus size={14} /></button>
-            </div>
-            {httpConfig.bodyFields.map((row, index) => (
-                <div className="wf-http-kv-row" key={row.id}>
-                    <span aria-hidden="true" />
-                    <input aria-label={`Body key ${index + 1}`} value={row.key} onChange={(event) => updateHttpRow('bodyFields', row.id, {key: event.target.value})} />
-                    <input aria-label={`Body value ${index + 1}`} value={row.value} onChange={(event) => updateHttpRow('bodyFields', row.id, {value: event.target.value})} />
-                    <button type="button" className="wf-inline-icon-button is-danger" onClick={() => removeHttpRow('bodyFields', row.id)} title="删除 Body 字段" aria-label={`删除 Body 字段 ${index + 1}`}><Trash2 size={14} /></button>
-                </div>
-            ))}
-        </div>
+        <HttpKeyValueTable
+            label="Body"
+            rows={httpConfig.bodyFields}
+            onAdd={() => addHttpRow('bodyFields')}
+            onUpdate={(id, patch) => updateHttpRow('bodyFields', id, patch)}
+            onRemove={(id) => removeHttpRow('bodyFields', id)}
+        />
     );
     const copyVariableValue = async (variable) => {
         if (!variable.available) return;
@@ -1239,9 +1591,8 @@ function Inspector({
                     <div className="wf-inspector-title"><strong>{node.data.label}</strong><small>{meta.caption}</small></div>
                     <div className="wf-inspector-actions">
                         <button type="button" className={variablesOpen ? 'is-active' : ''} onClick={toggleVariables} title="变量" aria-label="查看节点变量"><Variable size={15} /></button>
-                        <button type="button" disabled={!llmConfigurationValid || node.data.status === 'RUNNING'} onClick={onRun} title={llmConfigurationValid ? '运行' : '请选择有效模型、填写用户提示词并修正高级参数'} aria-label="运行当前节点"><Play size={15} /></button>
-                        <button type="button" disabled={node.data.status !== 'RUNNING'} className="is-danger" onClick={onInterrupt} title="中断当前节点" aria-label="中断当前节点"><Square size={15} /></button>
-                        <button type="button" disabled={!llmConfigurationValid} className={node.data.savedAt && !node.data.isDirty ? 'is-saved' : ''} onClick={onSave} title={llmConfigurationValid ? (node.data.savedAt && !node.data.isDirty ? `已保存 ${node.data.savedAt}` : '保存') : '请选择有效模型、填写用户提示词并修正高级参数'} aria-label="保存当前节点"><Save size={15} /></button>
+                        {node.data.nodeType !== 'END' && <button type="button" disabled={!llmRunReady || node.data.nodeTestActive} onClick={onRun} title={llmRunReady ? '运行' : '请选择有效模型、补全上下文并修正高级参数'} aria-label="运行当前节点"><Play size={15} /></button>}
+                        <button type="button" disabled={!llmSaveAllowed} className={node.data.savedAt && !node.data.isDirty ? 'is-saved' : ''} onClick={onSave} title={llmSaveAllowed ? (node.data.savedAt && !node.data.isDirty ? `已保存 ${node.data.savedAt}` : '保存') : '请修正高级参数'} aria-label="保存当前节点"><Save size={15} /></button>
                         <button type="button" onClick={onClose} title="关闭" aria-label="关闭"><X size={17} /></button>
                     </div>
                 </header>
@@ -1292,24 +1643,59 @@ function Inspector({
                                                 onSelect={(providerId, modelName) => onChange({providerId, modelName})}
                                             />
                                         </label>
-                                        <div className="wf-llm-stream-field">
-                                            <span>流式输出</span>
-                                            <label className="wf-llm-stream-switch">
-                                                <input type="checkbox" role="switch" aria-label="流式输出" checked={streamEnabled} onChange={(event) => setStreamMode(event.target.checked)} />
-                                                <i aria-hidden="true"><span /></i>
-                                            </label>
-                                        </div>
                                     </div>
-                                    <label className="wf-llm-prompt-field">
-                                        <span>系统提示词</span>
-                                        <textarea aria-label="系统提示词" value={node.data.systemPrompt || ''} onChange={(event) => onChange({systemPrompt: event.target.value})} />
-                                    </label>
-                                    <label className="wf-llm-prompt-field is-user">
-                                        <span>用户提示词</span>
-                                        <textarea aria-label="用户提示词" value={node.data.userPrompt || ''} onChange={(event) => onChange({userPrompt: event.target.value})} />
-                                    </label>
-                                    <div className="wf-llm-advanced">
-                                        <button type="button" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}><span>高级参数</span><ChevronRight className={advancedOpen ? 'is-open' : ''} size={15} /></button>
+                                    <section className="wf-llm-context-section" aria-label="LLM 上下文">
+                                        <button type="button" className="wf-llm-context-heading" aria-expanded={llmContextOpen} onClick={() => setLlmContextOpen((open) => !open)}>
+                                            <div><MessageSquareText size={15} /><strong>上下文</strong></div>
+                                            <span>{llmMessages.length} 条消息 <ChevronRight className={llmContextOpen ? 'is-open' : ''} size={15} /></span>
+                                        </button>
+                                        {llmContextOpen && (
+                                            <div className="wf-llm-context-content">
+                                                <div className="wf-llm-message-list">
+                                                    {llmMessages.map((message, index) => {
+                                                        const isLast = index === llmMessages.length - 1;
+                                                        const error = llmErrors.get(message.id);
+                                                        return (
+                                                            <article className={`wf-llm-message is-${String(message.role).toLowerCase()}${error ? ' has-error' : ''}`} key={message.id}>
+                                                                <header>
+                                                                    <div className="wf-llm-message-role">
+                                                                        <strong>{message.role}</strong>
+                                                                        <span title={LLM_MESSAGE_HINTS[message.role] || ''}><CircleHelp size={13} /></span>
+                                                                    </div>
+                                                                    <div className="wf-llm-message-tools">
+                                                                        <span>{String(message.content || '').length} 字符</span>
+                                                                        {!message.fixed && (
+                                                                            <button type="button" disabled={!isLast} onClick={removeLastLlmMessage} title={isLast ? `删除 ${message.role} 消息` : '只能从最后一条消息开始删除'} aria-label={`删除 ${message.role} 消息`}><X size={14} /></button>
+                                                                        )}
+                                                                    </div>
+                                                                </header>
+                                                                <textarea
+                                                                    aria-label={`${message.role} 消息内容`}
+                                                                    value={message.content || ''}
+                                                                    placeholder={message.role === 'SYSTEM'
+                                                                        ? '输入模型的角色、目标和约束；留空时执行请求不发送 SYSTEM'
+                                                                        : message.role === 'ASSISTANT'
+                                                                            ? '输入期望的示例回答'
+                                                                            : '输入用户消息，支持直接引用 ${变量名}'}
+                                                                    onChange={(event) => updateLlmMessage(message.id, event.target.value)}
+                                                                />
+                                                            </article>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <button type="button" className="wf-llm-add-message" onClick={addLlmMessage}>
+                                                    <Plus size={15} />
+                                                    <strong>添加消息</strong>
+                                                    <span>下一条 {nextLlmRole(llmMessages)}</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </section>
+                                    <section className="wf-llm-context-section" aria-label="LLM 高级参数">
+                                        <button type="button" className="wf-llm-context-heading" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}>
+                                            <div><Settings2 size={15} /><strong>高级参数</strong></div>
+                                            <span>JSON <ChevronRight className={advancedOpen ? 'is-open' : ''} size={15} /></span>
+                                        </button>
                                         {(advancedOpen || modelParametersError) && (
                                             <div className="wf-llm-json-editor">
                                                 <div className="wf-llm-json-toolbar">
@@ -1320,18 +1706,41 @@ function Inspector({
                                             </div>
                                         )}
                                         {modelParametersError && <span className="wf-model-parameters-error" role="alert">{modelParametersError}</span>}
+                                    </section>
+                                </section>
+                            )}
+                            {isStart && (
+                                <section className="wf-config-section wf-editor-full-row">
+                                    <div className="wf-config-title"><Variable size={15} /><strong>START 输入</strong></div>
+                                    <div className="wf-config-panel wf-output-variable-list">
+                                        {startInputs.map((row, index) => (
+                                            <div className="wf-output-variable-row wf-start-input-row" key={row.id}>
+                                                <label><span>变量名</span><input aria-label={`START 变量名 ${index + 1}`} value={row.name} onChange={(event) => updateStartInput(row.id, {name: event.target.value})} /></label>
+                                                <label><span>类型</span><select aria-label={`START 变量类型 ${index + 1}`} value={row.type} onChange={(event) => updateStartInput(row.id, {type: event.target.value, value: ''})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
+                                                <label><span>值</span><input aria-label={`START 变量值 ${index + 1}`} value={row.value} onChange={(event) => updateStartInput(row.id, {value: event.target.value})} placeholder={row.type === 'string' ? '输入文本' : '输入 JSON 值'} /></label>
+                                                {index === 0 ? (
+                                                    <button type="button" className="wf-inline-icon-button" onClick={addStartInput} title="添加 START 输入" aria-label="添加 START 输入"><Plus size={15} /></button>
+                                                ) : (
+                                                    <button type="button" className="wf-inline-icon-button is-danger" onClick={() => removeStartInput(row.id)} title="删除 START 输入" aria-label={`删除 START 输入 ${index + 1}`}><Trash2 size={15} /></button>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 </section>
                             )}
                             {isHttp && (
-                                <section className="wf-http-api-section wf-editor-full-row">
-                                    <div className="wf-http-api-row">
-                                        <strong>API</strong>
-                                        <select aria-label="请求方式" value={httpConfig.method} onChange={(event) => updateHttpConfig({method: event.target.value})}>
-                                            {!HTTP_METHODS.includes(httpConfig.method) && <option value={httpConfig.method}>{httpConfig.method}</option>}
-                                            {HTTP_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
-                                        </select>
-                                        <input aria-label="请求 URL" value={httpConfig.url} onChange={(event) => updateHttpConfig({url: event.target.value})} placeholder="https://" />
+                                <section className="wf-http-request-section wf-editor-full-row">
+                                    <div className="wf-http-request-title"><Globe2 size={15} /><strong>请求设置</strong></div>
+                                    <div className="wf-http-endpoint-row">
+                                        <strong>Endpoint</strong>
+                                        <HttpMethodSelector value={httpConfig.method} onChange={(method) => updateHttpConfig({method})} />
+                                        <input
+                                            aria-label="请求 URL"
+                                            value={httpConfig.url}
+                                            onChange={(event) => updateHttpConfig({url: event.target.value})}
+                                            onBlur={(event) => updateHttpConfig({url: event.currentTarget.value.trim()})}
+                                            placeholder="https://"
+                                        />
                                         <button type="button" className="wf-http-import-button" title="导入 cURL" aria-label="导入 cURL" aria-expanded={curlPanelOpen} onClick={() => {setCurlPanelOpen((open) => !open); setCurlError('');}}><Upload size={15} /></button>
                                     </div>
                                     {curlPanelOpen && (
@@ -1344,11 +1753,11 @@ function Inspector({
                                             </div>
                                         </div>
                                     )}
-                                    {httpKeyValueSection('HEADERS', 'headers', headersOpen, setHeadersOpen)}
-                                    {httpKeyValueSection('PARAMS', 'params', paramsOpen, setParamsOpen)}
-                                    <section className="wf-http-body-section">
-                                        <div className="wf-http-body-heading">
-                                            <strong>BODY</strong>
+                                    <div className="wf-http-request-groups">
+                                        {httpKeyValueSection('Headers', 'headers', headersOpen, setHeadersOpen)}
+                                        {httpKeyValueSection('Params', 'params', paramsOpen, setParamsOpen)}
+                                        <HttpAccordion title="Body" tag={httpConfig.bodyType} open={bodyOpen} onToggle={() => setBodyOpen((open) => !open)}>
+                                            <div className="wf-http-body-panel">
                                             <div className="wf-http-body-types" role="radiogroup" aria-label="Body 类型">
                                                 {HTTP_BODY_TYPES.map((type) => (
                                                     <label key={type}>
@@ -1358,52 +1767,60 @@ function Inspector({
                                                     </label>
                                                 ))}
                                             </div>
-                                        </div>
-                                        {(httpConfig.bodyType === 'form-data' || httpConfig.bodyType === 'x-www-form-urlencoded') && bodyFieldRows()}
-                                        {httpConfig.bodyType === 'raw' && (
-                                            <div className="wf-http-code-editor">
-                                                <div className="wf-http-code-toolbar">
-                                                    <span>JSON</span>
-                                                    <button type="button" onClick={beautifyJsonBody} title="格式化 JSON"><WandSparkles size={13} />Beautify</button>
-                                                </div>
-                                                <textarea aria-label="Raw Body" value={httpConfig.bodyText} onChange={(event) => {updateHttpConfig({bodyText: event.target.value}); setBodyMessage('');}} spellCheck="false" />
-                                                {bodyMessage && <span className="wf-http-body-error" role="alert">{bodyMessage}</span>}
+                                                {(httpConfig.bodyType === 'form-data' || httpConfig.bodyType === 'x-www-form-urlencoded') && bodyFieldRows()}
+                                                {httpConfig.bodyType === 'raw' && (
+                                                    <div className="wf-http-code-editor">
+                                                        <div className="wf-http-code-toolbar">
+                                                            <span>JSON</span>
+                                                            <button type="button" onClick={beautifyJsonBody} title="格式化 JSON"><WandSparkles size={13} />Beautify</button>
+                                                        </div>
+                                                        <textarea aria-label="Raw Body" value={httpConfig.bodyText} onChange={(event) => {updateHttpConfig({bodyText: event.target.value}); setBodyMessage('');}} spellCheck="false" />
+                                                        {bodyMessage && <span className="wf-http-body-error" role="alert">{bodyMessage}</span>}
+                                                    </div>
+                                                )}
+                                                {httpConfig.bodyType === 'none' && <div className="wf-http-body-empty">No request body</div>}
                                             </div>
-                                        )}
-                                    </section>
-                                    <section className="wf-http-network-section">
-                                        <div className="wf-http-kv-heading"><strong>NETWORK</strong></div>
-                                        <div className="wf-http-network-grid">
-                                            <label><span>Proxy</span><select aria-label="Proxy 模式" value={httpConfig.proxyMode} onChange={(event) => updateHttpConfig({proxyMode: event.target.value})}><option value="SYSTEM">System</option><option value="DIRECT">Direct</option><option value="CUSTOM">Custom</option></select></label>
-                                            {httpConfig.proxyMode === 'CUSTOM' && <>
-                                                <label><span>Proxy URL</span><input aria-label="Proxy URL" value={httpConfig.proxyUrl} onChange={(event) => updateHttpConfig({proxyUrl: event.target.value})} placeholder="http://proxy.example.com:8080" /></label>
-                                                <label><span>用户名</span><input aria-label="Proxy 用户名" value={httpConfig.proxyUsername} onChange={(event) => updateHttpConfig({proxyUsername: event.target.value})} /></label>
-                                                <label><span>密码</span><input aria-label="Proxy 密码" type="password" value={httpConfig.proxyPassword} onChange={(event) => updateHttpConfig({proxyPassword: event.target.value})} /></label>
-                                            </>}
-                                            <label><span>响应格式</span><select aria-label="响应 Body 类型" value={httpConfig.responseBodyType} onChange={(event) => updateHttpConfig({responseBodyType: event.target.value})}><option value="json">JSON</option><option value="text">Text</option><option value="binary">Binary</option></select></label>
-                                            <label className="wf-http-checkbox"><input type="checkbox" checked={httpConfig.followRedirects} onChange={(event) => updateHttpConfig({followRedirects: event.target.checked})} /><span>跟随重定向</span></label>
-                                            <label className="wf-http-checkbox"><input type="checkbox" checked={httpConfig.verifySsl} onChange={(event) => updateHttpConfig({verifySsl: event.target.checked})} /><span>验证 SSL 证书</span></label>
-                                        </div>
-                                    </section>
+                                        </HttpAccordion>
+                                        <HttpAccordion title="Request Options" open={requestOptionsOpen} onToggle={() => setRequestOptionsOpen((open) => !open)} isLast>
+                                            <div className="wf-http-request-options">
+                                                <div className="wf-http-option-fields">
+                                                    <label><span>Proxy</span><select aria-label="Proxy 模式" value={httpConfig.proxyMode} onChange={(event) => updateHttpConfig({proxyMode: event.target.value})}><option value="SYSTEM">SYSTEM</option><option value="DIRECT">DIRECT</option><option value="CUSTOM">CUSTOM</option></select></label>
+                                                    <label><span>Response Body</span><select aria-label="响应 Body 类型" value={httpConfig.responseBodyType} onChange={(event) => updateHttpConfig({responseBodyType: event.target.value})}><option value="auto">AUTO</option><option value="json">JSON</option><option value="text">TEXT</option><option value="binary">BINARY</option></select></label>
+                                                </div>
+                                                {httpConfig.proxyMode === 'CUSTOM' && (
+                                                    <div className="wf-http-custom-proxy">
+                                                        <label className="is-url"><span>Proxy URL</span><input aria-label="Proxy URL" value={httpConfig.proxyUrl} onChange={(event) => updateHttpConfig({proxyUrl: event.target.value})} placeholder="http://proxy.example.com:8080" /></label>
+                                                        <label><span>Username</span><input aria-label="Proxy 用户名" value={httpConfig.proxyUsername} onChange={(event) => updateHttpConfig({proxyUsername: event.target.value})} /></label>
+                                                        <label><span>Password</span><input aria-label="Proxy 密码" type="password" value={httpConfig.proxyPassword} onChange={(event) => updateHttpConfig({proxyPassword: event.target.value})} /></label>
+                                                    </div>
+                                                )}
+                                                <div className="wf-http-toggle-row">
+                                                    <HttpToggle label="Redirects" checked={httpConfig.followRedirects} onChange={(followRedirects) => updateHttpConfig({followRedirects})} />
+                                                    <HttpToggle label="SSL Verify" checked={httpConfig.verifySsl} onChange={(verifySsl) => updateHttpConfig({verifySsl})} />
+                                                </div>
+                                            </div>
+                                        </HttpAccordion>
+                                    </div>
                                 </section>
                             )}
                             {showCodeEditor && (
                                 <section className="wf-embedded-code-editor wf-editor-full-row">
                                     <div className="wf-code-meta"><span>main.py</span><span>Python</span></div>
                                     <PythonCodeEditor
-                                        value={node.data.mainPy ?? (isScript ? DEFAULT_SCRIPT_MAIN_PY : DEFAULT_AGENT_MAIN_PY)}
+                                        value={node.data.mainPy ?? DEFAULT_SCRIPT_MAIN_PY}
                                         onChange={(mainPy) => onChange({mainPy})}
                                     />
                                 </section>
                             )}
-                            <section className="wf-config-section wf-editor-full-row">
+                            {meta.executable && <section className="wf-config-section wf-editor-full-row">
                                 <div className="wf-config-title"><Settings2 size={15} /><strong>运行配置</strong></div>
                                 <button type="button" aria-expanded={retryOpen} onClick={() => setRetryOpen((open) => !open)}><span>超时与重试</span><ChevronRight className={retryOpen ? 'is-open' : ''} size={15} /></button>
                                 {retryOpen && (
                                     <div className="wf-config-panel wf-retry-grid">
-                                        <label><span>单次超时（ms）</span><input type="number" min="1" step="1" value={node.data.timeoutMs ?? 120000} onChange={(event) => onChange({timeoutMs: Number(event.target.value)})} /></label>
+                                        <label><span>单次超时（秒）</span><input type="number" min="0.001" step="0.1" value={node.data.timeoutSeconds ?? 600} onChange={(event) => onChange({timeoutSeconds: Number(event.target.value)})} /></label>
                                         <label><span>最大重试次数</span><input type="number" min="0" max="10" step="1" value={node.data.retryCount ?? 0} onChange={(event) => onChange({retryCount: Number(event.target.value)})} /></label>
-                                        <label><span>重试间隔（ms）</span><input type="number" min="0" max="600000" step="1" value={node.data.retryIntervalMs ?? 0} onChange={(event) => onChange({retryIntervalMs: Number(event.target.value)})} /></label>
+                                        <label><span>重试间隔（秒）</span><input type="number" min="0" max="600" step="0.1" value={node.data.retryIntervalSeconds ?? 0} onChange={(event) => onChange({retryIntervalSeconds: Number(event.target.value)})} /></label>
+                                        <label><span>延迟执行（秒）</span><input type="number" min="0" max="600" step="0.1" value={node.data.delaySeconds ?? 0} onChange={(event) => onChange({delaySeconds: Number(event.target.value)})} /></label>
                                     </div>
                                 )}
                                 {showOutputVariables && (
@@ -1414,10 +1831,8 @@ function Inspector({
                                                 {outputVariables.map((row, index) => (
                                                     <div className="wf-output-variable-row" key={row.id}>
                                                         <label><span>变量名</span><input aria-label={`输出变量名 ${index + 1}`} value={row.name} onChange={(event) => updateOutputVariable(row.id, {name: event.target.value})} /></label>
-                                                        {isHttp && (
-                                                            <label><span>提取表达式</span><input aria-label={`输出变量 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
-                                                        )}
-                                                        <label><span>类型</span><select aria-label={`输出变量类型 ${index + 1}`} value={row.type || 'AUTO'} onChange={(event) => updateOutputVariable(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
+                                                        <label><span>{isScript ? 'Python 变量' : '提取表达式'}</span><input aria-label={`输出变量来源 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
+                                                        <label><span>类型</span><select aria-label={`输出变量类型 ${index + 1}`} value={row.type || 'string'} onChange={(event) => updateOutputVariable(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
                                                         {index === 0 ? (
                                                             <button type="button" className="wf-inline-icon-button" onClick={addOutputVariable} title="添加输出变量" aria-label="添加输出变量"><Plus size={15} /></button>
                                                         ) : (
@@ -1429,7 +1844,7 @@ function Inspector({
                                         )}
                                     </>
                                 )}
-                            </section>
+                            </section>}
                         </div>
                     </div>
                 ) : tab === 'parameters' && showParametersTab ? (
@@ -1469,7 +1884,7 @@ function Inspector({
                     </div>
                 ) : (
                     <div className="wf-inspector-body wf-node-log-panel">
-                        <NodeRunHistory runs={node.data.runHistory || []} nodeType={node.data.nodeType} />
+                        <NodeRunHistory runs={node.data.runHistory || []} nodeType={node.data.nodeType} temporaryRun={node.data.temporaryRun || null} />
                     </div>
                 )}
               </aside>
@@ -1489,12 +1904,13 @@ function WorkflowStudio({options}) {
     const [contextMenu, setContextMenu] = useState(null);
     const [insertEdgeId, setInsertEdgeId] = useState(null);
     const [clipboard, setClipboard] = useState(null);
-    const [headerPanel, setHeaderPanel] = useState(null);
     const [marquee, setMarquee] = useState(null);
-    const [globalVariables, setGlobalVariables] = useState(() => options.draft?.global_variables?.length
-        ? cloneValue(options.draft.global_variables)
-        : [emptyMappingRow()]);
     const [nodeSaveNotice, setNodeSaveNotice] = useState(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [workflowHistory, setWorkflowHistory] = useState([]);
+    const [historyLoadState, setHistoryLoadState] = useState('idle');
+    const [expandedWorkflowExecutionId, setExpandedWorkflowExecutionId] = useState(null);
+    const [historyNodeExecutions, setHistoryNodeExecutions] = useState({});
     const [workflowName, setWorkflowName] = useState(options.name || '未命名工作流');
     const [workflowDescription, setWorkflowDescription] = useState(
         options.description ?? options.draft?.description ?? '',
@@ -1513,8 +1929,8 @@ function WorkflowStudio({options}) {
     const nameEditCancelled = useRef(false);
     const descriptionEditCancelled = useRef(false);
     const savedMetadata = useRef({
-        name: (options.name || '未命名工作流').trim(),
-        description: String(options.description ?? options.draft?.description ?? '').trim(),
+        name: options.name || '未命名工作流',
+        description: String(options.description ?? options.draft?.description ?? ''),
     });
     const pasteSequence = useRef(0);
     const marqueeRef = useRef(null);
@@ -1525,8 +1941,14 @@ function WorkflowStudio({options}) {
     const [historyTick, setHistoryTick] = useState(0);
     const [workflowRunState, setWorkflowRunState] = useState('IDLE');
     const [workflowElapsedMs, setWorkflowElapsedMs] = useState(0);
+    const [nodeTestDialog, setNodeTestDialog] = useState(null);
     const workflowRunRef = useRef({active: false, interruptRequested: false, startedAtMs: 0, runId: null});
     const workflowElapsedTimer = useRef(null);
+    const nodeTestWorkflowIdRef = useRef(options.id || window.crypto.randomUUID());
+    const nodeTestSourcesRef = useRef(new Map());
+    const nodeTestTimersRef = useRef(new Map());
+    const hiddenNodeTestsRef = useRef(new Set());
+    const studioClosedRef = useRef(false);
     const {screenToFlowPosition, fitView} = useReactFlow();
 
     const loadModelProviders = useCallback(async () => {
@@ -1559,9 +1981,9 @@ function WorkflowStudio({options}) {
         if (!options.onPersist) throw new Error('Workflow 持久化入口不可用');
         const pendingCreation = creationPromise.current;
         if (pendingCreation) await pendingCreation;
-        const name = String(metadata?.name ?? workflowName).trim();
-        const description = String(metadata?.description ?? workflowDescription).trim();
-        if (!name) throw new Error('Workflow 名称不能为空');
+        const name = String(metadata?.name ?? workflowName);
+        const description = String(metadata?.description ?? workflowDescription);
+        if (!name.trim()) throw new Error('Workflow 名称不能为空');
         if (!forNodeRun) {
             const graphError = validateWorkflowGraph(nodes, edges);
             if (graphError) {
@@ -1577,10 +1999,10 @@ function WorkflowStudio({options}) {
                 description,
                 nodes: nodes.map(serializableNode),
                 edges: edges.map(serializableEdge),
-                global_variables: cloneValue(globalVariables),
                 forNodeRun,
             });
             workflowIdRef.current = saved.id;
+            nodeTestWorkflowIdRef.current = saved.id;
             setWorkflowId(saved.id);
             savedMetadata.current = {
                 name: saved.name ?? name,
@@ -1598,12 +2020,12 @@ function WorkflowStudio({options}) {
             if (!forNodeRun) setSaveState('保存失败');
             throw error;
         }
-    }, [edges, globalVariables, nodes, options, setNodes, workflowDescription, workflowName]);
+    }, [edges, nodes, options, setNodes, workflowDescription, workflowName]);
 
     const persistMetadata = useCallback(async (nextName, nextDescription) => {
-        const name = String(nextName).trim();
-        const description = String(nextDescription).trim();
-        if (!name) {
+        const name = String(nextName);
+        const description = String(nextDescription);
+        if (!name.trim()) {
             if (window.showToast) window.showToast('Workflow 名称不能为空', 'error');
             return false;
         }
@@ -1726,6 +2148,232 @@ function WorkflowStudio({options}) {
         return next;
     }, [closeMenus, recordHistory, setNodes]);
 
+    const stopNodeTestTimer = useCallback((nodeId) => {
+        const timer = nodeTestTimersRef.current.get(nodeId);
+        if (timer !== undefined) window.clearInterval(timer);
+        nodeTestTimersRef.current.delete(nodeId);
+    }, []);
+
+    const resetNodeTestDisplay = useCallback((nodeId) => {
+        stopNodeTestTimer(nodeId);
+        setNodes((current) => current.map((node) => {
+            if (node.id !== nodeId) return node;
+            const latest = node.data.runHistory?.[0] || null;
+            return {
+                ...node,
+                data: {
+                    ...node.data,
+                    temporaryRun: null,
+                    nodeTestActive: false,
+                    nodeTestId: null,
+                    nodeTestStartedAt: null,
+                    status: latest?.status || 'PENDING',
+                    executionDurationMs: latest?.duration_ms || 0,
+                },
+            };
+        }));
+    }, [setNodes, stopNodeTestTimer]);
+
+    const applyNodeTestSnapshot = useCallback((nodeId, testId, snapshot, terminal = false) => {
+        if (hiddenNodeTestsRef.current.has(nodeId)) {
+            if (terminal) {
+                hiddenNodeTestsRef.current.delete(nodeId);
+                resetNodeTestDisplay(nodeId);
+            }
+            return;
+        }
+        const run = nodeExecutionHistoryRun({
+            ...snapshot,
+            test_id: `temporary-${testId}`,
+            isTemporary: true,
+        });
+        setNodes((current) => current.map((node) => node.id === nodeId ? {
+            ...node,
+            data: {
+                ...node.data,
+                temporaryRun: run,
+                nodeTestActive: !terminal,
+                nodeTestId: terminal ? null : testId,
+                status: snapshot.status || (terminal ? 'FAILED' : 'RUNNING'),
+                executionDurationMs: snapshot.duration_ms ?? node.data.executionDurationMs ?? 0,
+            },
+        } : node));
+        if (terminal) stopNodeTestTimer(nodeId);
+    }, [resetNodeTestDisplay, setNodes, stopNodeTestTimer]);
+
+    const startNodeTest = useCallback(async (nodeId, context) => {
+        const node = nodes.find((item) => item.id === nodeId);
+        if (!node || node.data.nodeType === 'END' || node.data.nodeTestActive) return;
+        if (typeof options.serializeNode !== 'function') {
+            if (window.showToast) window.showToast('节点序列化入口不可用', 'error');
+            return;
+        }
+        hiddenNodeTestsRef.current.delete(nodeId);
+        const transientWorkflowId = workflowIdRef.current || nodeTestWorkflowIdRef.current;
+        const startedAt = Date.now();
+        setNodes((current) => current.map((item) => item.id === nodeId ? {
+            ...item,
+            data: {
+                ...item.data,
+                status: 'RUNNING',
+                executionDurationMs: 0,
+                nodeTestActive: true,
+                nodeTestStartedAt: startedAt,
+                temporaryRun: nodeExecutionHistoryRun({
+                    test_id: `temporary-pending-${nodeId}`,
+                    node_id: nodeId,
+                    type: item.data.nodeType,
+                    status: 'RUNNING',
+                    started_at: new Date().toISOString(),
+                    finished_at: null,
+                    duration_ms: 0,
+                    attempt_count: 0,
+                    inputs: context,
+                    outputs: {},
+                    error: null,
+                    isTemporary: true,
+                }),
+            },
+        } : item));
+        stopNodeTestTimer(nodeId);
+        nodeTestTimersRef.current.set(nodeId, window.setInterval(() => {
+            setNodes((current) => current.map((item) => (
+                item.id === nodeId && item.data.nodeTestActive
+                    ? {...item, data: {...item.data, executionDurationMs: Date.now() - startedAt}}
+                    : item
+            )));
+        }, 100));
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(transientWorkflowId)}/node-tests`, {
+                method: 'POST',
+                headers: {'content-type': 'application/json', accept: 'application/json'},
+                body: JSON.stringify({node: options.serializeNode(serializableNode(node)), context}),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const detail = Array.isArray(payload.detail)
+                    ? payload.detail.map((item) => item.msg || String(item)).join('；')
+                    : payload.detail;
+                throw new Error(detail || `HTTP ${response.status}`);
+            }
+            const testId = payload.test_id;
+            applyNodeTestSnapshot(nodeId, testId, payload.snapshot, false);
+            setNodes((current) => current.map((item) => item.id === nodeId ? {
+                ...item, data: {...item.data, nodeTestStartedAt: startedAt},
+            } : item));
+            const source = new EventSource(`/api/workflows/${encodeURIComponent(transientWorkflowId)}/node-tests/${encodeURIComponent(testId)}/events`);
+            nodeTestSourcesRef.current.set(nodeId, {source, testId, workflowId: transientWorkflowId});
+            const readEvent = (event, terminal) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.snapshot) {
+                        applyNodeTestSnapshot(nodeId, testId, data.snapshot, terminal);
+                        if (terminal && data.snapshot.status === 'FAILED' && window.showToast) {
+                            window.showToast(friendlyNodeError(data.snapshot.error, '节点临时测试失败'), 'error');
+                        }
+                    }
+                } catch (_error) {
+                    if (terminal) applyNodeTestSnapshot(nodeId, testId, {
+                        node_id: nodeId,
+                        type: node.data.nodeType,
+                        status: 'FAILED',
+                        started_at: new Date(startedAt).toISOString(),
+                        finished_at: new Date().toISOString(),
+                        duration_ms: Date.now() - startedAt,
+                        attempt_count: 0,
+                        inputs: context,
+                        outputs: {},
+                        error: {code: 'NODE_TEST_STREAM_ERROR', message: '临时测试终态无法解析', details: null},
+                    }, true);
+                }
+                if (terminal) {
+                    source.close();
+                    nodeTestSourcesRef.current.delete(nodeId);
+                }
+            };
+            source.addEventListener('snapshot', (event) => readEvent(event, false));
+            source.addEventListener('complete', (event) => readEvent(event, true));
+            source.addEventListener('interrupted', (event) => readEvent(event, true));
+            source.onerror = () => {
+                if (source.readyState !== EventSource.CLOSED) return;
+                source.close();
+                nodeTestSourcesRef.current.delete(nodeId);
+            };
+        } catch (error) {
+            stopNodeTestTimer(nodeId);
+            applyNodeTestSnapshot(nodeId, `failed-${nodeId}`, {
+                node_id: nodeId,
+                type: node.data.nodeType,
+                status: 'FAILED',
+                started_at: new Date(startedAt).toISOString(),
+                finished_at: new Date().toISOString(),
+                duration_ms: Date.now() - startedAt,
+                attempt_count: 0,
+                inputs: context,
+                outputs: {},
+                error: {code: 'NODE_TEST_REQUEST_FAILED', message: error instanceof Error ? error.message : '节点临时测试启动失败', details: null},
+            }, true);
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点临时测试启动失败', 'error');
+        }
+    }, [applyNodeTestSnapshot, nodes, options, setNodes, stopNodeTestTimer]);
+
+    const requestNodeTest = useCallback((nodeId) => {
+        const node = nodes.find((item) => item.id === nodeId);
+        if (!node || node.data.nodeType === 'END' || node.data.nodeTestActive) return;
+        closeMenus();
+        if (node.data.nodeType === 'START') {
+            void startNodeTest(nodeId, {});
+            return;
+        }
+        const start = nodes.find((item) => item.data.nodeType === 'START');
+        const rows = (start?.data.startInputs || []).filter((row) => row.name).map((row) => ({
+            id: rowId(),
+            name: row.name,
+            type: row.type || 'string',
+            valueText: nodeTestValueText(row.value, row.type || 'string'),
+        }));
+        setNodeTestDialog({nodeId, nodeLabel: node.data.label, rows});
+    }, [closeMenus, nodes, startNodeTest]);
+
+    const submitNodeTestDialog = useCallback(() => {
+        if (!nodeTestDialog) return;
+        try {
+            const context = {};
+            nodeTestDialog.rows.forEach((row) => {
+                if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name)) {
+                    throw new Error('临时测试变量名格式无效');
+                }
+                if (Object.prototype.hasOwnProperty.call(context, row.name)) {
+                    throw new Error(`临时测试变量名重复: ${row.name}`);
+                }
+                context[row.name] = parseNodeTestValue(row);
+            });
+            const nodeId = nodeTestDialog.nodeId;
+            setNodeTestDialog(null);
+            void startNodeTest(nodeId, context);
+        } catch (error) {
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '临时测试变量无效', 'error');
+        }
+    }, [nodeTestDialog, startNodeTest]);
+
+    const interruptNodeTest = useCallback(async (nodeId) => {
+        const active = nodeTestSourcesRef.current.get(nodeId);
+        if (!active) return false;
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(active.workflowId)}/node-tests/${encodeURIComponent(active.testId)}/cancel`, {
+                method: 'POST', headers: {accept: 'application/json'},
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.detail || `HTTP ${response.status}`);
+            }
+            return true;
+        } catch (error) {
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点临时测试中断失败', 'error');
+            return false;
+        }
+    }, []);
+
     const loadNodeRuns = useCallback(async (id, activeWorkflowId = workflowId) => {
         if (!activeWorkflowId) return [];
         try {
@@ -1734,12 +2382,15 @@ function WorkflowStudio({options}) {
             });
             const runPayload = await runResponse.json().catch(() => ({}));
             if (!runResponse.ok) throw new Error(runPayload.detail || `HTTP ${runResponse.status}`);
-            const latest = Array.isArray(runPayload.runs) ? runPayload.runs[0] : null;
-            if (!latest) return [];
-            const response = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(latest.run_id)}/nodes`, {headers: {accept: 'application/json'}});
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-            const runs = (payload.runs || []).filter((run) => run.node_id === id).map((run) => ({...run, id: run.node_run_id, output: run.outputs, response_body: typeof run.response === 'string' ? run.response : JSON.stringify(run.response || '')}));
+            const executions = Array.isArray(runPayload.executions) ? runPayload.executions : [];
+            if (!executions.length) return [];
+            const nodePayloads = await Promise.all(executions.map(async (execution) => {
+                const response = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(execution.id)}/nodes`, {headers: {accept: 'application/json'}});
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+                return payload.executions || [];
+            }));
+            const runs = nodePayloads.flatMap((items) => items.filter((execution) => execution.node_id === id).map(nodeExecutionHistoryRun)).slice(0, 10);
             setNodes((current) => current.map((node) => node.id === id ? {
                 ...node,
                 data: {
@@ -1756,24 +2407,65 @@ function WorkflowStudio({options}) {
         }
     }, [setNodes, workflowId]);
 
+    const loadLatestWorkflowNodeExecutions = useCallback(async () => {
+        if (!workflowIdRef.current) return [];
+        const runsResponse = await fetch(
+            `/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs`,
+            {headers: {accept: 'application/json'}, cache: 'no-store'},
+        );
+        const runsPayload = await runsResponse.json().catch(() => ({}));
+        if (!runsResponse.ok) throw new Error(runsPayload.detail || `HTTP ${runsResponse.status}`);
+        const latestWorkflowExecution = Array.isArray(runsPayload.executions)
+            ? runsPayload.executions[0]
+            : null;
+        if (!latestWorkflowExecution) return [];
+        const nodesResponse = await fetch(
+            `/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs/${encodeURIComponent(latestWorkflowExecution.id)}/nodes`,
+            {headers: {accept: 'application/json'}, cache: 'no-store'},
+        );
+        const nodesPayload = await nodesResponse.json().catch(() => ({}));
+        if (!nodesResponse.ok) throw new Error(nodesPayload.detail || `HTTP ${nodesResponse.status}`);
+        return Array.isArray(nodesPayload.executions) ? nodesPayload.executions : [];
+    }, []);
+
     const loadNodeVariables = useCallback(async (id) => {
-        const targetIndex = nodes.findIndex((node) => node.id === id);
-        const visible = targetIndex < 0 ? [] : nodes.slice(0, targetIndex + 1);
+        const visible = variableScopeNodes(nodes, edges, id);
+        const latestNodeExecutions = await loadLatestWorkflowNodeExecutions();
+        const executionByNodeId = new Map(
+            latestNodeExecutions.map((execution) => [execution.node_id, execution]),
+        );
         const groups = [];
-        if (globalVariables.length) groups.push({id: 'start-inputs', label: 'START', variables: globalVariables.filter((row) => row.name).map((row) => ({name: row.name, value: row.value, available: true}))});
+        const start = nodes.find((node) => node.data.nodeType === 'START');
+        if (start) groups.push({id: 'start-inputs', label: 'START', variables: (start.data.startInputs || []).filter((row) => row.name).map((row) => ({name: row.name, value: row.value, available: true}))});
         visible.forEach((node) => {
-            const variables = (node.data.outputVariables || []).filter((row) => row.name).map((row) => ({name: row.name, value: null, path: row.value || null, available: false}));
+            const latestExecution = executionByNodeId.get(node.id);
+            const temporaryOutputs = isPlainObject(node.data.temporaryRun?.outputs)
+                ? node.data.temporaryRun.outputs
+                : null;
+            const persistedOutputs = isPlainObject(latestExecution?.outputs)
+                ? latestExecution.outputs
+                : {};
+            const executionOutputs = temporaryOutputs || persistedOutputs;
+            const variables = (node.data.outputVariables || []).filter((row) => row.name).map((row) => {
+                const available = Object.prototype.hasOwnProperty.call(executionOutputs, row.name);
+                return {
+                    name: row.name,
+                    value: available ? executionOutputs[row.name] : null,
+                    path: row.value || null,
+                    available,
+                };
+            });
             if (variables.length) groups.push({id: node.id, label: node.data.label || node.data.nodeType, variables});
         });
         return groups;
-    }, [globalVariables, nodes]);
+    }, [edges, loadLatestWorkflowNodeExecutions, nodes]);
 
     useEffect(() => {
         const targetNode = nodes.find((node) => node.id === editorNodeId);
-        if (['START', 'HTTP', 'AGENT', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType) && workflowId) {
+        if (options.executionEnabled && ['START', 'HTTP', 'LLM', 'SCRIPT'].includes(targetNode?.data.nodeType) && workflowId) {
             loadNodeRuns(targetNode.id);
         }
-    }, [editorNodeId, loadNodeRuns, workflowId]);
+    }, [editorNodeId, loadNodeRuns, options.executionEnabled, workflowId]);
 
     const saveNode = useCallback(async (id) => {
         const savedAt = new Date().toLocaleTimeString('zh-CN', {hour12: false});
@@ -1802,10 +2494,57 @@ function WorkflowStudio({options}) {
         setNodes((current) => current.map((node) => {
             const run = byNode.get(node.id);
             if (!run) return node;
-            const historyRun = {...run, id: run.node_run_id, output: run.outputs, response_body: typeof run.response === 'string' ? run.response : JSON.stringify(run.response || '')};
-            return {...node, data: {...node.data, status: run.status, executionDurationMs: run.duration_ms || 0, executionId: run.status === 'RUNNING' ? run.node_run_id : null, runHistory: [historyRun].concat((node.data.runHistory || []).filter((item) => item.id !== run.node_run_id)).slice(0, 10)}};
+            const historyRun = nodeExecutionHistoryRun(run);
+            return {...node, data: {...node.data, status: run.status, executionDurationMs: run.duration_ms || 0, executionId: run.status === 'RUNNING' ? run.node_execution_id : null, runHistory: [historyRun].concat((node.data.runHistory || []).filter((item) => item.id !== run.node_execution_id)).slice(0, 10)}};
         }));
     }, [setNodes]);
+
+    const loadWorkflowHistory = useCallback(async () => {
+        if (!workflowIdRef.current) return [];
+        setHistoryLoadState('loading');
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs`, {headers: {accept: 'application/json'}});
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+            const executions = Array.isArray(payload.executions) ? payload.executions.slice(0, 10) : [];
+            setWorkflowHistory(executions);
+            setHistoryLoadState('ready');
+            return executions;
+        } catch (error) {
+            setHistoryLoadState('error');
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '执行历史加载失败', 'error');
+            return [];
+        }
+    }, []);
+
+    const toggleWorkflowExecution = useCallback(async (executionId) => {
+        if (expandedWorkflowExecutionId === executionId) {
+            setExpandedWorkflowExecutionId(null);
+            return;
+        }
+        setExpandedWorkflowExecutionId(executionId);
+        if (historyNodeExecutions[executionId] || !workflowIdRef.current) return;
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs/${encodeURIComponent(executionId)}/nodes`, {headers: {accept: 'application/json'}});
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+            setHistoryNodeExecutions((current) => ({...current, [executionId]: payload.executions || []}));
+        } catch (error) {
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点执行记录加载失败', 'error');
+        }
+    }, [expandedWorkflowExecutionId, historyNodeExecutions]);
+
+    const openExecutionDirectory = useCallback(async () => {
+        if (!workflowIdRef.current) return;
+        try {
+            const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/execution-directory`, {method: 'POST', headers: {accept: 'application/json'}});
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+            if (window.showToast) window.showToast('已打开执行记录目录', 'success');
+        } catch (error) {
+            if (window.showToast) window.showToast(error instanceof Error ? error.message : '执行记录目录打开失败', 'error');
+        }
+    }, []);
 
     const interruptWorkflow = useCallback(async () => {
         const state = workflowRunRef.current;
@@ -1824,6 +2563,10 @@ function WorkflowStudio({options}) {
 
     const runAll = useCallback(async () => {
         if (workflowRunRef.current.active) return;
+        if (!options.executionEnabled) {
+            if (window.showToast) window.showToast('Workflow 执行接口尚未接入', 'error');
+            return;
+        }
         const graphError = validateWorkflowGraph(nodes, edges);
         if (graphError) {
             if (window.showToast) window.showToast(graphError, 'error');
@@ -1851,9 +2594,9 @@ function WorkflowStudio({options}) {
             const startedResponse = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs`, {method: 'POST', headers: {accept: 'application/json'}});
             const startedPayload = await startedResponse.json().catch(() => ({}));
             if (!startedResponse.ok) throw new Error(startedPayload.detail || `HTTP ${startedResponse.status}`);
-            workflowState.runId = startedPayload.run.run_id;
-            let run = startedPayload.run;
-            while (!['SUCCESS', 'FAILED', 'CANCELLED'].includes(run.status)) {
+            workflowState.runId = startedPayload.execution.id;
+            let run = startedPayload.execution;
+            while (!['SUCCESS', 'FAILED', 'INTERRUPTED'].includes(run.status)) {
                 await new Promise((resolve) => window.setTimeout(resolve, 250));
                 const [runResponse, nodesResponse] = await Promise.all([
                     fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}`, {headers: {accept: 'application/json'}}),
@@ -1862,12 +2605,26 @@ function WorkflowStudio({options}) {
                 const runPayload = await runResponse.json().catch(() => ({}));
                 const nodesPayload = await nodesResponse.json().catch(() => ({}));
                 if (!runResponse.ok) throw new Error(runPayload.detail || `HTTP ${runResponse.status}`);
-                run = runPayload.run;
-                if (nodesResponse.ok) applyWorkflowNodeRuns(nodesPayload.runs || []);
+                run = runPayload.execution;
+                if (nodesResponse.ok) applyWorkflowNodeRuns(nodesPayload.executions || []);
+            }
+            let finalNodeExecutions = [];
+            const finalNodesResponse = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}/nodes`, {headers: {accept: 'application/json'}});
+            if (finalNodesResponse.ok) {
+                const finalNodesPayload = await finalNodesResponse.json().catch(() => ({}));
+                finalNodeExecutions = finalNodesPayload.executions || [];
+                applyWorkflowNodeRuns(finalNodeExecutions);
             }
             setWorkflowRunState(run.status);
             setWorkflowElapsedMs(Date.now() - workflowState.startedAtMs);
-            if (window.showToast) window.showToast(run.status === 'SUCCESS' ? 'Workflow 执行完成' : run.status === 'CANCELLED' ? 'Workflow 已中断' : run.error?.message || 'Workflow 执行失败', run.status === 'SUCCESS' ? 'success' : 'error');
+            const failedNode = finalNodeExecutions.find((execution) => execution.status === 'FAILED' || execution.status === 'TIMEOUT');
+            const resultMessage = run.status === 'SUCCESS'
+                ? 'Workflow 执行完成'
+                : run.status === 'INTERRUPTED'
+                    ? 'Workflow 已中断'
+                    : friendlyNodeError(failedNode?.error || run.error, 'Workflow 执行失败');
+            if (window.showToast) window.showToast(resultMessage, run.status === 'SUCCESS' ? 'success' : 'error');
+            await loadWorkflowHistory();
         } catch (error) {
             setWorkflowRunState('FAILED');
             if (window.showToast) window.showToast(error instanceof Error ? error.message : 'Workflow 执行失败', 'error');
@@ -1880,12 +2637,16 @@ function WorkflowStudio({options}) {
             }
             setWorkflowElapsedMs(Date.now() - workflowState.startedAtMs);
         }
-    }, [applyWorkflowNodeRuns, closeMenus, edges, nodes, persistDraft, setNodes]);
+    }, [applyWorkflowNodeRuns, closeMenus, edges, loadWorkflowHistory, nodes, options.executionEnabled, persistDraft, setNodes]);
 
     const deleteElements = useCallback((nodeIds = [], edgeIds = []) => {
         const nodeIdSet = new Set(nodeIds);
         const edgeIdSet = new Set(edgeIds);
         if (!nodeIdSet.size && !edgeIdSet.size) return;
+        nodeIds.forEach((nodeId) => {
+            const active = nodeTestSourcesRef.current.get(nodeId);
+            if (active) void interruptNodeTest(nodeId);
+        });
         recordHistory();
         setNodes((current) => current.filter((node) => !nodeIdSet.has(node.id)));
         setEdges((current) => current.filter((edge) => (
@@ -1895,7 +2656,7 @@ function WorkflowStudio({options}) {
         setSelectedNodeIds((current) => current.filter((id) => !nodeIdSet.has(id)));
         setSelectedEdgeIds((current) => current.filter((id) => !edgeIdSet.has(id)));
         closeMenus();
-    }, [closeMenus, recordHistory, setEdges, setNodes]);
+    }, [closeMenus, interruptNodeTest, recordHistory, setEdges, setNodes]);
 
     const deleteNodes = useCallback((ids) => deleteElements(ids, []), [deleteElements]);
     const deleteEdges = useCallback((ids) => deleteElements([], ids), [deleteElements]);
@@ -1988,14 +2749,13 @@ function WorkflowStudio({options}) {
         ...node,
         data: {
             ...node.data,
-            onRun: runAll,
-            onInterrupt: interruptWorkflow,
+            onRun: () => requestNodeTest(node.id),
             onOpenLogs: () => {
                 setEditorInitialTab('logs');
                 setEditorNodeId(node.id);
             },
         },
-    })), [interruptWorkflow, nodes, runAll]);
+    })), [nodes, requestNodeTest]);
 
     const editorNode = nodes.find((node) => node.id === editorNodeId) || null;
 
@@ -2131,13 +2891,12 @@ function WorkflowStudio({options}) {
         if (action === 'test-run') runAll();
         if (action === 'interrupt-workflow') interruptWorkflow();
         if (action === 'paste-node') pasteNode();
-        if (action === 'run-node' && contextMenu?.nodeId) runAll();
-        if (action === 'interrupt-node' && contextMenu?.nodeId) interruptWorkflow();
+        if (action === 'run-node' && contextMenu?.nodeId) requestNodeTest(contextMenu.nodeId);
         if (action === 'copy-node' && contextMenu?.nodeId) copyNode(contextMenu.nodeId);
         if (action === 'delete-node' && contextMenu?.nodeId) deleteNode(contextMenu.nodeId);
         if (action === 'delete-edge' && contextMenu?.edgeId) deleteEdges([contextMenu.edgeId]);
         if (action !== 'paste-node') setContextMenu(null);
-    }, [contextMenu, copyNode, deleteEdges, deleteNode, interruptWorkflow, pasteNode, runAll]);
+    }, [contextMenu, copyNode, deleteEdges, deleteNode, interruptWorkflow, pasteNode, requestNodeTest, runAll]);
 
     const autoLayout = useCallback(() => {
         recordHistory();
@@ -2157,24 +2916,50 @@ function WorkflowStudio({options}) {
     const save = useCallback(async () => {
         try {
             await persistDraft();
-            if (window.showToast) window.showToast('Workflow 草稿已保存', 'success');
+            if (window.showToast) window.showToast('Workflow 已保存', 'success');
         } catch (error) {
             if (window.showToast) window.showToast(error instanceof Error ? error.message : 'Workflow 保存失败', 'error');
         }
     }, [persistDraft]);
 
     const close = useCallback(() => {
+        studioClosedRef.current = true;
         if (workflowRunRef.current.active) void interruptWorkflow();
+        nodeTestSourcesRef.current.forEach((_active, nodeId) => {
+            hiddenNodeTestsRef.current.add(nodeId);
+            void interruptNodeTest(nodeId);
+        });
         timers.current.forEach((timer) => {
             window.clearTimeout(timer);
             window.clearInterval(timer);
         });
         if (options.onClose) options.onClose();
         if (workflowElapsedTimer.current !== null) window.clearInterval(workflowElapsedTimer.current);
-    }, [interruptWorkflow, options]);
+    }, [interruptNodeTest, interruptWorkflow, options]);
+
+    const closeInspector = useCallback(() => {
+        if (editorNodeId) {
+            const active = nodeTestSourcesRef.current.get(editorNodeId);
+            if (active) {
+                hiddenNodeTestsRef.current.add(editorNodeId);
+                void interruptNodeTest(editorNodeId);
+            } else {
+                resetNodeTestDisplay(editorNodeId);
+            }
+        }
+        setEditorNodeId(null);
+    }, [editorNodeId, interruptNodeTest, resetNodeTestDisplay]);
 
     const canUndo = historyTick >= 0 && undoStack.current.length > 0;
     const canRedo = historyTick >= 0 && redoStack.current.length > 0;
+    const canAlignNodes = selectedNodeIds.length >= 2;
+    const alignSelectedNodes = useCallback((alignment) => {
+        if (!canAlignNodes) return;
+        recordHistory();
+        setNodes((current) => alignCanvasNodes(current, selectedNodeIds, alignment));
+        setSaveState('未保存');
+        closeMenus();
+    }, [canAlignNodes, closeMenus, recordHistory, selectedNodeIds, setNodes]);
 
     return (
         <div className="workflow-studio-shell" tabIndex={0} aria-label="工作流画布" onKeyDown={handleKeyboard} onCopy={handleCopy} onPaste={handlePaste} onPointerDownCapture={handleMarqueeStart} onPointerMoveCapture={handleMarqueeMove} onPointerUpCapture={handleMarqueeEnd} onContextMenu={(event) => event.preventDefault()}>
@@ -2187,7 +2972,7 @@ function WorkflowStudio({options}) {
                         <input
                             autoFocus
                             value={workflowName}
-                            maxLength={120}
+                            maxLength={200}
                             onChange={(event) => {setWorkflowName(event.target.value); setSaveState('未保存');}}
                             onBlur={commitWorkflowName}
                             onKeyDown={(event) => {
@@ -2215,7 +3000,7 @@ function WorkflowStudio({options}) {
                             <textarea
                                 autoFocus
                                 value={workflowDescription}
-                                maxLength={2000}
+                                maxLength={4000}
                                 rows={5}
                                 onChange={(event) => {setWorkflowDescription(event.target.value); setSaveState('未保存');}}
                                 onBlur={commitWorkflowDescription}
@@ -2238,8 +3023,9 @@ function WorkflowStudio({options}) {
                 </div>
                 <div className="wf-header-actions">
                     {workflowRunState !== 'IDLE' && <span className={`wf-workflow-timer is-${workflowRunState.toLowerCase()}`} aria-label={`Workflow 执行耗时 ${formatExecutionDuration(workflowElapsedMs)}`}><LoaderCircle size={13} />{formatExecutionDuration(workflowElapsedMs)}</span>}
-                    <button type="button" disabled={workflowRunState === 'RUNNING'} className="wf-secondary-button" onClick={runAll}><Play size={15} />运行</button>
-                    <button type="button" className={headerPanel === 'variables' ? 'is-active' : ''} onClick={() => setHeaderPanel((current) => current === 'variables' ? null : 'variables')}><SlidersHorizontal size={15} />全局变量</button>
+                    <button type="button" disabled={!options.executionEnabled || workflowRunState === 'RUNNING'} className="wf-secondary-button" onClick={runAll} title={options.executionEnabled ? '运行 Workflow' : '执行接口尚未接入'}><Play size={15} />运行</button>
+                    <button type="button" disabled={!workflowId} className={historyOpen ? 'is-active' : ''} onClick={async () => {const next = !historyOpen; setHistoryOpen(next); if (next) await loadWorkflowHistory();}}><FileClock size={15} />历史</button>
+                    <button type="button" disabled={!workflowId} onClick={openExecutionDirectory}><FolderOpen size={15} />执行记录</button>
                     <button type="button" disabled={workflowRunState !== 'RUNNING'} className="wf-danger-button" onClick={interruptWorkflow}><Square size={14} />中断</button>
                     <button type="button" className="wf-primary-button" onClick={save}><Save size={15} />保存</button>
                 </div>
@@ -2256,25 +3042,33 @@ function WorkflowStudio({options}) {
                 {nodeSaveNotice && (
                     <div className="wf-node-save-toast" role="status"><Check size={15} /><span>{nodeSaveNotice.label} 已保存</span><time>{nodeSaveNotice.savedAt}</time></div>
                 )}
-                {headerPanel === 'variables' && (
-                    <aside className="wf-header-popover" aria-label="工作流全局变量">
-                        <header>
-                            <strong>全局变量</strong>
-                            <button type="button" onClick={() => setHeaderPanel(null)} title="关闭" aria-label="关闭顶部面板"><X size={16} /></button>
-                        </header>
-                        <div className="wf-global-parameters">
-                                <div className="wf-mapping-label-row"><span>变量名</span><span>变量</span><span /></div>
-                                {globalVariables.map((row, index) => (
-                                    <div className="wf-mapping-value-row" key={row.id}>
-                                        <input aria-label={`全局变量名 ${index + 1}`} value={row.name} onChange={(event) => setGlobalVariables((current) => current.map((item) => item.id === row.id ? {...item, name: event.target.value} : item))} />
-                                        <input aria-label={`全局变量 ${index + 1}`} value={row.value} onChange={(event) => setGlobalVariables((current) => current.map((item) => item.id === row.id ? {...item, value: event.target.value} : item))} />
-                                        {index === 0 ? (
-                                            <button type="button" className="wf-inline-icon-button" onClick={() => setGlobalVariables((current) => current.concat(emptyMappingRow()))} title="新增全局变量" aria-label="新增全局变量"><Plus size={15} /></button>
-                                        ) : (
-                                            <button type="button" className="wf-inline-icon-button is-danger" onClick={() => setGlobalVariables((current) => current.filter((item) => item.id !== row.id))} title="删除全局变量" aria-label={`删除全局变量 ${index + 1}`}><Trash2 size={15} /></button>
+                {historyOpen && (
+                    <aside className="wf-execution-history-panel" aria-label="最近 10 次执行历史">
+                        <header><strong>执行历史</strong><span>最近 10 次</span><button type="button" onClick={() => setHistoryOpen(false)} title="关闭执行历史" aria-label="关闭执行历史"><X size={15} /></button></header>
+                        {historyLoadState === 'loading' && <div className="wf-execution-history-empty"><LoaderCircle className="is-spinning" size={15} />正在加载</div>}
+                        {historyLoadState === 'ready' && !workflowHistory.length && <div className="wf-execution-history-empty">暂无执行记录</div>}
+                        <div className="wf-execution-history-list">
+                            {workflowHistory.map((execution) => {
+                                const expanded = expandedWorkflowExecutionId === execution.id;
+                                const nodeExecutions = historyNodeExecutions[execution.id] || [];
+                                return (
+                                    <article className={`is-${String(execution.status).toLowerCase()}`} key={execution.id}>
+                                        <button type="button" className="wf-execution-history-summary" aria-expanded={expanded} onClick={() => toggleWorkflowExecution(execution.id)}>
+                                            <ChevronRight className={expanded ? 'is-open' : ''} size={14} />
+                                            <time>{formatRunDate(execution.started_at || execution.created_at)}</time>
+                                            <strong>{execution.status}</strong>
+                                            <span>{formatExecutionDuration(execution.duration_ms)}</span>
+                                        </button>
+                                        {expanded && (
+                                            <div className="wf-execution-history-detail">
+                                                <HttpLogSection title="context.final" text={parameterDataText(execution.context?.final || {}, true)} />
+                                                <HttpLogSection title="node executions" text={parameterDataText(nodeExecutions, true)} />
+                                                {execution.error && <HttpLogSection title="error" text={parameterDataText(execution.error, true)} />}
+                                            </div>
                                         )}
-                                    </div>
-                                ))}
+                                    </article>
+                                );
+                            })}
                         </div>
                     </aside>
                 )}
@@ -2330,6 +3124,7 @@ function WorkflowStudio({options}) {
                         setContextMenu({
                             kind: 'node',
                             nodeId: node.id,
+                            nodeType: node.data.nodeType,
                             x: Math.max(8, Math.min(event.clientX, window.innerWidth - 205)),
                             y: Math.max(66, Math.min(event.clientY, window.innerHeight - 155)),
                         });
@@ -2371,6 +3166,19 @@ function WorkflowStudio({options}) {
                         <button type="button" disabled={!canRedo} onClick={redo} title="前进" aria-label="前进"><Redo2 size={16} /></button>
                         <span />
                         <button type="button" onClick={autoLayout} title="自动布局" aria-label="自动布局"><LayoutGrid size={16} /></button>
+                        {canAlignNodes && (
+                            <>
+                                <span />
+                                <div className="wf-alignment-actions" role="group" aria-label="节点对齐">
+                                    <button type="button" onClick={() => alignSelectedNodes('left')} title="左对齐" aria-label="左对齐"><AlignHorizontalJustifyStart size={16} /></button>
+                                    <button type="button" onClick={() => alignSelectedNodes('horizontal-center')} title="水平居中" aria-label="水平居中"><AlignHorizontalJustifyCenter size={16} /></button>
+                                    <button type="button" onClick={() => alignSelectedNodes('right')} title="右对齐" aria-label="右对齐"><AlignHorizontalJustifyEnd size={16} /></button>
+                                    <button type="button" onClick={() => alignSelectedNodes('top')} title="顶部对齐" aria-label="顶部对齐"><AlignVerticalJustifyStart size={16} /></button>
+                                    <button type="button" onClick={() => alignSelectedNodes('vertical-center')} title="垂直居中" aria-label="垂直居中"><AlignVerticalJustifyCenter size={16} /></button>
+                                    <button type="button" onClick={() => alignSelectedNodes('bottom')} title="底部对齐" aria-label="底部对齐"><AlignVerticalJustifyEnd size={16} /></button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </ReactFlow>
                 <ContextMenu
@@ -2378,6 +3186,12 @@ function WorkflowStudio({options}) {
                     canPaste={Boolean(clipboard?.nodes?.length)}
                     onAction={contextAction}
                     onAdd={(type) => contextMenu?.flowPosition && addNodeAt(type, contextMenu.flowPosition)}
+                />
+                <NodeTestVariablesDialog
+                    dialog={nodeTestDialog}
+                    onRowsChange={(rows) => setNodeTestDialog((current) => current ? {...current, rows} : current)}
+                    onCancel={() => setNodeTestDialog(null)}
+                    onSubmit={submitNodeTestDialog}
                 />
                 <Inspector
                     key={`${editorNodeId || 'none'}:${editorInitialTab}`}
@@ -2388,10 +3202,9 @@ function WorkflowStudio({options}) {
                     onRefreshProviders={loadModelProviders}
                     onLoadVariables={() => editorNodeId ? loadNodeVariables(editorNodeId) : []}
                     initialTab={editorInitialTab}
-                    onRun={() => window.showToast && window.showToast('请使用画布右上角运行 Workflow', 'error')}
-                    onInterrupt={() => window.showToast && window.showToast('请使用画布右上角中断 Workflow', 'error')}
+                    onRun={() => editorNodeId && requestNodeTest(editorNodeId)}
                     onSave={() => editorNodeId && saveNode(editorNodeId)}
-                    onClose={() => setEditorNodeId(null)}
+                    onClose={closeInspector}
                     onChange={(patch) => setNodes((current) => current.map((node) => node.id === editorNodeId ? {...node, data: {...node.data, ...patch, isDirty: true}} : node))}
                 />
             </main>
