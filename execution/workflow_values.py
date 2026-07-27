@@ -124,6 +124,48 @@ def resolve_template(
     return resolve(value), referenced
 
 
+def parse_json_template(
+    template: str,
+    context: dict[str, Any] | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """解析允许在 JSON 字符串外使用 `${...}` 的严格 JSON 模板。"""
+
+    in_string = False
+    escaped = False
+    position = 0
+    normalized: list[str] = []
+    while position < len(template):
+        character = template[position]
+        if in_string:
+            normalized.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            position += 1
+            continue
+        if character == '"':
+            in_string = True
+            normalized.append(character)
+            position += 1
+            continue
+        match = _REFERENCE.match(template, position)
+        if match:
+            normalized.append(json.dumps(match.group(0), ensure_ascii=False))
+            position = match.end()
+            continue
+        normalized.append(character)
+        position += 1
+
+    try:
+        parsed = json.loads("".join(normalized))
+    except json.JSONDecodeError as exc:
+        raise WorkflowValueError(f"HTTP Raw Body 解析变量后不是合法 JSON: {exc.msg}") from exc
+    return resolve_template(parsed, context or {}, force_text=True)
+
+
 def _parse_literal(text: str) -> Any:
     try:
         return json.loads(text)
@@ -310,3 +352,18 @@ def collect_outputs(
         value = extract_output(declaration.source, facts)
         outputs[declaration.name] = convert_output(value, declaration.type)
     return deepcopy(outputs)
+
+
+def collect_end_results(declarations: list[Any], context: dict[str, Any]) -> dict[str, Any]:
+    """按 END 声明从最终 Context 提取并转换 Workflow 结果。"""
+
+    results: dict[str, Any] = {}
+    for declaration in declarations:
+        try:
+            value = resolve_path(context, declaration.source)
+        except WorkflowValueError as exc:
+            raise WorkflowOutputSourceError(
+                f"END 结果 source 无法读取: {declaration.source}"
+            ) from exc
+        results[declaration.name] = convert_output(value, declaration.type)
+    return deepcopy(results)

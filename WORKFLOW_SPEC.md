@@ -6,6 +6,8 @@
 
 核心原则：**错误显式化、拒绝静默污染**。任何配置错误、引用缺失、解析失败、输出不完整或协议异常都必须产生明确错误，不得通过未在本规范定义的转换、默认回退、部分提交或丢弃异常数据伪装成功。
 
+顶层 Web 并发约束：**FastAPI 路由必须按照实际 I/O 模型声明。** 直接调用同步 sqlite3 Repository、openpyxl、YAML/JSON 或普通文件系统 API 的处理器必须使用普通 `def`，由 FastAPI 在线程池执行；只有调用真正可等待异步客户端的处理器才能使用 `async def`，且必须通过 `await` 或异步上下文协议执行 I/O。Excel multipart 上传必须通过 `UploadFile.file` 在同步处理器内完成读取、校验、临时写入、Workbook 解析、目标替换和配置保存，不得在事件循环中混入后半段同步处理。模型供应商连接测试使用 httpx/模型网关异步客户端，保留异步处理器。当前同步 SQLite 路由不因此迁移数据库框架。
+
 顶层中断约束：**用户不得单独中断任何完整 Workflow Node Execution 或单节点临时测试，只能通过画布全局中断停止完整 Workflow。** 单节点临时测试运行期间禁用重复运行，不提供用户中断入口；关闭编辑器、删除节点或 Workflow、离开 Studio 时，系统必须在内部取消活动 Worker 并完成资源清理。Workflow Fail-Fast、节点超时和进程异常属于调度器内部终态处理，不属于用户单节点中断。
 
 顶层 Context 约束：**Context 变量名严格区分大小写，任何阶段都不得执行小写归一化或其他大小写改写。** START inputs.name、所有节点 outputs.name、Context 引用和 SCRIPT 输入读取均按用户保存的原始名称精确匹配；`result`、`Result` 和 `RESULT` 是三个不同变量。HTTP Header 等外部协议自身的大小写规则不改变本约束。
@@ -36,7 +38,7 @@
 ## 目录
 
 1. [文档简要说明](#chapter-1)
-2. [Structural Model &amp; Execution Model](#chapter-2) ([Node 数据字典](#chapter-2-3) / [Workflow Structural Model](#chapter-2-4) / [Workflow Execution Model](#chapter-2-5))
+2. [Structural Model &amp; Execution Model](#chapter-2) ([Node 数据字典](#chapter-2-3) / [Workflow Structural Model](#chapter-2-4) / [Workflow Execution Model](#chapter-2-5) / [Batch Execution Model](#chapter-2-6))
 3. [Context](#chapter-3)
 4. [Node Status](#chapter-4)
 5. [START](#chapter-5) ([Structural Model](#chapter-5-1) / [Execution Model](#chapter-5-2) / [Input &amp; Output Protocol](#chapter-5-3) / [用户可见日志](#chapter-5-4))
@@ -104,6 +106,11 @@ Execution Model（执行模型）记录 Workflow 或 Node 被触发后实际发�
 1. Structural Model 的唯一持久化位置是关系型数据库。Workflow/Node 的创建、编辑和删除直接映射为数据库 CRUD 事务，不另存 Structural Model JSON 文件。
 2. Execution Model 的唯一权威正文是本机文件系统中的 JSON 文件。关系型数据库不得复制保存 Execution Model 的 inputs、request、response、attempts、outputs、error 或其他执行正文。
 3. 用户可见日志全部由前端从对应 Execution Model JSON 的已保存字段读取、映射和组装。日志列表、概览、展开详情和复制内容都不是新的持久化模型，不得另存日志文件、日志数据库记录或反向写入 Execution Model。
+4. Workflow Repository、ModelProviderRepository、WorkflowExecutionManager 和 NodeTestManager 是单个 FastAPI 应用生命周期内的共享资源。应用必须通过 lifespan 在接收请求前一次性创建并初始化资源，通过 `app.state` 和 FastAPI Dependency 注入路由；路由模块不得保存这些对象或路径键的可变全局单例。应用关闭时必须先拒绝新任务，再中断并等待全部活动 Workflow/节点测试线程收敛，最后释放应用状态。
+5. 当前活动调度状态只存在于单个进程内，因此服务只支持单 Uvicorn worker。本约束不能通过 lifespan 消除；启用多 worker 前必须另行实现跨进程执行所有权、取消路由和锁，不得把每个 worker 的独立 Manager 误认为共享调度器。
+6. Execution 实现按职责单向组合：`workflow_execution_store.py` 负责 Execution JSON，`workflow_execution_control.py` 负责取消信号，`workflow_node_runner_base.py` 负责公共 Node 生命周期，SCRIPT/LLM/HTTP Runner 分别拥有自身协议，`workflow_node_executor.py` 只负责类型注册和 Context commit，`workflow_node_tests.py` 负责临时测试，`workflow_execution.py` 只负责 DAG 调度。子进程 Runtime/Worker 属于 `execution`，Execution 域不得导入 Web；Web 兼容导出不得保存第二份运行状态。
+7. 所有 SQLite Repository 必须从 `execution/init_db.py` 取得唯一默认数据库路径、按 resolved path 共享的可重入初始化锁和通用连接 PRAGMA，不得从其他业务 Repository 模块导入数据库路径或维护私有初始化锁。共享锁只协调同一数据库文件的首次初始化和迁移；Model Provider、Node Structural、Workflow Structural Repository 继续分别拥有自身业务表 Schema，中央模块不得反向导入这些 Repository 或聚合业务建表 SQL。
+8. `config.yaml` 和 `.sets_meta.json` 必须由专用 Repository 在 resolved path 共享锁内执行 read-modify-write，并通过同目录临时文件、flush/fsync 和 `os.replace` 原子提交；路由不得直接 truncate 覆盖这些文件。Workflow 更新/删除涉及 Repository、Manager 和 Execution 目录的补偿事务必须由 Application Service 拥有，路由只负责 DTO 与 HTTP 错误映射。
 
 <a id="chapter-2-2"></a>
 
@@ -319,7 +326,7 @@ Node Execution 本体不混入可编辑的 Structural Model 字段。Workflow Ex
 | HTTP | `request / network / response / execution / outputs` |
 | END | 空对象 `{}` |
 
-初始化按依赖顺序定点删除三代旧 Workflow/Run/评测流水线表：`workflow_node_runs`、`workflow_node_runs_v2`、`node_runs`、`artifacts`、`attempts`、`step_runs`、`case_runs`、`workflow_runs`、`workflow_runs_v2`、`runs`、`testset_workflow_bindings`、`testset_execution_configs`、`workflow_drafts`、`workflow_definitions_v2`、`workflows`、`schema_migrations`。这些表均无现行代码引用，旧数据不迁移、不提供兼容读取；初始化不得删除或重建 Target、模型管理、Excel 等非 Workflow 表。
+初始化按依赖顺序定点删除三代旧 Workflow/Run/评测流水线表：`workflow_node_runs`、`workflow_node_runs_v2`、`node_runs`、`artifacts`、`attempts`、`step_runs`、`case_runs`、`workflow_runs`、`workflow_runs_v2`、`runs`、`testset_workflow_bindings`、`testset_execution_configs`、`workflow_drafts`、`workflow_definitions_v2`、`workflows`、`schema_migrations`。这些表均无现行代码引用，旧数据不迁移、不提供兼容读取；初始化不得删除或重建模型管理、Excel 或其他非 Workflow 表。
 
 #### 2.3.8 Workflow 当前实施状态
 
@@ -411,7 +418,7 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
     └── {node_execution_id}.json
 ```
 
-同一个 Workflow 允许多个 Execution 并发运行，每次使用独立 ID、结构快照、Context 和 Node Execution 目录。Workflow 管理画布为了防止重复点击，在当前手动 Execution 结束前禁用运行按钮；未来批量调度模块可以并发创建同一 Workflow 的多个 Execution。
+同一个 Workflow 允许多个 Execution 并发运行，每次使用独立 ID、结构快照、Context 和 Node Execution 目录。Workflow 管理画布为了防止重复点击，在当前手动 Execution 结束前禁用运行按钮；Batch 调度器可以并发创建同一 Workflow 的多个 Execution。
 
 #### workflow.json 完整结构
 
@@ -449,7 +456,7 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 | --- | --- | --- |
 | `id` | UUIDv4 | Workflow Execution ID；模型自身不重复保存 `workflow_execution_id`。 |
 | `workflow_id` | UUIDv4 | 启动时所引用的 Workflow Structural Model ID。 |
-| `trigger` | object | 当前 Workflow 管理只保存 `{"type":"MANUAL"}`；未来 Batch trigger 由批量模块扩展。 |
+| `trigger` | object | 手工运行保存 `{"type":"MANUAL"}`；Batch 保存 `type / batch_execution_id / case_run_id / case_id / row_number`。 |
 | `status` | `PENDING / RUNNING / SUCCESS / FAILED / INTERRUPTED` | Workflow 当前或最终状态。 |
 | `structural_snapshot` | object | 自包含的不可变 Workflow 快照，展开完整 Node 定义和坐标，不含数据库 created_at/updated_at。 |
 | `created_at` | UTC ISO-8601 毫秒时间 | JSON 被创建的时间。 |
@@ -508,19 +515,48 @@ Workflow JSON 不保存完整调度事件。每个已创建的 Node Execution �
 - 应用启动时扫描遗留 PENDING/RUNNING Execution，不自动续跑；Workflow 终结为 `FAILED + PROCESS_RESTARTED`，已启动但无终态的 Node Execution 终结为 `FAILED + RUNTIME_LOST`。
 - Workflow Execution 全部保留，界面最多展示最近 10 次。删除 Workflow 时原子移动对应 Workflow Execution 根目录到临时回收目录，数据库删除事务失败则恢复目录，事务成功后彻底删除回收目录。
 
-#### Workflow 管理与未来批量模块边界
+#### Workflow 管理与批量模块边界
 
 - 当前 Workflow 管理只负责开发和测试迭代：Workflow CRUD、画布编排、完整校验、单节点临时测试、手动运行完整 Workflow、查看真实结果和错误。
 - 一级 Workflow 列表业务字段只展示名称、说明、更新时间。
 - 画布保留最近 10 次 Workflow Execution 历史，并增加独立“执行记录”按钮；按钮固定打开当前 Workflow 的 Execution 根目录 `run_storage/workflow_executions/{workflow_id}/`，不自动跳入最近一次或选中的单次 Execution 目录。
 - 新建 Workflow 和打开已有 Workflow 时，画布先使用标准 Fit View 完整适配当前全部节点，再以画布中心为锚点把 zoom 精确乘以 `0.67`；该规则只改变初始视口，不缩小节点尺寸、文字、Inspector 或页面容器。用户之后点击 Fit View、缩放或平移仍使用标准交互，不持续强制 67%。
-- Excel、期望结果、用例映射、Batch Run、批量并发和批量结果页属于后续独立模块，不进入 Workflow Structural Model。未来每条用例创建独立 Workflow Execution，批量模块只负责调度。
-- 数据库在未来批量阶段仍然只保存 Structural Model；Batch/Workflow/Node Execution 继续只保存本地 JSON。
+- Excel、用例映射、Batch Run、批量并发和批量结果页属于独立模块，不进入 Workflow Structural Model。每条用例创建独立 Workflow Execution，批量模块只负责行级调度。
+- 数据库仍然只保存 Structural Model；Batch/Workflow/Node Execution 只保存本地 JSON。
 
 #### END 调度与执行记录入口
 
 - END 不在 Workflow 启动时预先创建。只有全部直接上游 Node Execution 均为 SUCCESS、DAG 调度器实际调度到 END 时，才创建空 END Node Execution；该 Execution 从 PENDING 进入 RUNNING 后立即 SUCCESS，随后 Workflow 才进入 SUCCESS。
 - 画布最近 10 次 Workflow Execution 历史继续保留。“执行记录”按钮与历史面板并存，固定打开当前 Workflow 的 Execution 根目录，不根据当前历史选择改变目标目录。
+
+<a id="chapter-2-6"></a>
+
+### 2.6 Batch Execution Model
+
+Batch Run 把一个 Excel Sheet 的每条有效数据行调度为一次独立 Workflow Execution，持久化路径固定为：
+
+```text
+run_storage/batch_executions/{batch_execution_id}/
+├── batch.json
+├── input/
+│   ├── source.xlsx 或 source.xlsm
+│   └── snapshot.json
+└── cases/
+    └── {case_run_id}.json
+```
+
+- 创建时冻结源 Excel 字节、SHA-256、Sheet 表头和数据行、Workflow Structural Snapshot、字段映射及并发数；后续修改源文件或 Workflow 不影响既有 Batch。
+- 首行模式支持 `AUTO / HEADER / DATA`。AUTO 在首两列命中既有 Case ID/Question 表头别名时按表头读取，否则按数据读取；HEADER 要求有效表头区间非空且不重复，并裁掉末尾空表头列；DATA 从第一行开始读取并生成 `case_id / question / column_3...`。完全空白数据行忽略，`case_id_column` 的每行值必须非空且在当前 Sheet 内唯一。
+- 映射源是任意 Excel 表头，目标是 START 已声明的根变量或 object 字段路径。目标根必须存在、路径不得冲突；未映射 START 输入保留结构默认值。
+- `case_id` 只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context；只有用户显式配置映射时才成为 START 输入。
+- 创建阶段对每行映射结果执行完整 START 类型和 Workflow 快照校验，失败时不创建部分 Batch 目录。
+- Batch 状态为 `QUEUED / RUNNING / SUCCESS / COMPLETED_WITH_ERRORS / INTERRUPTED`；Case 状态为 `QUEUED / RUNNING / SUCCESS / FAILED / INTERRUPTED`。
+- Case 失败不阻断同 Batch 的其他 Case。Batch 全部成功时为 SUCCESS；存在失败且未被取消时为 COMPLETED_WITH_ERRORS。
+- 取消后停止新派发、全局中断活动 Workflow，未启动 Case 转为 INTERRUPTED。恢复默认只继续 QUEUED/INTERRUPTED Case；启用 `retry_failed` 后额外重跑 FAILED，SUCCESS 永不重复执行。
+- 服务重启不自动续跑：RUNNING Batch 和 Case 收敛为 `INTERRUPTED + PROCESS_RESTARTED`，等待用户手工恢复。
+- Workflow 被任一 Batch 引用时禁止删除，避免清理其 Workflow Execution 事实；用户删除相关终态 Batch 后才能删除 Workflow。RUNNING Batch 必须先取消并等待终态。
+- 单 Batch 的 Case 并发数范围为 1 到 32；进程级共享并发槽限制多个 Batch 的总活动 Case，当前默认上限为 16。
+- Batch、Case 和输入快照全部使用严格 JSON、同目录临时文件、flush、fsync 和原子替换；Windows 深层目录删除使用长路径语义。
 
 <a id="chapter-3"></a>
 

@@ -1,14 +1,6 @@
 """Active execution-domain exports."""
 
-from execution.targets import (
-    DEFAULT_DATABASE_PATH,
-    TargetConfiguration,
-    TargetHttpMethod,
-    TargetRecord,
-    TargetRepository,
-    TargetRepositoryError,
-    utc_now_iso,
-)
+from execution.init_db import DEFAULT_DATABASE_PATH
 from execution.model_providers import (
     ModelProviderConfiguration,
     ModelProviderProtocol,
@@ -71,6 +63,11 @@ from execution.workflow_execution import (
     WorkflowExecutionManager,
     WorkflowExecutionStore,
 )
+from execution.batch_execution_store import (
+    DEFAULT_BATCH_EXECUTION_ROOT,
+    BatchExecutionError,
+    BatchExecutionStore,
+)
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
@@ -126,10 +123,7 @@ __all__ = [
     "WorkflowExecutionError",
     "WorkflowExecutionManager",
     "WorkflowExecutionStore",
-    "TargetConfiguration",
-    "TargetHttpMethod",
-    "TargetRecord",
-    "TargetRepository",
-    "TargetRepositoryError",
-    "utc_now_iso",
+    "DEFAULT_BATCH_EXECUTION_ROOT",
+    "BatchExecutionError",
+    "BatchExecutionStore",
 ]

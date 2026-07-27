@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import re
 import time
-from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from execution import (
     ANTHROPIC_VERSION,
-    DEFAULT_DATABASE_PATH,
     ModelProviderConfiguration,
     ModelProviderProtocol,
     ModelProviderProxyMode,
@@ -32,13 +30,11 @@ from execution import (
     parse_openai_compatible_response,
     redact_sensitive_text,
 )
+from web.workflow_services import WorkflowServices
 
 
 router = APIRouter(prefix="/api/model-providers", tags=["model-providers"])
-DATABASE_PATH = DEFAULT_DATABASE_PATH
 REQUEST_TIMEOUT_SECONDS = 12
-_repository_instance: ModelProviderRepository | None = None
-_repository_path: Path | None = None
 
 
 class _StrictModel(BaseModel):
@@ -156,17 +152,22 @@ class ProviderListResponse(_StrictModel):
     providers: list[ModelProviderSummary]
 
 
-def _get_repository() -> ModelProviderRepository:
-    global _repository_instance, _repository_path
-    path = Path(DATABASE_PATH).resolve()
-    if _repository_instance is None or _repository_path != path:
-        _repository_instance = ModelProviderRepository(path)
-        _repository_path = path
-    return _repository_instance
+def get_model_repository(request: Request) -> ModelProviderRepository:
+    services: WorkflowServices = request.app.state.workflow_services
+    return services.model_repository
 
 
-def _get_provider_or_404(provider_id: str) -> ModelProviderRecord:
-    provider = _get_repository().get(provider_id)
+ModelRepositoryDependency = Annotated[
+    ModelProviderRepository,
+    Depends(get_model_repository),
+]
+
+
+def _get_provider_or_404(
+    provider_id: str,
+    repository: ModelProviderRepository,
+) -> ModelProviderRecord:
+    provider = repository.get(provider_id)
     if provider is None:
         raise HTTPException(404, f"模型供应商不存在: {provider_id}")
     return provider
@@ -217,16 +218,19 @@ def _protocol_headers(protocol: str, api_key: str) -> dict[str, str]:
 
 
 @router.get("", response_model=ProviderListResponse)
-def list_providers() -> ProviderListResponse:
+def list_providers(repository: ModelRepositoryDependency) -> ProviderListResponse:
     return ProviderListResponse(
-        providers=[ModelProviderSummary.from_record(item) for item in _get_repository().list()]
+        providers=[ModelProviderSummary.from_record(item) for item in repository.list()]
     )
 
 
 @router.post("", response_model=ProviderEnvelope)
-def create_provider(body: ModelProviderConfiguration) -> ProviderEnvelope:
+def create_provider(
+    body: ModelProviderConfiguration,
+    repository: ModelRepositoryDependency,
+) -> ProviderEnvelope:
     try:
-        provider = _get_repository().create(
+        provider = repository.create(
             ModelProviderRecord(**body.model_dump(mode="json"))
         )
     except ModelProviderRepositoryError as exc:
@@ -392,30 +396,38 @@ async def test_model_availability(body: ModelAvailabilityRequest) -> dict[str, A
 
 
 @router.get("/{provider_id}", response_model=ProviderEnvelope)
-def get_provider(provider_id: str) -> ProviderEnvelope:
-    return ProviderEnvelope(provider=_get_provider_or_404(provider_id))
+def get_provider(
+    provider_id: str,
+    repository: ModelRepositoryDependency,
+) -> ProviderEnvelope:
+    return ProviderEnvelope(provider=_get_provider_or_404(provider_id, repository))
 
 
 @router.put("/{provider_id}", response_model=ProviderEnvelope)
 def update_provider(
-    provider_id: str, body: ModelProviderConfiguration
+    provider_id: str,
+    body: ModelProviderConfiguration,
+    repository: ModelRepositoryDependency,
 ) -> ProviderEnvelope:
-    current = _get_provider_or_404(provider_id)
+    current = _get_provider_or_404(provider_id, repository)
     record = ModelProviderRecord(
         id=current.id,
         created_at=current.created_at,
         **body.model_dump(mode="json"),
     )
     try:
-        saved = _get_repository().update(record)
+        saved = repository.update(record)
     except ModelProviderRepositoryError as exc:
         raise HTTPException(400, str(exc)) from exc
     return ProviderEnvelope(provider=saved)
 
 
 @router.delete("/{provider_id}", response_model=ProviderSummaryEnvelope)
-def delete_provider(provider_id: str) -> ProviderSummaryEnvelope:
-    provider = _get_provider_or_404(provider_id)
-    if not _get_repository().delete(provider_id):
+def delete_provider(
+    provider_id: str,
+    repository: ModelRepositoryDependency,
+) -> ProviderSummaryEnvelope:
+    provider = _get_provider_or_404(provider_id, repository)
+    if not repository.delete(provider_id):
         raise HTTPException(404, f"模型供应商不存在: {provider_id}")
     return ProviderSummaryEnvelope(provider=ModelProviderSummary.from_record(provider))

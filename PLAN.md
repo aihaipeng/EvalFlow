@@ -1,5 +1,174 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.33 Excel Batch Run 调度（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：当前 Excel 测试集与 Workflow Execution 分离，用户只能手工运行固定 START 值，无法完成企业 Agent 的批量用例验证闭环。
+- Who / Where：本机“运行调度”页面中的测试人员，选择 Excel、Sheet 和已保存 Workflow，预览字段映射后创建、启动、取消、恢复和追溯 Run。
+- What / Priority：P0 任意表头到 START 根变量/object 字段映射；每行独立 Workflow Execution；Case 有界并发、失败隔离、取消、手工恢复、输入/Workflow 冻结与 JSON 追溯。定时任务、优先级和结果 Excel 导出不进入本阶段。
+- How to Measure：N 行有效数据严格产生 N 个 Case；Context 不串行；并发不越界；源 Excel/Workflow 修改不影响快照；失败不阻断同批其他 Case；取消和重启可收敛；成功 Case 恢复时不重跑；浏览器真实完成 Excel -> Batch -> Workflow -> Context。
+
+### 子任务与独立验收
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.33.1 | 通用 Sheet Reader | 首行表头、JSON 单元格、Excel 行号 / 严格快照 | 类型、空行、重复/空表头、Sheet 错误 | 无 | completed |
+| 13.33.2 | Batch Workflow 入口 | 冻结 Structural Snapshot、行级 START 值 / BATCH trigger | 快照不变、类型错误、Context 隔离、手工回归 | 13.33.1 | completed |
+| 13.33.3 | Batch Store | Batch/Case/Input JSON / 原子目录发布、源文件副本、重启收敛 | 原子写、长路径删除、PROCESS_RESTARTED | 13.33.2 | completed |
+| 13.33.4 | Scheduler | QUEUED Case、并发数 / 独立 Workflow Execution | 失败隔离、全局槽、取消、选择性恢复 | 13.33.3 | completed |
+| 13.33.5 | API 与生命周期 | Batch CRUD/启动/取消/恢复/分页 / App-scoped Scheduler | API、路径安全、关闭顺序、Workflow 引用保护 | 13.33.4 | completed |
+| 13.33.6 | 运行调度前端 | 创建、预览、映射、列表、详情 / 桌面可操作流程 | JS、前端契约、真实浏览器 E2E、无页面错误 | 13.33.5 | completed |
+| 13.33.7 | 完整回归与交付 | 当前生产代码与文档 / 可发布结果 | pytest、compileall、npm build、diff、完整 E2E | 13.33.1-13.33.6 | completed |
+
+### 当前验证记录
+
+- Excel 与固定读取器专项 `6 passed`；Workflow 执行专项 `34 passed`。
+- Batch Store/Scheduler 真实 Script 联调覆盖成功、失败隔离、重跑跳过成功和取消停止新派发；API/Workflow/Web 生命周期组合通过。
+- 浏览器在隔离数据库中创建 2 行 Run，`case_id` 默认不注入，`question/team -> input.*`；执行结果 `2/2 SUCCESS`，Case 最终 Context 包含 `answer: HELLO`，本应用控制台 error 为 0；临时服务、数据库和 Excel 已清理。
+- 浏览器运行环境未应用请求的移动视口覆盖；本项目产品边界为桌面浏览器，响应式 CSS 只做静态回归，不宣称移动端 E2E 已通过。
+- 最终受影响回归 `107 passed`；全量 pytest `289 passed, 4 skipped, 1 warning`，4 项为无真实密钥的既有 live 测试，warning 为 Starlette TestClient 弃用提示。`compileall`、`npm run build`、JavaScript 语法和 `git diff --check` 全部通过。
+- 2026-07-28 Case ID 可用性修复：创建弹窗打开后自动读取 Sheet/表头并填充 Case ID，测试集、Sheet、Workflow、首行模式或 Case ID 变化会刷新映射；支持 AUTO/HEADER/DATA 和无表头旧测试集。真实 `testcases (3).xlsx` 自动识别为 10 行 5 列 DATA，Case ID 可切换；长 JSON 样例下弹窗限制在 720px 视口内且 footer 可见。专项 `39 passed`，全量 `292 passed, 4 skipped, 1 warning`，compileall/build/diff 通过。
+
+## T13.32 后端高内聚低耦合治理（实施中，2026-07-27）
+
+### 业务背景与目标
+
+- Why：当前后端虽无循环 import 且全量测试通过，但 Excel/config 直接覆盖写存在并发丢失风险，Model Provider 路由拥有应用生命周期外的 Repository，Execution 域反向依赖 Web，Node Executor 再次聚合多种协议，Workflow 删除事务和私有 helper 跨模块泄漏仍会放大后续修改范围。
+- Who / Where：在本机并发上传/编辑测试集、管理模型供应商、运行或删除 Workflow 的用户，以及继续扩展节点类型、存储和执行协议的后端开发者。
+- What / Priority：P0 先修复本地文件一致性和 App 数据库隔离；P1 调整 Runtime、Node Runner、应用服务和 codec 依赖方向。所有改造只移动职责和注入依赖，不改变 API 路径、请求响应、Structural/Execution Model、JSON/YAML 格式、状态机、重试、取消或日志事实。
+- How to Measure：配置和元数据并发写无损且文件始终可解析；两个 App 的 Model Provider CRUD 完全隔离并与各自 Workflow 共用 Repository；`execution -> web` import 为零；Node Executor 不再包含 SCRIPT/LLM/HTTP 具体协议实现；Workflow 删除跨资源补偿由应用服务拥有；生产模块不再跨路由/Repository 导入私有 helper；专项、全量、构建和 E2E 通过。
+
+### 子任务与独立验收
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.32.1 | 原子本地文件 Repository | config.yaml、.sets_meta.json / 锁内 read-modify-write、temp+fsync+replace | 并发更新、故障后可解析、上传/配置 API | 无 | completed |
+| 13.32.2 | Model Provider 生命周期 DI | App database_path / App-scoped Repository dependency | 双 App 隔离、Provider CRUD、Workflow 同实例 | 13.32.1 | completed |
+| 13.32.3 | Runtime 依赖下沉 | Worker stream/interrupt / execution.runtime 公共实现、Web 兼容导出 | import 图、取消竞争、Worker 专项 | 13.32.2 | completed |
+| 13.32.4 | Node Runner 拆分 | Node 类型与共享生命周期 / Script、LLM、HTTP Runner registry | 单节点、串并行、协议、重试和错误矩阵 | 13.32.3 | completed |
+| 13.32.5 | Workflow 应用服务 | 删除/更新跨资源流程 / 原子补偿与领域错误 | DB/目录失败注入、活动执行、API 映射 | 13.32.4 | completed |
+| 13.32.6 | 公共 codec/config 边界 | Node definition、Local config / 无私有跨模块 import | AST 依赖守卫、Schema 往返 | 13.32.1、13.32.5 | completed |
+| 13.32.7 | 完整回归与文档 | 当前后端、前端 bundle、真实本地数据库 | pytest、compileall、build、diff、E2E、integrity | 13.32.1-13.32.6 | in_progress |
+
+### 实施原则
+
+- 依赖方向固定为 `web routes -> application services -> execution/storage domain -> runtime ports`；Execution 和 storage 不得导入 Web。
+- Repository 拥有持久化格式、锁和原子性；路由不得直接执行跨文件 read-modify-write，也不得持有可变 Repository 单例。
+- Node Executor 只负责通用生命周期、Context commit 和类型分派；具体 Node Runner 只依赖自身协议所需端口。
+- 重构期间保留必要的旧公开 import 兼容层，但生产代码必须切换到新所有者；兼容层不得保存第二份状态。
+
+### 当前验证记录
+
+- 13.32.1：新增按 resolved path 共享锁的 `LocalConfigRepository / ExcelSetMetaRepository` 和同盘原子文本写入；生产路由的配置及元数据更新均在锁内完成 read-modify-write。32 路配置更新、32 路元数据更新和 replace 故障保留旧文件通过；配置/测试集专项 `14 passed, 1 warning`。
+- 13.32.2：删除模型路由 `_repository_instance / _repository_path / DATABASE_PATH`，CRUD 通过 FastAPI Dependency 使用当前 App 的 `WorkflowServices.model_repository`。双 App Provider 隔离及模型/Web/Workflow API 专项 `64 passed, 1 warning`。
+- 13.32.3：真实 `tool_runtime/tool_worker` 下沉至 `execution`，Web 只保留无状态兼容导出，子进程入口改为 `execution.tool_worker`；`execution -> web` import 扫描为零，Worker/取消/Execution 专项 `50 passed, 1 warning`。
+- 13.32.4：`WorkflowNodeExecutor` 从 935 行收敛为 125 行注册表协调器；共享生命周期及 SCRIPT/LLM/HTTP Runner 分别独立为 187/160/292/240 行模块。执行、协议、重试、取消和 API 专项 `75 passed, 1 warning`。
+- 13.32.5：新增 `WorkflowApplicationService`，接管完整更新的节点测试清理和删除时的 Execution 目录补偿事务；路由仅处理 DTO 与 HTTP 错误映射。Workflow API/Web/Execution 专项 `69 passed, 1 warning`。
+- 13.32.6：新增公开 Node codec、Structural 时间工具和 Local Config Service，删除跨路由/Repository 私有 helper import及 NodeTestManager 无效 Repository 依赖；首轮发现并修复 Node JSON 回读缺失标准库 import，修复后边界/Schema/配置/执行专项 `109 passed, 1 warning`。
+
+## T13.31 SQLite 路径与初始化锁统一（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：Model Provider、Node 和 Workflow Structural Repository 共用同一 SQLite 文件，却曾分别定义默认路径和初始化锁；`model_providers.py` 还曾通过已删除的 `targets.py` 取得路径，造成无业务关系模块间的隐式依赖，并让并发首次建表缺少同库级协调。
+- Who / Where：本机服务启动、首次打开模型或 Workflow 页面，以及测试或未来迁移中多个 Repository 同时访问一个新数据库文件的场景。
+- What / Priority：P0 数据初始化正确性。`execution/init_db.py` 统一拥有默认数据库路径、按 resolved path 共享的可重入初始化锁和 SQLite 通用 PRAGMA；三个现存 Repository 只拥有各自 Schema，不再通过其他业务 Repository 导入数据库常量。保留 `sqlite_settings.py` 作为旧连接设置导入的兼容层。
+- How to Measure：三个 Repository 对同一路径取得同一个锁；并发首次初始化无死锁和 `database is locked`，五张表完整；Model Provider 源码不导入已删除 Target 模块；WAL、synchronous、foreign key、迁移、CRUD、全量测试和静态检查通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.31.1 | 公共 SQLite 基础设施 | 路径、连接、锁 / init_db | 锁身份与 PRAGMA 专项 | 无 | completed |
+| 13.31.2 | Repository 解耦 | 三个 Repository / 无业务模块路径导入 | AST 与源码扫描 | 13.31.1 | completed |
+| 13.31.3 | 并发首次初始化 | 同库三线程 / 五表完整、读取正常 | Barrier 并发集成测试 | 13.31.1-13.31.2 | completed |
+| 13.31.4 | 完整回归与文档 | Schema、迁移、CRUD、规范 | Repository 专项、全量、compileall、diff check | 13.31.1-13.31.3 | completed |
+
+### 验证记录
+
+- Model Provider、Node Structural 和 Workflow Structural Repository 均从 `execution.init_db` 取得 `DEFAULT_DATABASE_PATH`、`database_initialize_lock_for`、`initialize_sqlite_pragmas` 和 `configure_sqlite_connection`；原模块级 `_INITIALIZE_LOCKS` 已删除，`model_providers.py -> targets.py` 导入为零，Target 业务模块保持删除状态。
+- 三 Repository 同库 Barrier 并发初始化通过，共享同一个 `threading.RLock`；Workflow 初始化嵌套 Node 初始化可重入，最终 `model_providers / node_structural_models / workflow_structural_models / workflow_node_bindings / workflow_edges` 五表完整。
+- SQLite 基础设施、三个 Repository 的 Schema、迁移、CRUD 和事务专项 `82 passed, 1 warning`。warning 为既有 Starlette/httpx 弃用提示。
+- Target 删除后的当前工作区全量 `264 passed, 4 skipped, 1 warning`；真实数据库 `integrity_check=ok`、`foreign_key_check=[]`、`journal_mode=wal`。Python compileall、`npm run build`、生产 bundle 语法和 `git diff --check` 均通过；4 项 skip 为未配置 live 模型环境。
+
+## T13.30 Workflow Execution 按职责拆分（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：原 `workflow_execution.py` 超过 1700 行，同时承担原子 JSON 存储、取消控制、DAG 调度、五类节点执行和单节点测试/SSE，会放大修改冲突并让局部测试依赖错误的内部所有者。
+- Who / Where：维护 Workflow 执行协议、节点适配器、取消恢复和运行日志的开发者；用户侧涉及完整 Workflow 与单节点测试的全部运行入口。
+- What / Priority：P1 可维护性、P0 行为兼容。按依赖方向拆为 Store、Control、Node Executor、Node Test/SSE 和 DAG Scheduler；`execution.workflow_execution` 继续重导出既有公共类和常量，不修改 API、Structural/Execution Model、JSON 路径、状态机或运行语义。
+- How to Measure：原文件降至 400 行以内；新模块单向依赖且无循环导入；存储恢复、单节点、SCRIPT/LLM/HTTP、重试、取消、串行和并行执行专项通过；全量、编译、构建与 diff 检查通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.30.1 | Store 与公共事实 | JSON 路径、时间和错误 / 原子文件存储模块 | 存储/恢复/Windows 重试专项 | 无 | completed |
+| 13.30.2 | 节点执行组合 | 五类节点与 Worker / 独立 WorkflowNodeExecutor | 节点、重试、串并行专项 | 13.30.1 | completed |
+| 13.30.3 | 临时测试与取消 | Node Test、SSE、Worker ID / 独立会话和控制模块 | Node Test、关闭竞争专项 | 13.30.2 | completed |
+| 13.30.4 | 兼容与完整回归 | 旧 import、API、文档 / 行为不变 | pytest、compileall、build、diff check | 13.30.1-13.30.3 | completed |
+
+### 验证记录
+
+- `workflow_execution.py` 从 `1727` 行降至 `312` 行，仅保留 DAG 启动、拓扑调度、Context 原子提交、全局中断和兼容重导出。
+- 新增 `workflow_execution_store.py`（Execution JSON 与公共事实）、`workflow_execution_control.py`（取消信号与 Worker 集合）、`workflow_node_executor.py`（五类节点执行）、`workflow_node_tests.py`（临时测试会话与 SSE）。DAG 和 Node Test 组合同一个 Node Executor，不再由 Node Test 调用 Manager 私有方法。
+- Store/恢复专项 `3 passed`；节点与 DAG 专项 `26 passed`；完整 Workflow Execution 专项 `31 passed`。
+- 首轮全量回归发现 Node Executor 漏导入标准库 `json`，LLM 非法高级参数在 Node Execution 创建前触发 NameError；补齐依赖后该顶层草稿约束与执行器复跑 `33 passed`。单节点临时测试、串行 Context、同轮并行和 HTTP Request Options 参数传递 E2E 矩阵 `6 passed`。
+- 最终全量 `291 passed, 4 skipped, 1 warning`；Python compileall、公共兼容导入、`npm run build`、生产 bundle 语法和 `git diff --check` 均通过。4 项 skip 为未配置 live 模型环境，warning 为既有 Starlette/httpx 弃用提示。
+
+## T13.29 Web 同步 I/O 并发边界（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：FastAPI 的 `async def` 处理器若直接执行 sqlite3、openpyxl 或文件系统同步 I/O，会阻塞事件循环；但把真实异步 HTTP 调用机械改为同步同样会降低并发能力，因此必须按实际 I/O 类型划分路由边界。
+- Who / Where：本机服务中上传 Excel 测试集的用户，以及同时访问首页、模型连接测试和其他 API 的请求。
+- What / Priority：P0 服务并发正确性。审计全部 `web/routes_*.py` 后确认 SQLite 和普通文件路由已是同步 `def`；将唯一混用同步阻塞链路的 Excel 上传改为同步处理器并通过 `UploadFile.file` 读取。三个使用 httpx/模型网关异步调用的模型连接接口保留 `async def`；不迁移当前数据库技术栈。
+- How to Measure：慢 Excel 解析期间异步首页仍能在 300ms 内响应；路由 AST 扫描只允许三个已审计的真实异步网络接口；上传、配置、Web 专项、全量测试、Python 编译、前端构建和 diff 检查通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.29.1 | 全路由 I/O 审计 | 路由声明、Repository、文件和 HTTP 调用 / 分类清单 | AST 与源码核对 | 无 | completed |
+| 13.29.2 | Excel 上传线程池化 | multipart UploadFile / 同步读取、解析、替换和配置保存 | 上传集成测试 | 13.29.1 | completed |
+| 13.29.3 | 并发与声明守卫 | 慢解析、全部 routes 文件 / 事件循环可响应且异步路由受控 | TestClient 并发测试、AST 测试 | 13.29.2 | completed |
+| 13.29.4 | 完整回归与文档 | 后端、前端和规范 | pytest、compileall、build、diff check | 13.29.1-13.29.3 | completed |
+
+### 验证记录
+
+- 路由审计确认：同步 SQLite Repository、YAML/JSON/Path 和普通文件路由均使用 `def`；静态 `FileResponse` 的文件状态与发送由 Starlette 异步响应实现处理；模型供应商延迟、模型列表和模型可用性三个接口执行真实异步网络 I/O。
+- `/api/excel/upload` 已由 `async def + await file.read()` 改为 `def + file.file.read()`，因此读取、临时文件写入、openpyxl 解析、原子替换和 YAML 更新作为一个同步链路在线程池执行。
+- 上传/Web 聚焦回归 `11 passed, 1 warning`；慢解析并发用例和异步路由声明守卫均通过。warning 为既有 Starlette/httpx 弃用提示。
+- 最终扫描共 `40` 个 API 路由，其中 `37` 个同步、`3` 个真实异步网络路由；全量 `283 passed, 4 skipped, 1 warning`。Python compileall、`npm run build`、生产 bundle 语法和 `git diff --check` 均通过；4 项 skip 为未配置 live 模型环境。
+
+## T13.28 Workflow 路由资源生命周期与依赖注入（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：Workflow 路由使用模块级可变单例和按路径懒加载，资源创建不属于 FastAPI 应用生命周期，首次并发可能重复创建 Manager，reload/关闭也没有统一中断和等待活动线程的入口，测试必须修改模块状态才能隔离。
+- Who / Where：本机单进程 Uvicorn 中的 Workflow CRUD、完整执行和单节点测试请求，以及创建隔离 FastAPI App 的自动化测试。
+- What / Priority：P0 生命周期正确性。使用 FastAPI 原生 `lifespan + Depends`，启动时创建应用级 `WorkflowServices`，关闭时拒绝新任务、中断并等待活动线程；删除 `routes_workflows.py` 中 Repository/Manager/路径键全局缓存。明确 lifespan 只解决单进程资源所有权，当前仍不支持多 worker。
+- How to Measure：32 次并发依赖解析返回同一 App 资源，两个 App 资源和数据库完全隔离；活动 Workflow 与节点测试在 shutdown 后无存活线程且持久化 Workflow 为 INTERRUPTED；所有 Workflow API 通过注入资源运行；模块单例扫描为空，专项、全量和真实服务 E2E 通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.28.1 | Manager 关闭协议 | 活动 controller/thread / 中断、join、关闭态 | 执行层专项 | 无 | completed |
+| 13.28.2 | 应用资源容器 | 数据库与 Execution 路径 / WorkflowServices | lifespan 单测 | 13.28.1 | completed |
+| 13.28.3 | 路由依赖注入 | Request.app.state / Repository、Manager | API 专项、全局扫描 | 13.28.2 | completed |
+| 13.28.4 | 测试隔离与并发 | 两个 App、32 次并发解析 / 独立且稳定资源 | Web/执行测试 | 13.28.3 | completed |
+| 13.28.5 | 集成回归 | CRUD、执行、关闭、构建与文档 | 全量、真实 8010 E2E、diff check | 13.28.1-13.28.4 | completed |
+
+### 验证记录
+
+- 执行层关闭与竞争专项 `8 passed`；Workflow API/Web 专项 `35 passed`。32 次并发依赖解析稳定返回同一资源，双 App 相互隔离；活动 30 秒 SCRIPT Workflow 与 Node Test 均由 shutdown 中断并在线程截止时间内收敛，start/shutdown 竞争不暴露未启动线程；一个 Manager 关闭异常时仍会继续关闭另一个 Manager。
+- `routes_workflows.py` 已无 `_repository_instance / _manager_instance / _node_test_manager_instance`、路径键和 `_get_*` 懒加载函数；全部 15 个 Workflow 路由通过 `WorkflowServicesDependency` 读取当前 App 资源。测试夹具改用 `create_app(database_path=..., execution_root=...)` 和 TestClient lifespan 上下文。
+- 全量 `281 passed, 4 skipped, 1 warning`；`npm run build`、Python compileall、bundle 语法和 `git diff --check` 通过。warning 为既有 Starlette/httpx 弃用提示，4 项 skip 为未配置 live 模型环境。
+- 真实 `8010` E2E 创建临时 START -> SCRIPT -> END，最终 Workflow/三个 Node 均 SUCCESS，Context 为 `{value: 7, result: 42}`；删除后 Workflow 集合恢复原值。首次运行撞上代码修改后的 Uvicorn reload，按既有规则得到 `PROCESS_RESTARTED`，稳定后原链路重跑成功，临时数据两次均已清理。
+
 ## T13.27 Dify 式节点拖动对齐参考线（已完成，2026-07-27）
 
 ### 业务背景与目标

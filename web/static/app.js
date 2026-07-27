@@ -317,12 +317,12 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     if (view === 'sets') {
         setsPage = 1;
         viewSets();
-    } else if (view === 'targets') {
-        viewTargets();
     } else if (view === 'models') {
         viewModelProviders();
     } else if (view === 'workflows') {
         viewWorkflows();
+    } else if (view === 'batch-runs') {
+        viewBatchRuns();
     } else if (view === 'faq') {
         viewFaq();
     }

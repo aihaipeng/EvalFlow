@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import Enum
@@ -15,11 +14,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from execution.targets import DEFAULT_DATABASE_PATH
-
-
-_INITIALIZE_LOCKS_GUARD = threading.Lock()
-_INITIALIZE_LOCKS: dict[Path, threading.Lock] = {}
+from execution.init_db import (
+    DEFAULT_DATABASE_PATH,
+    configure_sqlite_connection,
+    database_initialize_lock_for,
+    initialize_sqlite_pragmas,
+)
 
 
 def _utc_now_iso() -> str:
@@ -232,15 +232,10 @@ def _validate_http_url(value: str, label: str) -> str:
     return value
 
 
-def _initialize_lock_for(database_path: Path) -> threading.Lock:
-    with _INITIALIZE_LOCKS_GUARD:
-        return _INITIALIZE_LOCKS.setdefault(database_path, threading.Lock())
-
-
 class ModelProviderRepository:
     def __init__(self, database_path: str | Path = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path).resolve()
-        self._initialize_lock = _initialize_lock_for(self.database_path)
+        self._initialize_lock = database_initialize_lock_for(self.database_path)
         self._initialized = False
 
     def initialize(self) -> None:
@@ -251,7 +246,7 @@ class ModelProviderRepository:
                 return
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
             with self._connect(initialize=False) as connection:
-                connection.execute("PRAGMA journal_mode = WAL")
+                initialize_sqlite_pragmas(connection)
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS model_providers (
@@ -397,6 +392,7 @@ class ModelProviderRepository:
             self.initialize()
         connection = sqlite3.connect(self.database_path, timeout=30)
         connection.row_factory = sqlite3.Row
+        configure_sqlite_connection(connection)
         try:
             yield connection
         finally:

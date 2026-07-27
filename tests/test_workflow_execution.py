@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
@@ -8,13 +9,19 @@ from uuid import uuid4
 import pytest
 
 import execution.workflow_execution as workflow_execution_module
+import execution.workflow_execution_control as workflow_execution_control_module
+import execution.workflow_execution_store as workflow_execution_store_module
+import execution.workflow_node_runner_base as workflow_node_runner_base_module
 
 from execution.model_providers import ModelProviderRecord, ModelProviderRepository
 from execution.node_structural_models import NODE_STRUCTURAL_ADAPTER
 from execution.workflow_execution import (
+    NodeTestManager,
+    WorkflowExecutionError,
     WorkflowExecutionManager,
     WorkflowExecutionStore,
 )
+from execution.workflow_node_executor import WorkflowNodeExecutor
 from execution.workflow_structural_models import (
     WorkflowStructuralModel,
     WorkflowStructuralRepository,
@@ -31,10 +38,20 @@ def wait_for_terminal(store, workflow_id, execution_id, timeout=8):
     raise AssertionError("Workflow Execution 未在测试时限内结束")
 
 
+def test_execution_runtime_is_split_by_responsibility():
+    scheduler_path = Path(workflow_execution_module.__file__)
+
+    assert len(scheduler_path.read_text(encoding="utf-8").splitlines()) <= 400
+    assert WorkflowExecutionStore.__module__ == "execution.workflow_execution_store"
+    assert WorkflowNodeExecutor.__module__ == "execution.workflow_node_executor"
+    assert NodeTestManager.__module__ == "execution.workflow_node_tests"
+    assert not hasattr(WorkflowExecutionManager, "_execute_script")
+
+
 def test_worker_registered_after_global_cancel_is_pre_cancelled(monkeypatch):
     interrupted_workers = []
     monkeypatch.setattr(
-        workflow_execution_module,
+        workflow_execution_control_module,
         "interrupt_tool_run",
         lambda worker_id: interrupted_workers.append(worker_id),
     )
@@ -44,6 +61,30 @@ def test_worker_registered_after_global_cancel_is_pre_cancelled(monkeypatch):
     controller.add_worker("late-worker")
 
     assert interrupted_workers == ["late-worker"]
+
+
+def test_workflow_manager_shutdown_rejects_new_executions(tmp_path):
+    repository = WorkflowStructuralRepository(tmp_path / "workflow.sqlite3")
+    manager, _store = make_manager(tmp_path, repository)
+
+    manager.shutdown()
+    manager.shutdown()
+
+    with pytest.raises(WorkflowExecutionError, match="Manager 已关闭"):
+        manager.start(str(uuid4()))
+
+
+def test_node_test_manager_shutdown_rejects_new_tests(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    manager = NodeTestManager(
+        ModelProviderRepository(database),
+    )
+
+    manager.shutdown()
+    manager.shutdown()
+
+    with pytest.raises(WorkflowExecutionError, match="Manager 已关闭"):
+        manager.start(str(uuid4()), make_node("SCRIPT"), {})
 
 
 def make_node(node_type, *, node_id=None, name=None, **overrides):
@@ -127,7 +168,10 @@ def local_execution_server():
         def do_POST(self):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length))
-            requests.append({"method": "POST", "path": self.path, "body": payload})
+            request = {"method": "POST", "path": self.path, "body": payload}
+            if self.headers.get("X-Template-Test") is not None:
+                request["template_header"] = self.headers["X-Template-Test"]
+            requests.append(request)
             if self.path.endswith("/messages"):
                 response = {
                     "id": "msg-1",
@@ -193,8 +237,131 @@ def test_script_workflow_persists_context_and_schedules_end_after_upstream_succe
     assert by_type["SCRIPT"]["inputs"] == {"question": "hello"}
     assert by_type["SCRIPT"]["outputs"] == {"answer": "HELLO"}
     assert by_type["SCRIPT"]["logs"]["attempts"][-1]["console"][0]["content"] == "HELLO\n"
-    assert by_type["END"]["inputs"] == by_type["END"]["outputs"] == {}
+    assert by_type["END"]["inputs"] == {"question": "hello", "answer": "HELLO"}
+    assert by_type["END"]["outputs"] == {}
+    assert finished["result"] == {}
     assert next(item for item in finished["nodes"] if item["node_id"] == end.id)["state"] == "FINISHED"
+
+
+def test_end_maps_final_context_to_workflow_result_without_committing_again(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node("START", inputs=[])
+    script = make_node(
+        "SCRIPT",
+        script="answer = {'text': '通过', 'score': 0.95}",
+        outputs=[{"name": "agent_answer", "type": "object", "source": "answer"}],
+    )
+    end = make_node(
+        "END",
+        outputs=[
+            {"name": "text", "type": "string", "source": "agent_answer.text"},
+            {"name": "score", "type": "number", "source": "agent_answer.score"},
+        ],
+    )
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+    end_execution = next(
+        item for item in store.get_nodes(workflow_id, started["id"]) if item["type"] == "END"
+    )
+
+    assert finished["status"] == "SUCCESS"
+    assert finished["result"] == {"text": "通过", "score": 0.95}
+    assert finished["context"]["final"] == {
+        "agent_answer": {"text": "通过", "score": 0.95}
+    }
+    assert len(finished["context"]["commits"]) == 1
+    assert end_execution["inputs"] == finished["context"]["final"]
+    assert end_execution["outputs"] == finished["result"]
+
+
+def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node(
+        "START",
+        inputs=[{"name": "input", "type": "object", "value": {"question": "default"}}],
+    )
+    script = make_node(
+        "SCRIPT",
+        script='result = context["input"]["question"].upper()',
+        outputs=[{"name": "answer", "type": "string", "source": "result"}],
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+    frozen = workflow_execution_module.snapshot_record(repository.get(workflow_id))
+    repository.update(
+        repository.get(workflow_id).workflow,
+        [
+            NODE_STRUCTURAL_ADAPTER.validate_python(
+                {
+                    **start.model_dump(mode="json"),
+                    "inputs": [
+                        {"name": "input", "type": "object", "value": {"question": "changed"}}
+                    ],
+                }
+            ),
+            script,
+            end,
+        ],
+    )
+
+    started = manager.start_batch(
+        frozen,
+        {"input": {"question": "batch case"}},
+        {
+            "type": "BATCH",
+            "batch_execution_id": str(uuid4()),
+            "case_run_id": str(uuid4()),
+            "case_id": "C-1",
+            "row_number": 2,
+        },
+    )
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+
+    assert finished["status"] == "SUCCESS"
+    assert finished["context"]["final"] == {
+        "input": {"question": "batch case"},
+        "answer": "BATCH CASE",
+    }
+    assert finished["trigger"]["type"] == "BATCH"
+    snapshot_start = next(
+        item["node"] for item in finished["structural_snapshot"]["nodes"]
+        if item["node"]["type"] == "START"
+    )
+    assert snapshot_start["inputs"][0]["value"] == {"question": "batch case"}
+
+
+def test_batch_execution_rejects_unknown_or_wrong_typed_start_inputs(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node(
+        "START", inputs=[{"name": "question", "type": "string", "value": "default"}]
+    )
+    script = make_node("SCRIPT")
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, _store = make_manager(tmp_path, repository)
+    frozen = workflow_execution_module.snapshot_record(repository.get(workflow_id))
+    trigger = {
+        "type": "BATCH",
+        "batch_execution_id": str(uuid4()),
+        "case_run_id": str(uuid4()),
+        "case_id": "C-1",
+        "row_number": 2,
+    }
+
+    with pytest.raises(WorkflowExecutionError, match="未在 START 中声明"):
+        manager.start_batch(frozen, {"missing": "value"}, trigger)
+    with pytest.raises(WorkflowExecutionError, match="value 与 type 不匹配"):
+        manager.start_batch(frozen, {"question": 123}, trigger)
 
 
 def test_missing_script_output_fails_fast_and_never_creates_end_execution(tmp_path):
@@ -436,7 +603,7 @@ def test_initial_delay_and_retry_interval_are_applied_once_and_timeout_is_conver
         return results.pop(0)
 
     monkeypatch.setattr(
-        workflow_execution_module.WorkflowExecutionManager,
+        workflow_node_runner_base_module.NodeRunnerBase,
         "_wait_interruptibly",
         staticmethod(record_wait),
     )
@@ -503,6 +670,101 @@ def test_global_cancel_interrupts_running_script_and_end_is_not_started(tmp_path
     assert finished["error"]["code"] == "USER_INTERRUPTED"
     assert next(item for item in node_documents if item["type"] == "SCRIPT")["status"] == "INTERRUPTED"
     assert all(item["type"] != "END" for item in node_documents)
+
+
+def test_workflow_manager_shutdown_interrupts_active_execution(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node("START")
+    script = make_node(
+        "SCRIPT",
+        script="import time\ntime.sleep(30)\nresult = 'late'",
+        outputs=[{"name": "result", "type": "string", "source": "result"}],
+        execution={
+            "timeout_seconds": 60,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0,
+            "delay_seconds": 0,
+        },
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database,
+        [start, script, end],
+        [(start, script), (script, end)],
+    )
+    manager, store = make_manager(tmp_path, repository)
+    started = manager.start(workflow_id)
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        current = store.get_workflow(workflow_id, started["id"])
+        script_entry = next(
+            item for item in current["nodes"] if item["node_id"] == script.id
+        )
+        if script_entry["state"] == "RUNNING":
+            break
+        time.sleep(0.02)
+    manager.shutdown(wait_seconds=8)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+
+    assert finished["status"] == "INTERRUPTED"
+    assert not manager.is_active(started["id"])
+
+
+def test_node_test_manager_shutdown_interrupts_active_test(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    manager = NodeTestManager(
+        ModelProviderRepository(database),
+    )
+    node = make_node(
+        "SCRIPT",
+        script="import time\ntime.sleep(30)\nresult = 'late'",
+        execution={
+            "timeout_seconds": 60,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0,
+            "delay_seconds": 0,
+        },
+    )
+    _envelope, created = manager.start(str(uuid4()), node, {})
+
+    assert created
+    manager.shutdown(wait_seconds=8)
+    assert manager._threads == {}
+    assert manager._active_by_node == {}
+
+
+def test_node_test_start_and_shutdown_do_not_expose_unstarted_thread(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "workflow.sqlite3"
+    manager = NodeTestManager(
+        ModelProviderRepository(database),
+    )
+    node = make_node("SCRIPT", script="result = 'done'")
+    entered_start = threading.Event()
+    release_start = threading.Event()
+    original_start = threading.Thread.start
+
+    def delayed_start(thread):
+        if thread.name.startswith("node-test-"):
+            entered_start.set()
+            assert release_start.wait(timeout=2)
+        return original_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", delayed_start)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        start_future = pool.submit(manager.start, str(uuid4()), node, {})
+        assert entered_start.wait(timeout=2)
+        shutdown_future = pool.submit(manager.shutdown, wait_seconds=2)
+        time.sleep(0.05)
+        assert not shutdown_future.done()
+        release_start.set()
+        _envelope, created = start_future.result(timeout=3)
+        shutdown_future.result(timeout=3)
+
+    assert created
+    assert manager._threads == {}
 
 
 def test_global_cancel_interrupts_initial_delay_before_first_attempt(tmp_path):
@@ -622,7 +884,7 @@ def test_store_atomic_write_retries_transient_windows_permission_error(tmp_path,
     workflow_id = str(uuid4())
     execution_id = str(uuid4())
     document = {"id": execution_id, "workflow_id": workflow_id, "status": "SUCCESS"}
-    original_replace = workflow_execution_module.os.replace
+    original_replace = workflow_execution_store_module.os.replace
     attempts = 0
 
     def transient_replace_error(source, target):
@@ -632,7 +894,11 @@ def test_store_atomic_write_retries_transient_windows_permission_error(tmp_path,
             raise PermissionError("workflow.json is temporarily locked")
         return original_replace(source, target)
 
-    monkeypatch.setattr(workflow_execution_module.os, "replace", transient_replace_error)
+    monkeypatch.setattr(
+        workflow_execution_store_module.os,
+        "replace",
+        transient_replace_error,
+    )
 
     store.create(document)
 
@@ -720,6 +986,92 @@ def test_http_node_sends_real_request_and_extracts_filtered_response(tmp_path, l
     assert http_execution["inputs"] == {"lookup_id": 3}
     assert http_execution["response"]["body"]["data"][1] == {"id": 3, "name": "three"}
     assert requests == [{"method": "GET", "path": "/items?wanted=3"}]
+
+
+def test_http_raw_json_template_safely_resolves_all_request_fields(
+    tmp_path, local_execution_server
+):
+    base_url, requests = local_execution_server
+    question = '中文 "quote" \\ path\nnext line'
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node(
+        "START",
+        inputs=[
+            {
+                "name": "input",
+                "type": "object",
+                "value": {
+                    "question": question,
+                    "path": "template",
+                    "query": "a b",
+                    "header": "template-header",
+                },
+            }
+        ],
+    )
+    http_node = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "HTTP",
+            "name": "HTTP JSON 模板",
+            "description": "",
+            "request": {
+                "method": "POST",
+                "url": base_url + "/${input.path}",
+                "follow_redirects": True,
+                "headers": [{"key": "X-Template-Test", "value": "${input.header}"}],
+                "params": [{"key": "q", "value": "${input.query}"}],
+                "body": {
+                    "type": "raw",
+                    "content": None,
+                    "template_text": '{"question": ${input.question}}',
+                },
+            },
+            "network": {
+                "proxy": {"mode": "DIRECT", "url": None, "username": None, "password": None},
+                "verify_ssl": True,
+            },
+            "response": {"mode": "AUTO", "success_statuses": ["200-299"]},
+            "execution": {
+                "timeout_seconds": 5,
+                "max_attempts": 0,
+                "retry_interval_seconds": 0,
+                "delay_seconds": 0,
+                "retry_non_idempotent": False,
+                "retry_statuses": [500],
+            },
+            "outputs": [],
+        }
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, http_node, end], [(start, http_node), (http_node, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+    http_execution = next(
+        item for item in store.get_nodes(workflow_id, started["id"]) if item["type"] == "HTTP"
+    )
+
+    assert finished["status"] == "SUCCESS"
+    assert http_execution["inputs"] == {
+        "input": {
+            "question": question,
+            "path": "template",
+            "query": "a b",
+            "header": "template-header",
+        }
+    }
+    assert requests == [
+        {
+            "method": "POST",
+            "path": "/template?q=a+b",
+            "body": {"question": question},
+            "template_header": "template-header",
+        }
+    ]
 
 
 @pytest.mark.parametrize(

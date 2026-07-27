@@ -35,6 +35,8 @@ def test_template_repository_and_migration_files_are_absent():
 
 
 def test_generic_workflow_execution_kernel_remains_available():
+    assert (ROOT / "execution" / "tool_runtime.py").is_file()
+    assert (ROOT / "execution" / "tool_worker.py").is_file()
     assert (ROOT / "web" / "tool_runtime.py").is_file()
     assert (ROOT / "web" / "tool_worker.py").is_file()
     assert (ROOT / "web" / "run_stream.py").is_file()

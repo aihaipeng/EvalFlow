@@ -1,17 +1,20 @@
 from pathlib import Path
 
-import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from web.files import PROJECT_ROOT, get_existing_input_path, get_input_path, project_relative, resolve_config_input_path
+from web.files import get_existing_input_path, project_relative, resolve_config_input_path
+from web.local_config_service import (
+    CONFIG_PATH,
+    DEFAULT_INPUT_PATH,
+    DEFAULT_SHEET_NAME,
+    input_path_for,
+    load_local_config,
+    save_local_config,
+    update_local_config,
+)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
-
-CONFIG_PATH = PROJECT_ROOT / "config.yaml"
-DEFAULT_INPUT_PATH = "inputs/testcases.xlsx"
-DEFAULT_SHEET_NAME = "Sheet1"
-
 
 class CurrentConfigRequest(BaseModel):
     """设置当前测试集和 sheet 的请求体。"""
@@ -27,56 +30,16 @@ class CurrentConfigResponse(BaseModel):
     sheet_name: str
 
 
-def _load_yaml() -> dict:
-    """读取 config.yaml 原始内容。
-
-    Returns:
-        解析后的配置字典。
-
-    Raises:
-        HTTPException: 配置文件不可读或格式错误。
-    """
-    if not CONFIG_PATH.is_file():
-        return {
-            "excel": {
-                "input_path": DEFAULT_INPUT_PATH,
-                "sheet_name": DEFAULT_SHEET_NAME,
-            }
-        }
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        raw = f.read()
-    config = yaml.safe_load(raw)
-    if not isinstance(config, dict):
-        raise HTTPException(500, "config.yaml 格式错误")
-    return config
-
-
-def _save_yaml(config: dict) -> None:
-    """将配置字典写回 config.yaml。
-
-    Args:
-        config: 完整配置字典。
-    """
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-
-
-def _get_input_path(filename: str) -> Path:
-    """解析输入文件的绝对路径。
-
-    Args:
-        filename: Excel 文件名。
-
-    Returns:
-        指向 ``inputs/{filename}`` 的绝对路径。
-    """
-    return get_input_path(filename)
+# Compatibility aliases for callers outside the production route modules.
+_load_yaml = load_local_config
+_save_yaml = save_local_config
+_get_input_path = input_path_for
 
 
 @router.get("/current", response_model=CurrentConfigResponse)
 def get_current_config() -> CurrentConfigResponse:
     """获取当前使用的测试集文件和 sheet 名。"""
-    config = _load_yaml()
+    config = load_local_config()
     excel = config.get("excel", {})
     input_path = excel.get("input_path", DEFAULT_INPUT_PATH)
     try:
@@ -111,8 +74,9 @@ def set_current_config(body: CurrentConfigRequest) -> dict:
     if body.sheet_name not in sheet_names:
         raise HTTPException(400, f"Sheet 不存在: {body.sheet_name}。可用: {', '.join(sheet_names)}")
 
-    config = _load_yaml()
-    config.setdefault("excel", {})["input_path"] = project_relative(input_path)
-    config["excel"]["sheet_name"] = body.sheet_name
-    _save_yaml(config)
+    def mutate(config: dict) -> None:
+        config.setdefault("excel", {})["input_path"] = project_relative(input_path)
+        config["excel"]["sheet_name"] = body.sheet_name
+
+    update_local_config(mutate)
     return {"ok": True}

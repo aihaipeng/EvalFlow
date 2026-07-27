@@ -21,10 +21,13 @@ REPLACEMENT_HTTP_ID = "650e8400-e29b-41d4-a716-446655440001"
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(routes_workflows, "DATABASE_PATH", tmp_path / "workflow-api.sqlite3")
-    monkeypatch.setattr(routes_workflows, "EXECUTION_ROOT", tmp_path / "executions")
-    return TestClient(create_app())
+def client(tmp_path):
+    application = create_app(
+        database_path=tmp_path / "workflow-api.sqlite3",
+        execution_root=tmp_path / "executions",
+    )
+    with TestClient(application) as test_client:
+        yield test_client
 
 
 def workflow_body(name=" 质量检测 "):
@@ -123,11 +126,11 @@ def test_workflow_delete_restores_execution_directory_when_database_delete_fails
 ):
     created = client.post("/api/workflows", json=workflow_body("删除回滚"))
     workflow_id = created.json()["workflow"]["workflow"]["id"]
-    manager = routes_workflows._get_manager()
+    manager = client.app.state.workflow_services.manager
     execution_root = manager.store.workflow_root(workflow_id, create=True)
     marker = execution_root / "marker.json"
     marker.write_text("{}", encoding="utf-8")
-    repository = routes_workflows._get_repository()
+    repository = client.app.state.workflow_services.repository
 
     def fail_delete(_workflow_id):
         raise WorkflowStructuralRepositoryError("模拟数据库删除失败")
@@ -145,7 +148,7 @@ def test_workflow_delete_restores_execution_directory_when_database_delete_fails
 def test_workflow_delete_finalizes_staged_execution_directory_after_database_commit(client):
     created = client.post("/api/workflows", json=workflow_body("删除提交"))
     workflow_id = created.json()["workflow"]["workflow"]["id"]
-    manager = routes_workflows._get_manager()
+    manager = client.app.state.workflow_services.manager
     execution_root = manager.store.workflow_root(workflow_id, create=True)
     (execution_root / "marker.json").write_text("{}", encoding="utf-8")
 
@@ -199,7 +202,9 @@ def test_workflow_api_replaces_business_node_with_new_identity_and_preserves_edg
     assert record["node_models"][1]["type"] == "HTTP"
     assert record["node_models"][1]["request"]["url"] == ""
     assert record["workflow"]["edges"] == replacement["edges"]
-    repository = NodeStructuralRepository(routes_workflows.DATABASE_PATH)
+    repository = NodeStructuralRepository(
+        client.app.state.workflow_services.database_path
+    )
     assert repository.get(SCRIPT_ID) is None
     assert repository.get(REPLACEMENT_HTTP_ID).node.type == "HTTP"
 
@@ -255,7 +260,7 @@ def test_invalid_workflow_update_is_rejected_before_node_test_cleanup(client, mo
     invalid["nodes"].pop()
     invalid["edges"].pop()
     cancelled = []
-    manager = routes_workflows._get_node_test_manager()
+    manager = client.app.state.workflow_services.node_test_manager
     monkeypatch.setattr(
         manager,
         "cancel_node",
@@ -322,7 +327,9 @@ def test_workflow_api_saves_unknown_llm_model_reference_for_runtime_validation(c
 
 
 def test_workflow_api_saves_llm_invalid_parameter_draft_but_run_fails_before_attempt(client):
-    provider = ModelProviderRepository(routes_workflows.DATABASE_PATH).create(
+    provider = ModelProviderRepository(
+        client.app.state.workflow_services.database_path
+    ).create(
         ModelProviderRecord(
             name="local",
             api_key="test-key",
@@ -537,7 +544,7 @@ def test_execution_directory_opens_fixed_workflow_root(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert opened[0].name == workflow_id
-    assert opened[0].parent == routes_workflows.EXECUTION_ROOT.resolve()
+    assert opened[0].parent == client.app.state.workflow_services.execution_root
 
 
 def _sse_events(response):
@@ -579,7 +586,9 @@ def test_node_test_uses_unsaved_draft_and_context_without_persisting_execution(c
     assert "node_execution_id" not in final
     assert "structural_snapshot" not in final
     assert client.get(f"/api/workflows/{workflow_id}/runs").json() == {"executions": []}
-    assert not (routes_workflows.EXECUTION_ROOT / workflow_id).exists()
+    assert not (
+        client.app.state.workflow_services.execution_root / workflow_id
+    ).exists()
     restored = client.get(f"/api/workflows/{workflow_id}").json()["workflow"]
     assert restored["node_models"][1]["script"] == "result = context['question']"
 
@@ -632,7 +641,9 @@ def test_node_test_reports_friendly_missing_configuration_without_execution_json
     assert final["error"]["details"]["suggestion"]
     assert node["name"] in final["error"]["message"]
     assert client.get(f"/api/workflows/{workflow_id}/runs").json() == {"executions": []}
-    assert not (routes_workflows.EXECUTION_ROOT / workflow_id).exists()
+    assert not (
+        client.app.state.workflow_services.execution_root / workflow_id
+    ).exists()
 
 
 def test_start_node_test_uses_empty_context_and_current_draft_inputs(client):

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from execution import ModelProviderRecord, ModelProviderRepository
 from web import routes_model_providers
-from web.app import app
+from web.app import app, create_app
 
 
 def _body(**overrides) -> dict:
@@ -27,12 +27,13 @@ def _body(**overrides) -> dict:
     return body
 
 
-def _patch_database(tmp_path, monkeypatch):
+def _isolated_app(tmp_path):
     database_path = tmp_path / "run_storage" / "agent_bench.sqlite3"
-    monkeypatch.setattr(routes_model_providers, "DATABASE_PATH", database_path)
-    monkeypatch.setattr(routes_model_providers, "_repository_instance", None)
-    monkeypatch.setattr(routes_model_providers, "_repository_path", None)
-    return database_path
+    application = create_app(
+        database_path=database_path,
+        execution_root=tmp_path / "workflow-executions",
+    )
+    return database_path, application
 
 
 def test_model_provider_repository_restart_round_trip(tmp_path):
@@ -159,39 +160,61 @@ def test_model_provider_repository_migrates_negative_ssl_setting(tmp_path):
     assert restored.verify_ssl is False
 
 
-def test_model_provider_api_crud_and_list_hides_api_key(tmp_path, monkeypatch):
-    database_path = _patch_database(tmp_path, monkeypatch)
-    client = TestClient(app)
+def test_model_provider_api_crud_and_list_hides_api_key(tmp_path):
+    database_path, application = _isolated_app(tmp_path)
+    with TestClient(application) as client:
+        created_response = client.post("/api/model-providers", json=_body())
+        assert created_response.status_code == 200
+        created = created_response.json()["provider"]
+        assert created["api_key"] == "local-secret"
+        assert created["verify_ssl"] is True
 
-    created_response = client.post("/api/model-providers", json=_body())
-    assert created_response.status_code == 200
-    created = created_response.json()["provider"]
-    assert created["api_key"] == "local-secret"
-    assert created["verify_ssl"] is True
+        listed = client.get("/api/model-providers").json()["providers"]
+        assert len(listed) == 1
+        assert "api_key" not in listed[0]
+        assert "proxy_url" not in listed[0]
+        assert "model_configs" not in listed[0]
+        assert "verify_ssl" not in listed[0]
+        assert listed[0]["proxy_mode"] == "SYSTEM"
+        assert client.get(f"/api/model-providers/{created['id']}").json()["provider"] == created
 
-    listed = client.get("/api/model-providers").json()["providers"]
-    assert len(listed) == 1
-    assert "api_key" not in listed[0]
-    assert "proxy_url" not in listed[0]
-    assert "model_configs" not in listed[0]
-    assert "verify_ssl" not in listed[0]
-    assert listed[0]["proxy_mode"] == "SYSTEM"
-    assert client.get(f"/api/model-providers/{created['id']}").json()["provider"] == created
+        updated_response = client.put(
+            f"/api/model-providers/{created['id']}",
+            json=_body(name="  企业模型网关  ", api_key="changed-secret", models=["m-1"]),
+        )
+        assert updated_response.status_code == 200
+        updated = updated_response.json()["provider"]
+        assert updated["name"] == "企业模型网关"
+        assert updated["api_key"] == "changed-secret"
+        assert ModelProviderRepository(database_path).get(created["id"]).api_key == "changed-secret"
 
-    updated_response = client.put(
-        f"/api/model-providers/{created['id']}",
-        json=_body(name="  企业模型网关  ", api_key="changed-secret", models=["m-1"]),
+        deleted = client.delete(f"/api/model-providers/{created['id']}")
+        assert deleted.status_code == 200
+        assert "api_key" not in deleted.json()["provider"]
+        assert client.get(f"/api/model-providers/{created['id']}").status_code == 404
+
+
+def test_model_provider_repository_is_app_scoped_and_database_isolated(tmp_path):
+    first = create_app(
+        database_path=tmp_path / "first.sqlite3",
+        execution_root=tmp_path / "first-executions",
     )
-    assert updated_response.status_code == 200
-    updated = updated_response.json()["provider"]
-    assert updated["name"] == "企业模型网关"
-    assert updated["api_key"] == "changed-secret"
-    assert ModelProviderRepository(database_path).get(created["id"]).api_key == "changed-secret"
+    second = create_app(
+        database_path=tmp_path / "second.sqlite3",
+        execution_root=tmp_path / "second-executions",
+    )
 
-    deleted = client.delete(f"/api/model-providers/{created['id']}")
-    assert deleted.status_code == 200
-    assert "api_key" not in deleted.json()["provider"]
-    assert client.get(f"/api/model-providers/{created['id']}").status_code == 404
+    with TestClient(first) as first_client, TestClient(second) as second_client:
+        created = first_client.post("/api/model-providers", json=_body())
+        assert created.status_code == 200
+        provider_id = created.json()["provider"]["id"]
+
+        assert second_client.get("/api/model-providers").json()["providers"] == []
+        assert (
+            first.state.workflow_services.model_repository.get(provider_id)
+            is not None
+        )
+        assert first.state.workflow_services.model_repository is not second.state.workflow_services.model_repository
 
 
 @pytest.mark.parametrize(
@@ -212,11 +235,12 @@ def test_model_provider_api_crud_and_list_hides_api_key(tmp_path, monkeypatch):
         {"model_configs": {"deepseek-chat": {"context_window": 0}}},
     ],
 )
-def test_model_provider_api_rejects_invalid_records(tmp_path, monkeypatch, overrides):
-    _patch_database(tmp_path, monkeypatch)
-    assert TestClient(app).post(
-        "/api/model-providers", json=_body(**overrides)
-    ).status_code == 422
+def test_model_provider_api_rejects_invalid_records(tmp_path, overrides):
+    _database_path, application = _isolated_app(tmp_path)
+    with TestClient(application) as client:
+        assert client.post(
+            "/api/model-providers", json=_body(**overrides)
+        ).status_code == 422
 
 
 def test_model_endpoint_candidates_and_payload_shapes():
@@ -240,7 +264,6 @@ def test_model_endpoint_candidates_and_payload_shapes():
 
 
 def test_latency_and_openai_compatible_model_discovery(tmp_path, monkeypatch):
-    _patch_database(tmp_path, monkeypatch)
     seen_authorization = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -289,7 +312,6 @@ def test_latency_and_openai_compatible_model_discovery(tmp_path, monkeypatch):
 
 
 def test_anthropic_model_discovery_uses_selected_protocol_headers(tmp_path, monkeypatch):
-    _patch_database(tmp_path, monkeypatch)
     seen = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -346,7 +368,6 @@ def test_anthropic_model_discovery_uses_selected_protocol_headers(tmp_path, monk
 def test_model_availability_runs_real_inference_with_current_configuration(
     tmp_path, monkeypatch, protocol
 ):
-    _patch_database(tmp_path, monkeypatch)
     seen = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -433,7 +454,6 @@ def test_model_availability_runs_real_inference_with_current_configuration(
 
 
 def test_model_discovery_error_never_echoes_api_key(tmp_path, monkeypatch):
-    _patch_database(tmp_path, monkeypatch)
     response = TestClient(app).post(
         "/api/model-providers/models",
         json={"base_url": "http://127.0.0.1:1", "api_key": "secret-never-echo"},

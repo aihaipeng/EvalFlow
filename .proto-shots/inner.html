@@ -1,0 +1,1940 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>编辑 Run 配置高保真原型</title>
+<style>:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget > :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html>body{padding:0}</style>
+</head>
+<body>
+<div id="run-config-clickable">
+  <style>
+    #run-config-clickable { width: 100%; color: var(--foreground); }
+    #run-config-clickable * { box-sizing: border-box; }
+    #run-config-clickable .shell { display: grid; width: 100%; gap: 20px; }
+    #run-config-clickable .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .heading { display: grid; gap: 6px; min-width: 0; }
+    #run-config-clickable .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+    #run-config-clickable .crumb strong { font-weight: 500; }
+    #run-config-clickable .run-context { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); flex-wrap: wrap; }
+    #run-config-clickable .top-actions, #run-config-clickable .footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    #run-config-clickable .notice { display: flex; align-items: flex-start; gap: 10px; }
+    #run-config-clickable .notice-copy { display: grid; gap: 3px; min-width: 0; }
+    #run-config-clickable .notice-copy strong { font-weight: 500; }
+    #run-config-clickable .section { display: grid; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .section:last-of-type { border-bottom: 0; }
+    #run-config-clickable .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    #run-config-clickable .section-head h3 { margin: 0; font-weight: 500; }
+    #run-config-clickable .section-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted-foreground); }
+    #run-config-clickable .fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    #run-config-clickable .field { display: grid; align-content: start; gap: 6px; min-width: 0; }
+    #run-config-clickable .field.span-2 { grid-column: span 2; }
+    #run-config-clickable .field > span:first-child { color: var(--muted-foreground); }
+    #run-config-clickable .field-error:empty { display: none; }
+    #run-config-clickable .mapping { display: grid; border-top: 1px solid var(--border); }
+    #run-config-clickable .mapping-row { display: grid; grid-template-columns: 56px minmax(130px, .65fr) minmax(250px, 1.35fr); align-items: center; gap: 12px; min-height: 48px; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .mapping-head { color: var(--muted-foreground); background: color-mix(in srgb, var(--muted) 58%, transparent); }
+    #run-config-clickable .mapping-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #run-config-clickable .mapping-target { display: grid; gap: 4px; min-width: 0; }
+    #run-config-clickable .mapping-target input { width: 100%; min-width: 0; }
+    #run-config-clickable .judge-config { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(460px, 1.55fr) auto; gap: 16px; align-items: end; }
+    #run-config-clickable .result-source { display: grid; gap: 6px; min-width: 0; }
+    #run-config-clickable .result-source > span:first-child { color: var(--muted-foreground); }
+    #run-config-clickable .source-fields { display: grid; grid-template-columns: 190px minmax(240px, 1fr); gap: 10px; min-width: 0; }
+    #run-config-clickable .source-fields textarea { min-height: 120px; resize: vertical; }
+    #run-config-clickable .source-binding { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted-foreground); }
+    #run-config-clickable .scan-action { display: grid; align-content: end; gap: 6px; }
+    #run-config-clickable .body-preview { display: grid; grid-template-columns: minmax(180px, .35fr) minmax(0, 1.65fr); gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    #run-config-clickable .body-preview.is-custom > :last-child { grid-column: 1 / -1; }
+    #run-config-clickable .body-preview-value { min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted-foreground); }
+    #run-config-clickable .scan-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 8px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    #run-config-clickable .scan-summary-main { display: grid; gap: 3px; min-width: 0; }
+    #run-config-clickable .scan-summary-main strong { font-weight: 500; }
+    #run-config-clickable .scan-metrics { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted-foreground); }
+    #run-config-clickable .checkpoint-details { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    #run-config-clickable .checkpoint-summary { min-height: 48px; padding: 10px 0; cursor: pointer; }
+    #run-config-clickable .checkpoint-title { display: inline-flex; align-items: center; gap: 8px; margin-left: 6px; }
+    #run-config-clickable .checkpoint-title strong { font-weight: 500; }
+    #run-config-clickable .checkpoint-body { display: grid; gap: 10px; padding-bottom: 10px; }
+    #run-config-clickable .checkpoint-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    #run-config-clickable .binding-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted-foreground); }
+    #run-config-clickable .rule-table { display: grid; border-top: 1px solid var(--border); }
+    #run-config-clickable .rule-head, #run-config-clickable .rule-row { display: grid; grid-template-columns: 48px minmax(220px, 1fr) 150px minmax(220px, 1fr) 36px; align-items: start; gap: 10px; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .rule-head { min-height: 40px; align-items: center; color: var(--muted-foreground); background: color-mix(in srgb, var(--muted) 58%, transparent); }
+    #run-config-clickable .rule-row { padding: 9px 0; }
+    #run-config-clickable .rule-row.is-new { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+    #run-config-clickable .rule-index { align-self: center; color: var(--muted-foreground); text-align: center; }
+    #run-config-clickable .rule-cell { display: grid; gap: 4px; min-width: 0; }
+    #run-config-clickable .rule-cell input, #run-config-clickable .rule-cell select { width: 100%; min-width: 0; }
+    #run-config-clickable .mobile-label { display: none; color: var(--muted-foreground); }
+    #run-config-clickable .rules-empty { display: grid; justify-items: start; gap: 8px; padding: 20px 0; color: var(--muted-foreground); }
+    #run-config-clickable .issues { display: grid; gap: 12px; }
+    #run-config-clickable .issue-list { display: grid; border-top: 1px solid var(--border); }
+    #run-config-clickable .issue { display: grid; gap: 0; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .issue-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 7px 0; }
+    #run-config-clickable .issue-detail { display: grid; gap: 8px; padding: 0 0 12px 0; }
+    #run-config-clickable .issue-detail dl { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 5px 10px; margin: 0; }
+    #run-config-clickable .issue-detail dt { color: var(--muted-foreground); }
+    #run-config-clickable .issue-detail dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    #run-config-clickable .issue-detail pre { margin: 0; max-height: 170px; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--muted) 58%, transparent); }
+    #run-config-clickable .policy { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    #run-config-clickable .policy > strong { font-weight: 500; }
+    #run-config-clickable .impact { display: grid; border-top: 1px solid var(--border); }
+    #run-config-clickable .impact-row { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(100px, .6fr) minmax(0, 1.6fr) auto; gap: 10px; align-items: center; min-height: 40px; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 16px; border-top: 1px solid var(--border); }
+    #run-config-clickable .create-hint { color: var(--muted-foreground); }
+    #run-config-clickable .prototype-dialog { width: min(650px, calc(100% - 28px)); max-height: 84vh; overflow: auto; color: var(--popover-foreground); background: var(--popover); }
+    #run-config-clickable .prototype-dialog::backdrop { background: color-mix(in srgb, var(--foreground) 32%, transparent); }
+    #run-config-clickable .dialog-body { display: grid; gap: 16px; }
+    #run-config-clickable .dialog-head { display: flex; align-items: flex-start; gap: 10px; }
+    #run-config-clickable .dialog-head-copy { display: grid; gap: 4px; }
+    #run-config-clickable .dialog-head-copy strong { font-weight: 500; }
+    #run-config-clickable .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    #run-config-clickable .review { display: grid; border-top: 1px solid var(--border); }
+    #run-config-clickable .review-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; min-height: 38px; align-items: center; border-bottom: 1px solid var(--border); }
+    #run-config-clickable .review-row span:first-child { color: var(--muted-foreground); }
+    #run-config-clickable .hidden { display: none !important; }
+
+    @media (max-width: 1080px) {
+      #run-config-clickable .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      #run-config-clickable .judge-config { grid-template-columns: minmax(200px, .7fr) minmax(420px, 1.3fr); }
+      #run-config-clickable .scan-action { grid-column: 1 / -1; justify-items: start; }
+    }
+    @media (max-width: 760px) {
+      #run-config-clickable .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #run-config-clickable .judge-config { grid-template-columns: 1fr; }
+      #run-config-clickable .source-fields { grid-template-columns: minmax(150px, .5fr) minmax(220px, 1.5fr); }
+      #run-config-clickable .body-preview { grid-template-columns: 1fr; }
+      #run-config-clickable .rule-head { display: none; }
+      #run-config-clickable .rule-row { grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; }
+      #run-config-clickable .rule-index { grid-row: 1 / 4; }
+      #run-config-clickable .rule-cell { grid-column: 2; }
+      #run-config-clickable .rule-row > button { grid-column: 2; justify-self: start; }
+      #run-config-clickable .mobile-label { display: block; }
+      #run-config-clickable .issue-main { grid-template-columns: auto minmax(0, 1fr); }
+      #run-config-clickable .issue-main button { grid-column: 2; justify-self: start; }
+      #run-config-clickable .impact-row { grid-template-columns: 1fr 1fr; padding: 8px 0; }
+    }
+    @media (max-width: 520px) {
+      #run-config-clickable .topbar, #run-config-clickable .footer { align-items: stretch; flex-direction: column; }
+      #run-config-clickable .top-actions, #run-config-clickable .footer-actions { width: 100%; }
+      #run-config-clickable .top-actions .btn, #run-config-clickable .footer-actions .btn { flex: 1; }
+      #run-config-clickable .fields, #run-config-clickable .source-fields { grid-template-columns: 1fr; }
+      #run-config-clickable .field.span-2 { grid-column: span 1; }
+      #run-config-clickable .mapping-head { display: none; }
+      #run-config-clickable .mapping-row { grid-template-columns: 32px minmax(0, 1fr); padding: 10px 0; }
+      #run-config-clickable .mapping-target { grid-column: 2; }
+      #run-config-clickable .scan-summary { grid-template-columns: auto minmax(0, 1fr); }
+      #run-config-clickable .scan-summary > .viz-badge { grid-column: 2; justify-self: start; }
+      #run-config-clickable .checkpoint-toolbar { align-items: flex-start; flex-direction: column; }
+      #run-config-clickable .issue-detail dl, #run-config-clickable .review-row { grid-template-columns: 1fr; gap: 2px; padding: 7px 0; }
+      #run-config-clickable .policy { align-items: flex-start; flex-direction: column; }
+      #run-config-clickable .impact-row { grid-template-columns: 1fr; gap: 3px; }
+    }
+  </style>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="heading">
+        <div class="crumb"><i data-lucide="arrow-left" aria-hidden="true"></i><span class="text-muted">运行调度</span><span>/</span><strong>编辑 Run 配置</strong><span class="viz-badge" id="dirty-badge">未修改</span></div>
+        <div class="run-context"><span>来源 Run</span><code>RUN-20260728-014</code><span>已完成</span><span>·</span><span>创建后生成独立的新 Run</span></div>
+      </div>
+      <div class="top-actions"><button class="btn" type="button" data-action="cancel">取消</button><button class="btn btn-primary" type="button" data-action="create">创建新 Run</button></div>
+    </header>
+
+    <div class="card notice hidden" id="notice" role="status" aria-live="polite">
+      <i data-lucide="info" aria-hidden="true"></i>
+      <div class="notice-copy"><strong id="notice-title"></strong><span class="text-muted" id="notice-detail"></span></div>
+    </div>
+
+    <section class="section" aria-labelledby="basic-heading">
+      <div class="section-head"><h3 id="basic-heading">基本配置</h3></div>
+      <div class="fields">
+        <label class="field span-2"><span>名称</span><input class="form-control" id="run-name" maxlength="200" value="CMDB Agent 回归 · 修正版" /><span class="field-error text-destructive" id="error-name"></span></label>
+        <label class="field"><span>测试集</span><select class="form-select" id="dataset"><option value="skill测试集.xlsx">skill测试集.xlsx</option><option value="CMDB回归集.xlsx">CMDB回归集.xlsx</option></select></label>
+        <label class="field"><span>Sheet</span><select class="form-select" id="sheet"><option>Sheet1</option><option>回归样例</option></select></label>
+        <label class="field span-2"><span>Workflow</span><select class="form-select" id="workflow"><option value="cmdb">CMDB 查询工作流</option><option value="cmdb-v2">CMDB 查询工作流 v2</option></select></label>
+        <label class="field"><span>首行模式</span><select class="form-select" id="header-mode"><option value="AUTO">自动识别</option><option value="HEADER" selected>第一行是表头</option><option value="DATA">第一行是数据</option></select></label>
+        <label class="field"><span>Case ID 列</span><select class="form-select" id="case-id-column"><option>case_id</option><option>question</option></select></label>
+        <label class="field"><span>Case 并发数</span><input class="form-control" id="concurrency" type="number" min="1" max="32" value="4" /><span class="field-error text-destructive" id="error-concurrency"></span></label>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="mapping-heading">
+      <div class="section-head"><h3 id="mapping-heading">输入映射</h3><div class="section-meta"><span id="dataset-meta">10 行 · 5 列</span><span>·</span><span id="mapping-count">2 个字段已映射</span></div></div>
+      <div class="mapping" id="mapping-table" role="table" aria-label="Excel 输入映射"></div>
+    </section>
+
+    <section class="section" aria-labelledby="evaluation-heading">
+      <div class="section-head"><h3 id="evaluation-heading">结果判定</h3><div class="section-meta"><code>body</code><span>期望结果</span><span>·</span><code>answer</code><span>END 节点输出</span></div></div>
+
+      <div class="judge-config">
+        <label class="field"><span>名称</span><input class="form-control" id="evaluation-name" value="结果正确性" /><span class="field-error text-destructive" id="error-evaluation-name"></span></label>
+        <div class="result-source">
+          <span>结果来源</span>
+          <div class="source-fields">
+            <select class="form-select" id="expected-source" aria-label="结果来源类型"><option value="EXCEL">Excel</option><option value="LITERAL">自定义（JSON 格式）</option></select>
+            <select class="form-select" id="expected-column" aria-label="Excel 列"><option value="expected_result">expected_result</option><option value="expected_meta">expected_meta</option></select>
+            <textarea class="form-control hidden" id="literal-json" aria-label="自定义 JSON" spellcheck="false">{
+  "checks": {
+    "intent": {"status": "PASS"},
+    "i18n": {"status": "PASS"}
+  }
+}</textarea>
+          </div>
+          <div class="source-binding"><span class="viz-badge">body</span><span id="source-binding-text">来自 Excel 列 expected_result</span></div>
+        </div>
+        <div class="scan-action"><span class="text-muted">全量校验</span><button class="btn" id="scan-button" type="button"><i data-lucide="scan-search" aria-hidden="true"></i><span>扫描全部行</span></button></div>
+      </div>
+
+      <div class="body-preview">
+        <label class="field" id="preview-case-field"><span>预览 Case</span><select class="form-select" id="preview-case"></select></label>
+        <div class="field"><span>body 预览</span><code class="body-preview-value" id="body-preview-value"></code></div>
+      </div>
+
+      <details class="checkpoint-details" id="checkpoint-panel" open>
+        <summary class="checkpoint-summary"><span class="checkpoint-title"><strong>校验点</strong><span class="viz-badge" id="rule-count">2</span></span></summary>
+        <div class="checkpoint-body">
+          <div class="checkpoint-toolbar"><div class="binding-legend"><code>body</code><span>期望结果</span><span>·</span><code>answer</code><span>END 节点输出</span></div><button class="btn btn-ghost" type="button" id="add-rule"><i data-lucide="plus" aria-hidden="true"></i>添加校验点</button></div>
+          <div class="rule-table" id="rule-table" role="table" aria-label="结果校验点"></div>
+          <span class="field-error text-destructive" id="rules-global-error"></span>
+        </div>
+      </details>
+
+      <div class="scan-summary" id="scan-summary" aria-live="polite"></div>
+    </section>
+
+    <section class="section issues hidden" id="issues-section" aria-labelledby="issues-heading">
+      <div class="section-head"><h3 id="issues-heading">全量扫描问题</h3><span class="viz-badge" id="issue-count"></span></div>
+      <div class="issue-list" id="issue-list"></div>
+      <div class="policy" id="issue-policy">
+        <strong>存在异常行时</strong>
+        <label class="form-check"><input class="form-check-input" id="policy-block" type="radio" name="issue-policy" value="BLOCK" checked /><span class="form-check-label">阻止创建</span></label>
+        <label class="form-check"><input class="form-check-input" id="policy-continue" type="radio" name="issue-policy" value="CONTINUE" /><span class="form-check-label">继续创建，异常 Case 标记为 ERROR</span></label>
+      </div>
+      <div class="impact hidden" id="impact-preview" aria-label="异常 Case 预览"></div>
+    </section>
+
+    <footer class="footer">
+      <span class="create-hint" id="create-hint">创建前需扫描全部 Excel 行</span>
+      <div class="footer-actions"><button class="btn" type="button" data-action="cancel">取消</button><button class="btn btn-primary" type="button" data-action="create">创建新 Run</button></div>
+    </footer>
+  </div>
+
+  <dialog class="card prototype-dialog" id="cancel-dialog" aria-labelledby="cancel-title">
+    <form method="dialog" class="dialog-body">
+      <div class="dialog-head"><i data-lucide="triangle-alert" aria-hidden="true"></i><div class="dialog-head-copy"><strong id="cancel-title">放弃本次修改？</strong><span class="text-muted">未保存的 Run 配置将恢复为打开编辑器时的状态。</span></div></div>
+      <div class="dialog-actions"><button class="btn" id="cancel-keep" type="button">继续编辑</button><button class="btn btn-primary" id="cancel-discard" type="button">放弃修改</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="card prototype-dialog" id="create-dialog" aria-labelledby="create-title">
+    <div class="dialog-body" id="review-stage">
+      <div class="dialog-head"><i data-lucide="clipboard-check" aria-hidden="true"></i><div class="dialog-head-copy"><strong id="create-title">确认创建新 Run</strong><span class="text-muted">新 Run 使用当前配置，来源 Run 不受影响。</span></div></div>
+      <div class="review" id="review-content"></div>
+      <div class="dialog-actions"><button class="btn" type="button" id="review-back">返回修改</button><button class="btn btn-primary" type="button" id="confirm-create">确认创建</button></div>
+    </div>
+    <div class="dialog-body hidden" id="success-stage">
+      <div class="dialog-head"><i data-lucide="circle-check" aria-hidden="true"></i><div class="dialog-head-copy"><strong>新 Run 已创建</strong><span class="text-muted">配置已保存为独立快照，当前状态为待启动。</span></div></div>
+      <div class="review" id="success-content"></div>
+      <div class="dialog-actions"><button class="btn" type="button" id="success-close">留在当前页</button><button class="btn btn-primary" type="button" id="view-run">查看新 Run</button></div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      const root = document.getElementById('run-config-clickable');
+      const clone = value => JSON.parse(JSON.stringify(value));
+      const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+      const pathLabel = path => path || '';
+      const refreshIcons = () => globalThis.lucide?.createIcons({attrs: {width: 16, height: 16}});
+      const datasets = {
+        'skill测试集.xlsx': {rows: 10, columns: 5, sheets: ['Sheet1', '回归样例']},
+        'CMDB回归集.xlsx': {rows: 24, columns: 5, sheets: ['smoke', 'full']}
+      };
+
+      function checksValue(index) {
+        return {
+          checks: {
+            intent: {status: 'PASS', detail: index === 1 ? '意图匹配且参数完整' : '意图正确'},
+            i18n: {status: index === 1 ? 'FAIL' : 'PASS', detail: index === 1 ? '包含英文句子' : '中文合规'},
+            tool_choice: {status: index === 2 ? 'FAIL' : 'PASS', detail: index === 2 ? '期望工具未调用' : '工具调用正确'}
+          }
+        };
+      }
+
+      const expectedResultCases = Array.from({length: 10}, (_, index) => ({
+        id: 'case_' + String(index + 1).padStart(3, '0'),
+        row: index + 2,
+        value: checksValue(index)
+      }));
+      expectedResultCases[4] = {
+        id: 'case_005',
+        row: 6,
+        raw: '{"checks":{"intent":{"status":"PASS"},"i18n":{"status":"PASS"}',
+        parseError: '第 1 行第 70 列附近缺少 }'
+      };
+      expectedResultCases[7] = {
+        id: 'case_008',
+        row: 9,
+        value: {checks: {intent: {status: 'PASS', detail: '意图正确'}, tool_choice: {status: 'PASS', detail: '工具调用正确'}}}
+      };
+
+      const expectedMetaCases = Array.from({length: 10}, (_, index) => ({
+        id: 'case_' + String(index + 1).padStart(3, '0'),
+        row: index + 2,
+        value: {
+          answer: {contains: index % 2 ? ['设备', '在线'] : ['交换机', '在线'], max_latency_ms: 3000},
+          tool: {name: 'cmdb_query', required: true}
+        }
+      }));
+
+      const columnCases = {
+        expected_result: expectedResultCases,
+        expected_meta: expectedMetaCases
+      };
+
+      const initialState = {
+        config: {
+          name: 'CMDB Agent 回归 · 修正版', dataset: 'skill测试集.xlsx', sheet: 'Sheet1', workflow: 'cmdb',
+          headerMode: 'HEADER', caseIdColumn: 'case_id', concurrency: 4
+        },
+        mappings: [
+          {source: 'case_id', enabled: false, target: ''},
+          {source: 'question', enabled: true, target: 'input.question'},
+          {source: 'category', enabled: true, target: 'input.category'},
+          {source: 'expected_result', enabled: false, target: ''},
+          {source: 'expected_meta', enabled: false, target: ''}
+        ],
+        expectedSource: 'EXCEL',
+        expectedColumn: 'expected_result',
+        previewIndex: 0,
+        evaluationName: '结果正确性',
+        literalText: '{\n  "checks": {\n    "intent": {"status": "PASS", "detail": "意图正确"},\n    "i18n": {"status": "PASS", "detail": "中文合规"}\n  }\n}',
+        rules: [
+          {expectedPath: 'body.checks.intent.status', operator: 'EQ', actualPath: 'answer.checks.intent.status'},
+          {expectedPath: 'body.checks.i18n.status', operator: 'EQ', actualPath: 'answer.checks.i18n.status'}
+        ],
+        issuePolicy: 'BLOCK'
+      };
+
+      let state = clone(initialState);
+      let dirty = false;
+      let scanStatus = 'idle';
+      let scanIssues = [];
+      let openIssueIndex = null;
+      let scanToken = 0;
+      let validation = {};
+
+      const operators = [
+        ['EQ', '等于'], ['NE', '不等于'], ['CONTAINS', '包含'], ['REGEX', '正则'],
+        ['EXISTS', '存在'], ['GT', '大于'], ['GTE', '大于等于'], ['LT', '小于'], ['LTE', '小于等于'], ['JSON_EQUAL', 'JSON 相等']
+      ];
+
+      function currentCases() {
+        const base = columnCases[state.expectedColumn] || [];
+        const total = datasets[state.config.dataset]?.rows || base.length;
+        if (total <= base.length) return base.slice(0, total);
+        const extra = Array.from({length: total - base.length}, (_, offset) => {
+          const index = base.length + offset;
+          const value = state.expectedColumn === 'expected_result'
+            ? checksValue(index)
+            : {answer: {contains: ['设备', '在线'], max_latency_ms: 3000}, tool: {name: 'cmdb_query', required: true}};
+          return {id: 'case_' + String(index + 1).padStart(3, '0'), row: index + 2, value};
+        });
+        return [...base, ...extra];
+      }
+
+      function parseLiteral() {
+        try { return {value: JSON.parse(state.literalText), error: null}; }
+        catch (error) { return {value: null, error: error.message}; }
+      }
+
+      function currentPreview() {
+        if (state.expectedSource === 'LITERAL') {
+          const parsed = parseLiteral();
+          return parsed.error ? {raw: state.literalText, parseError: parsed.error} : {id: '自定义 body', row: null, value: parsed.value};
+        }
+        return currentCases()[state.previewIndex] || currentCases()[0];
+      }
+
+      function tokenizePath(path) {
+        const tokens = [];
+        String(path || '').replace(/([^[.\]]+)|\[(\d+)\]/g, (_match, key, index) => {
+          tokens.push(key !== undefined ? key : Number(index));
+        });
+        return tokens;
+      }
+
+      function resolvePath(value, path) {
+        if (!path) return {found: false, value: undefined};
+        let cursor = value;
+        for (const token of tokenizePath(path)) {
+          if (cursor === null || cursor === undefined || !Object.prototype.hasOwnProperty.call(Object(cursor), token)) return {found: false, value: undefined};
+          cursor = cursor[token];
+        }
+        return {found: true, value: cursor};
+      }
+
+      function bodyDataPath(path) {
+        const value = String(path || '').trim();
+        if (value === 'body') return '';
+        return value.startsWith('body.') ? value.slice(5) : value;
+      }
+
+      function markDirty() {
+        dirty = true;
+        root.querySelector('#dirty-badge').textContent = '已修改';
+      }
+
+      function showNotice(title, detail = '', kind = 'info') {
+        const notice = root.querySelector('#notice');
+        notice.classList.remove('hidden');
+        root.querySelector('#notice-title').textContent = title;
+        root.querySelector('#notice-detail').textContent = detail;
+        const icon = notice.querySelector('i, svg');
+        if (icon) {
+          const replacement = document.createElement('i');
+          replacement.dataset.lucide = kind === 'error' ? 'circle-alert' : kind === 'success' ? 'circle-check' : 'info';
+          replacement.setAttribute('aria-hidden', 'true');
+          icon.replaceWith(replacement);
+        }
+        if (kind === 'error') root.querySelector('#notice-title').classList.add('text-destructive');
+        else root.querySelector('#notice-title').classList.remove('text-destructive');
+        refreshIcons();
+      }
+
+      function hideNotice() {
+        root.querySelector('#notice').classList.add('hidden');
+      }
+
+      function invalidateScan() {
+        scanToken += 1;
+        if (scanStatus !== 'idle' && scanStatus !== 'stale') scanStatus = 'stale';
+        scanIssues = [];
+        openIssueIndex = null;
+        renderScan();
+      }
+
+      function renderDataset() {
+        const meta = datasets[state.config.dataset];
+        root.querySelector('#dataset-meta').textContent = `${meta.rows} 行 · ${meta.columns} 列`;
+        const sheet = root.querySelector('#sheet');
+        sheet.innerHTML = meta.sheets.map(name => `<option${name === state.config.sheet ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('');
+        if (!meta.sheets.includes(state.config.sheet)) {
+          state.config.sheet = meta.sheets[0];
+          sheet.value = state.config.sheet;
+        }
+      }
+
+      function renderMapping() {
+        const table = root.querySelector('#mapping-table');
+        table.innerHTML = `
+          <div class="mapping-row mapping-head" role="row"><span>启用</span><span>Excel 列</span><span>START 变量或对象字段</span></div>
+          ${state.mappings.map((mapping, index) => `
+            <div class="mapping-row" role="row" data-mapping-index="${index}">
+              <label class="form-check"><input class="form-check-input" type="checkbox" data-mapping-enabled ${mapping.enabled ? 'checked' : ''} aria-label="启用 ${escapeHtml(mapping.source)} 映射" /></label>
+              <code class="mapping-source">${escapeHtml(mapping.source)}</code>
+              <label class="mapping-target"><span class="sr-only">${escapeHtml(mapping.source)} 的 START 目标</span><input class="form-control" data-mapping-target value="${escapeHtml(mapping.target)}" placeholder="例如 input.${escapeHtml(mapping.source)}" ${mapping.enabled ? '' : 'disabled'} /><span class="field-error text-destructive">${escapeHtml(validation['mapping-' + index] || '')}</span></label>
+            </div>`).join('')}`;
+        root.querySelector('#mapping-count').textContent = `${state.mappings.filter(item => item.enabled).length} 个字段已映射`;
+      }
+
+      function renderPreviewOptions() {
+        const select = root.querySelector('#preview-case');
+        const cases = currentCases();
+        if (state.previewIndex >= cases.length) state.previewIndex = 0;
+        select.innerHTML = cases.map((item, index) => `<option value="${index}"${index === state.previewIndex ? ' selected' : ''}>${escapeHtml(item.id)} · Excel 行 ${item.row}</option>`).join('');
+      }
+
+      function renderSourceControls() {
+        const isExcel = state.expectedSource === 'EXCEL';
+        root.querySelector('#expected-column').classList.toggle('hidden', !isExcel);
+        root.querySelector('#preview-case-field').classList.toggle('hidden', !isExcel);
+        root.querySelector('.body-preview').classList.toggle('is-custom', !isExcel);
+        root.querySelector('#literal-json').classList.toggle('hidden', isExcel);
+        root.querySelector('#scan-button span').textContent = isExcel ? '扫描全部行' : '解析自定义 JSON';
+        root.querySelector('#literal-json').value = state.literalText;
+        root.querySelector('#source-binding-text').textContent = isExcel ? `来自 Excel 列 ${state.expectedColumn}` : '来自自定义 JSON';
+        if (isExcel) renderPreviewOptions();
+        renderBodyPreview();
+      }
+
+      function renderBodyPreview() {
+        const preview = currentPreview();
+        const output = root.querySelector('#body-preview-value');
+        if (!preview || preview.parseError) {
+          output.classList.add('text-destructive');
+          output.textContent = `JSON 解析失败：${preview ? preview.parseError : '没有可预览的数据'}${preview && preview.raw ? `\n${preview.raw}` : ''}`;
+          return;
+        }
+        output.classList.remove('text-destructive');
+        output.textContent = JSON.stringify(preview.value, null, 2);
+      }
+
+      function renderRules() {
+        const table = root.querySelector('#rule-table');
+        if (!state.rules.length) {
+          table.innerHTML = '<div class="rules-empty"><span>尚未配置校验点</span><button class="btn" type="button" data-empty-add><i data-lucide="plus" aria-hidden="true"></i>添加第一个校验点</button></div>';
+          table.querySelector('[data-empty-add]').addEventListener('click', addBlankRule);
+          root.querySelector('#rule-count').textContent = '0';
+          refreshIcons();
+          return;
+        }
+        table.innerHTML = `
+          <div class="rule-head" role="row"><span>#</span><span>期望结果</span><span>运算符</span><span>实际结果</span><span></span></div>
+          ${state.rules.map((rule, index) => `
+            <div class="rule-row${rule.isNew ? ' is-new' : ''}" role="row" data-rule-index="${index}">
+              <span class="rule-index">${index + 1}</span>
+              <label class="rule-cell"><span class="mobile-label">期望结果</span><input class="form-control" data-rule-field="expectedPath" value="${escapeHtml(rule.expectedPath)}" placeholder="body.xxx" list="body-paths" aria-label="校验点 ${index + 1} 期望结果" aria-invalid="${validation['rule-' + index + '-expectedPath'] ? 'true' : 'false'}" /><span class="field-error text-destructive">${escapeHtml(validation['rule-' + index + '-expectedPath'] || '')}</span></label>
+              <label class="rule-cell"><span class="mobile-label">运算符</span><select class="form-select" data-rule-field="operator" aria-label="校验点 ${index + 1} 运算符">${operators.map(([value, label]) => `<option value="${value}"${value === rule.operator ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+              <label class="rule-cell"><span class="mobile-label">实际结果</span><input class="form-control" data-rule-field="actualPath" value="${escapeHtml(rule.actualPath)}" placeholder="answer.xxx" aria-label="校验点 ${index + 1} 实际结果" aria-invalid="${validation['rule-' + index + '-actualPath'] ? 'true' : 'false'}" /><span class="field-error text-destructive">${escapeHtml(validation['rule-' + index + '-actualPath'] || '')}</span></label>
+              <button class="btn btn-ghost" type="button" data-rule-delete aria-label="删除校验点 ${index + 1}" data-tooltip="删除校验点"><i data-lucide="trash-2" aria-hidden="true"></i></button>
+            </div>`).join('')}`;
+        root.querySelector('#rule-count').textContent = String(state.rules.length);
+        renderBodyPathOptions();
+        refreshIcons();
+      }
+
+      function renderBodyPathOptions() {
+        let list = root.querySelector('#body-paths');
+        if (!list) {
+          list = document.createElement('datalist');
+          list.id = 'body-paths';
+          root.appendChild(list);
+        }
+        const preview = currentPreview();
+        if (!preview || preview.parseError || preview.value === null || typeof preview.value !== 'object') {
+          list.innerHTML = '';
+          return;
+        }
+        const paths = [];
+        const visit = (value, prefix = 'body') => {
+          Object.entries(value || {}).forEach(([key, child]) => {
+            const path = `${prefix}.${key}`;
+            if (child !== null && typeof child === 'object' && !Array.isArray(child)) visit(child, path);
+            else paths.push(path);
+          });
+        };
+        visit(preview.value);
+        list.innerHTML = paths.map(path => `<option value="${escapeHtml(path)}"></option>`).join('');
+      }
+
+      function addBlankRule() {
+        state.rules.push({expectedPath: 'body.', operator: 'EQ', actualPath: 'answer.', isNew: true});
+        validation = {};
+        markDirty();
+        invalidateScan();
+        renderRules();
+        const inputs = root.querySelectorAll('[data-rule-field="expectedPath"]');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+      }
+
+      function collectIssues() {
+        let cases;
+        if (state.expectedSource === 'LITERAL') {
+          const parsed = parseLiteral();
+          if (parsed.error) return [{caseId: '自定义 body', row: null, kind: 'INVALID_JSON', message: '自定义内容不是合法 JSON', detail: parsed.error, raw: state.literalText}];
+          cases = [{id: '自定义 body', row: null, value: parsed.value}];
+        } else cases = currentCases();
+        const issues = [];
+        cases.forEach(item => {
+          if (item.parseError) {
+            issues.push({caseId: item.id, row: item.row, kind: 'INVALID_JSON', message: `${state.expectedColumn} 不是合法 JSON`, detail: item.parseError, raw: item.raw});
+            return;
+          }
+          state.rules.forEach((rule, ruleIndex) => {
+            if (!rule.expectedPath) return;
+            if (!resolvePath(item.value, bodyDataPath(rule.expectedPath)).found) {
+              issues.push({caseId: item.id, row: item.row, kind: 'MISSING_PATH', message: `缺少路径 ${pathLabel(rule.expectedPath)}`, detail: `校验点 ${ruleIndex + 1} 无法从 body 提取期望结果`, raw: JSON.stringify(item.value, null, 2), path: rule.expectedPath});
+            }
+          });
+        });
+        return issues;
+      }
+
+      function runScan() {
+        const token = ++scanToken;
+        scanStatus = 'scanning';
+        scanIssues = [];
+        openIssueIndex = null;
+        renderScan();
+        window.setTimeout(() => {
+          if (token !== scanToken) return;
+          scanIssues = collectIssues();
+          scanStatus = scanIssues.length ? 'issues' : 'success';
+          renderScan();
+          if (scanIssues.length) showNotice('全量扫描发现需要处理的行', `${uniqueAffectedCases().length} 个 Case 受影响`, 'error');
+          else showNotice('全量扫描通过', state.expectedSource === 'EXCEL' ? `${currentCases().length} 行均可生成 body` : '自定义 JSON 已生成 body', 'success');
+        }, 720);
+      }
+
+      function uniqueAffectedCases() {
+        const map = new Map();
+        scanIssues.forEach(issue => {
+          const key = issue.caseId + ':' + issue.row;
+          if (!map.has(key)) map.set(key, issue);
+        });
+        return Array.from(map.values());
+      }
+
+      function renderScan() {
+        const summary = root.querySelector('#scan-summary');
+        const button = root.querySelector('#scan-button');
+        const issuesSection = root.querySelector('#issues-section');
+        button.disabled = scanStatus === 'scanning';
+        if (scanStatus === 'idle') {
+          summary.innerHTML = '<i data-lucide="circle-dashed" aria-hidden="true"></i><div class="scan-summary-main"><strong>尚未执行全量扫描</strong><span class="text-muted">创建前校验 body 的 JSON 与校验点路径</span></div><span class="viz-badge">待扫描</span>';
+          issuesSection.classList.add('hidden');
+        } else if (scanStatus === 'stale') {
+          summary.innerHTML = '<i data-lucide="refresh-cw" aria-hidden="true"></i><div class="scan-summary-main"><strong>扫描结果已失效</strong><span class="text-muted">结果来源或校验点已变化，请重新扫描</span></div><span class="viz-badge">需重扫</span>';
+          issuesSection.classList.add('hidden');
+        } else if (scanStatus === 'scanning') {
+          summary.innerHTML = '<i data-lucide="loader-circle" aria-hidden="true"></i><div class="scan-summary-main"><strong>正在扫描结果来源</strong><span class="text-muted">解析 body 并检查每个校验点的期望路径</span></div><span class="viz-badge">处理中</span>';
+          issuesSection.classList.add('hidden');
+        } else {
+          const total = state.expectedSource === 'EXCEL' ? currentCases().length : 1;
+          const affected = uniqueAffectedCases().length;
+          const valid = Math.max(0, total - affected);
+          const hasIssues = scanStatus === 'issues';
+          summary.innerHTML = `<i data-lucide="${hasIssues ? 'triangle-alert' : 'circle-check'}" aria-hidden="true"></i><div class="scan-summary-main"><strong>${hasIssues ? '扫描完成，存在异常行' : '扫描完成，全部可用'}</strong><div class="scan-metrics"><span>总计 ${total}</span><span>可用 ${valid}</span><span>异常 ${affected}</span></div></div><span class="viz-badge">${hasIssues ? `${affected} 个 Case 受影响` : '可以创建'}</span>`;
+          if (hasIssues) {
+            issuesSection.classList.remove('hidden');
+            renderIssues();
+          } else {
+            issuesSection.classList.add('hidden');
+          }
+        }
+        updateCreateAvailability();
+        refreshIcons();
+      }
+
+      function renderIssues() {
+        const affected = uniqueAffectedCases();
+        root.querySelector('#issue-count').textContent = `${scanIssues.length} 个问题 · ${affected.length} 个 Case`;
+        const list = root.querySelector('#issue-list');
+        list.innerHTML = scanIssues.slice(0, 20).map((issue, index) => `
+          <div class="issue">
+            <div class="issue-main"><span class="viz-badge">${issue.row ? `Excel 行 ${issue.row}` : '自定义 JSON'}</span><span><code>${escapeHtml(issue.caseId)}</code> · ${escapeHtml(issue.message)}</span><button class="btn btn-ghost" type="button" data-issue-toggle="${index}" aria-expanded="${openIssueIndex === index}"><i data-lucide="${openIssueIndex === index ? 'chevron-up' : 'eye'}" aria-hidden="true"></i>${openIssueIndex === index ? '收起' : issue.kind === 'INVALID_JSON' ? '查看原值' : '查看 JSON'}</button></div>
+            <div class="issue-detail${openIssueIndex === index ? '' : ' hidden'}"><dl><dt>Case</dt><dd>${escapeHtml(issue.caseId)}</dd><dt>来源</dt><dd>${issue.row ? `Excel 第 ${issue.row} 行 / ${escapeHtml(state.expectedColumn)} 列` : '自定义 JSON'}</dd><dt>问题</dt><dd>${escapeHtml(issue.detail)}</dd>${issue.path ? `<dt>缺失路径</dt><dd><code>${escapeHtml(pathLabel(issue.path))}</code></dd>` : ''}</dl><pre><code>${escapeHtml(issue.raw || '')}</code></pre></div>
+          </div>`).join('') + (scanIssues.length > 20 ? `<div class="text-muted">另有 ${scanIssues.length - 20} 个同类问题未展开</div>` : '');
+        list.querySelectorAll('[data-issue-toggle]').forEach(button => button.addEventListener('click', () => {
+          const index = Number(button.dataset.issueToggle);
+          openIssueIndex = openIssueIndex === index ? null : index;
+          renderIssues();
+        }));
+        root.querySelector('#issue-policy').classList.toggle('hidden', state.expectedSource !== 'EXCEL');
+        root.querySelector('#policy-block').checked = state.issuePolicy === 'BLOCK';
+        root.querySelector('#policy-continue').checked = state.issuePolicy === 'CONTINUE';
+        const impact = root.querySelector('#impact-preview');
+        const showImpact = state.expectedSource === 'EXCEL' && state.issuePolicy === 'CONTINUE';
+        impact.classList.toggle('hidden', !showImpact);
+        if (showImpact) {
+          impact.innerHTML = affected.map(issue => `<div class="impact-row"><code>${escapeHtml(issue.caseId)}</code><span>Excel 行 ${issue.row}</span><span>${escapeHtml(issue.message)}</span><span class="viz-badge">ERROR</span></div>`).join('');
+        }
+        updateCreateAvailability();
+        refreshIcons();
+      }
+
+      function updateCreateAvailability() {
+        let disabled = false;
+        let hint = '';
+        if (scanStatus === 'scanning') {
+          disabled = true;
+          hint = '正在扫描全部期望结果';
+        } else if (scanStatus === 'idle' || scanStatus === 'stale') {
+          disabled = true;
+          hint = state.expectedSource === 'EXCEL' ? '创建前需扫描全部 Excel 行' : '创建前需解析自定义 JSON';
+        } else if (scanStatus === 'issues') {
+          const affected = uniqueAffectedCases().length;
+          disabled = state.expectedSource !== 'EXCEL' || state.issuePolicy === 'BLOCK';
+          hint = disabled ? `${affected} 个异常 Case 阻止创建` : `将创建 ${currentCases().length} 个 Case，其中 ${affected} 个标记为 ERROR`;
+        } else {
+          hint = state.expectedSource === 'EXCEL' ? `${currentCases().length} 个 Case 已就绪` : '自定义 JSON 已生成 body';
+        }
+        root.querySelectorAll('[data-action="create"]').forEach(button => button.disabled = disabled);
+        root.querySelector('#create-hint').textContent = hint;
+      }
+
+      function validateConfiguration() {
+        validation = {};
+        let firstSelector = null;
+        if (!state.config.name.trim()) {
+          validation.name = '名称不能为空';
+          firstSelector = '#run-name';
+        }
+        if (!state.evaluationName.trim()) {
+          validation.evaluationName = '校验名称不能为空';
+          firstSelector ||= '#evaluation-name';
+        }
+        const concurrency = Number(state.config.concurrency);
+        if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
+          validation.concurrency = '请输入 1 到 32 的整数';
+          firstSelector ||= '#concurrency';
+        }
+        const enabledMappings = state.mappings.filter(item => item.enabled);
+        if (!enabledMappings.length) {
+          validation['mapping-0'] = '请至少启用一个输入映射';
+          firstSelector ||= '[data-mapping-enabled]';
+        }
+        state.mappings.forEach((mapping, index) => {
+          if (mapping.enabled && !mapping.target.trim()) {
+            validation['mapping-' + index] = '启用后必须填写目标变量';
+            firstSelector ||= `[data-mapping-index="${index}"] [data-mapping-target]`;
+          }
+        });
+        if (!state.rules.length) {
+          validation.rules = '请至少配置一个校验点';
+          firstSelector ||= '#add-rule';
+        }
+        state.rules.forEach((rule, index) => {
+          if (!String(rule.expectedPath || '').startsWith('body.') || rule.expectedPath.trim() === 'body.') {
+            validation[`rule-${index}-expectedPath`] = '期望结果必须使用 body.xxx';
+            firstSelector ||= `[data-rule-index="${index}"] [data-rule-field="expectedPath"]`;
+          }
+          if (!String(rule.actualPath || '').startsWith('answer.') || rule.actualPath.trim() === 'answer.') {
+            validation[`rule-${index}-actualPath`] = '实际结果必须使用 answer.xxx';
+            firstSelector ||= `[data-rule-index="${index}"] [data-rule-field="actualPath"]`;
+          }
+        });
+        root.querySelector('#error-name').textContent = validation.name || '';
+        root.querySelector('#run-name').setAttribute('aria-invalid', validation.name ? 'true' : 'false');
+        root.querySelector('#error-concurrency').textContent = validation.concurrency || '';
+        root.querySelector('#concurrency').setAttribute('aria-invalid', validation.concurrency ? 'true' : 'false');
+        root.querySelector('#error-evaluation-name').textContent = validation.evaluationName || '';
+        root.querySelector('#evaluation-name').setAttribute('aria-invalid', validation.evaluationName ? 'true' : 'false');
+        root.querySelector('#rules-global-error').textContent = validation.rules || '';
+        renderMapping();
+        renderRules();
+        if (Object.keys(validation).length) {
+          showNotice('配置尚未完成', '请修正标出的字段后再创建', 'error');
+          const target = root.querySelector(firstSelector);
+          if (target) target.focus();
+          return false;
+        }
+        return true;
+      }
+
+      function openReview() {
+        if (!validateConfiguration()) return;
+        const affected = scanStatus === 'issues' ? uniqueAffectedCases().length : 0;
+        const total = state.expectedSource === 'EXCEL' ? currentCases().length : datasets[state.config.dataset].rows;
+        root.querySelector('#review-content').innerHTML = `
+          <div class="review-row"><span>Run 名称</span><strong>${escapeHtml(state.config.name)}</strong></div>
+          <div class="review-row"><span>测试集</span><span>${escapeHtml(state.config.dataset)} / ${escapeHtml(state.config.sheet)}</span></div>
+          <div class="review-row"><span>Workflow</span><span>${escapeHtml(root.querySelector('#workflow').selectedOptions[0].textContent)}</span></div>
+          <div class="review-row"><span>规模</span><span>${total} 个 Case · 并发 ${state.config.concurrency}</span></div>
+          <div class="review-row"><span>结果判定</span><span>${escapeHtml(state.evaluationName)} · ${state.rules.length} 个校验点</span></div>
+          <div class="review-row"><span>结果来源</span><span>${state.expectedSource === 'EXCEL' ? `Excel / ${escapeHtml(state.expectedColumn)}` : '自定义 JSON'} → body</span></div>
+          <div class="review-row"><span>异常处理</span><span>${affected ? `${affected} 个 Case 创建后直接标记为 ERROR` : '全部 Case 可以进入执行队列'}</span></div>`;
+        root.querySelector('#review-stage').classList.remove('hidden');
+        root.querySelector('#success-stage').classList.add('hidden');
+        root.querySelector('#create-dialog').showModal();
+      }
+
+      function resetState() {
+        state = clone(initialState);
+        dirty = false;
+        scanStatus = 'idle';
+        scanIssues = [];
+        openIssueIndex = null;
+        validation = {};
+        root.querySelector('#run-name').value = state.config.name;
+        root.querySelector('#dataset').value = state.config.dataset;
+        root.querySelector('#workflow').value = state.config.workflow;
+        root.querySelector('#header-mode').value = state.config.headerMode;
+        root.querySelector('#case-id-column').value = state.config.caseIdColumn;
+        root.querySelector('#concurrency').value = state.config.concurrency;
+        root.querySelector('#expected-source').value = state.expectedSource;
+        root.querySelector('#expected-column').value = state.expectedColumn;
+        root.querySelector('#evaluation-name').value = state.evaluationName;
+        root.querySelector('#dirty-badge').textContent = '未修改';
+        root.querySelector('#error-name').textContent = '';
+        root.querySelector('#error-concurrency').textContent = '';
+        root.querySelector('#error-evaluation-name').textContent = '';
+        root.querySelector('#rules-global-error').textContent = '';
+        root.querySelector('#policy-block').checked = true;
+        hideNotice();
+        renderDataset();
+        renderMapping();
+        renderSourceControls();
+        renderRules();
+        renderScan();
+      }
+
+      root.querySelector('#run-name').addEventListener('input', event => {
+        state.config.name = event.target.value;
+        validation.name = '';
+        root.querySelector('#error-name').textContent = '';
+        event.target.setAttribute('aria-invalid', 'false');
+        markDirty();
+      });
+      root.querySelector('#dataset').addEventListener('change', event => {
+        state.config.dataset = event.target.value;
+        state.config.sheet = datasets[state.config.dataset].sheets[0];
+        state.previewIndex = 0;
+        markDirty();
+        renderDataset();
+        invalidateScan();
+        renderPreviewOptions();
+        renderBodyPreview();
+        renderBodyPathOptions();
+      });
+      root.querySelector('#sheet').addEventListener('change', event => { state.config.sheet = event.target.value; markDirty(); invalidateScan(); });
+      root.querySelector('#workflow').addEventListener('change', event => { state.config.workflow = event.target.value; markDirty(); });
+      root.querySelector('#header-mode').addEventListener('change', event => { state.config.headerMode = event.target.value; markDirty(); invalidateScan(); });
+      root.querySelector('#case-id-column').addEventListener('change', event => { state.config.caseIdColumn = event.target.value; markDirty(); });
+      root.querySelector('#concurrency').addEventListener('input', event => {
+        state.config.concurrency = event.target.value;
+        validation.concurrency = '';
+        root.querySelector('#error-concurrency').textContent = '';
+        event.target.setAttribute('aria-invalid', 'false');
+        markDirty();
+      });
+      root.querySelector('#evaluation-name').addEventListener('input', event => {
+        state.evaluationName = event.target.value;
+        validation.evaluationName = '';
+        root.querySelector('#error-evaluation-name').textContent = '';
+        event.target.setAttribute('aria-invalid', 'false');
+        markDirty();
+      });
+
+      root.querySelector('#mapping-table').addEventListener('change', event => {
+        const row = event.target.closest('[data-mapping-index]');
+        if (!row) return;
+        const index = Number(row.dataset.mappingIndex);
+        if (event.target.matches('[data-mapping-enabled]')) {
+          state.mappings[index].enabled = event.target.checked;
+          if (event.target.checked && !state.mappings[index].target) state.mappings[index].target = 'input.' + state.mappings[index].source;
+          validation['mapping-' + index] = '';
+          markDirty();
+          renderMapping();
+        }
+      });
+      root.querySelector('#mapping-table').addEventListener('input', event => {
+        const row = event.target.closest('[data-mapping-index]');
+        if (!row || !event.target.matches('[data-mapping-target]')) return;
+        const index = Number(row.dataset.mappingIndex);
+        state.mappings[index].target = event.target.value;
+        validation['mapping-' + index] = '';
+        const error = row.querySelector('.field-error');
+        if (error) error.textContent = '';
+        markDirty();
+      });
+
+      root.querySelector('#expected-source').addEventListener('change', event => {
+        state.expectedSource = event.target.value;
+        state.previewIndex = 0;
+        markDirty();
+        invalidateScan();
+        renderSourceControls();
+        renderRules();
+      });
+      root.querySelector('#expected-column').addEventListener('change', event => {
+        state.expectedColumn = event.target.value;
+        state.previewIndex = 0;
+        markDirty();
+        invalidateScan();
+        renderSourceControls();
+        renderRules();
+      });
+      root.querySelector('#preview-case').addEventListener('change', event => { state.previewIndex = Number(event.target.value); renderBodyPreview(); renderBodyPathOptions(); });
+      root.querySelector('#literal-json').addEventListener('input', event => {
+        state.literalText = event.target.value;
+        markDirty();
+        invalidateScan();
+        renderBodyPreview();
+        renderBodyPathOptions();
+      });
+      root.querySelector('#scan-button').addEventListener('click', runScan);
+
+      root.querySelector('#rule-table').addEventListener('input', event => {
+        const row = event.target.closest('[data-rule-index]');
+        const field = event.target.dataset.ruleField;
+        if (!row || !field) return;
+        const index = Number(row.dataset.ruleIndex);
+        state.rules[index][field] = event.target.value;
+        state.rules[index].isNew = false;
+        validation[`rule-${index}-${field}`] = '';
+        const error = event.target.parentElement.querySelector('.field-error');
+        if (error) error.textContent = '';
+        markDirty();
+        invalidateScan();
+      });
+      root.querySelector('#rule-table').addEventListener('change', event => {
+        const row = event.target.closest('[data-rule-index]');
+        const field = event.target.dataset.ruleField;
+        if (!row || !field) return;
+        const index = Number(row.dataset.ruleIndex);
+        state.rules[index][field] = event.target.value;
+        state.rules[index].isNew = false;
+        markDirty();
+      });
+      root.querySelector('#rule-table').addEventListener('click', event => {
+        const button = event.target.closest('[data-rule-delete]');
+        if (!button) return;
+        const row = button.closest('[data-rule-index]');
+        state.rules.splice(Number(row.dataset.ruleIndex), 1);
+        validation = {};
+        markDirty();
+        invalidateScan();
+        renderRules();
+      });
+      root.querySelector('#add-rule').addEventListener('click', addBlankRule);
+
+      root.querySelectorAll('input[name="issue-policy"]').forEach(radio => radio.addEventListener('change', event => {
+        state.issuePolicy = event.target.value;
+        markDirty();
+        renderIssues();
+      }));
+
+      root.querySelectorAll('[data-action="cancel"]').forEach(button => button.addEventListener('click', () => {
+        if (dirty) root.querySelector('#cancel-dialog').showModal();
+        else showNotice('没有需要放弃的修改', '当前配置与打开编辑器时一致');
+      }));
+      root.querySelector('#cancel-keep').addEventListener('click', () => root.querySelector('#cancel-dialog').close('keep'));
+      root.querySelector('#cancel-discard').addEventListener('click', () => root.querySelector('#cancel-dialog').close('discard'));
+      root.querySelector('#cancel-dialog').addEventListener('close', event => {
+        if (event.target.returnValue === 'discard') {
+          resetState();
+          showNotice('修改已放弃', '已恢复来源 Run 的配置快照');
+        }
+      });
+      root.querySelectorAll('[data-action="create"]').forEach(button => button.addEventListener('click', openReview));
+      root.querySelector('#review-back').addEventListener('click', () => root.querySelector('#create-dialog').close());
+      root.querySelector('#confirm-create').addEventListener('click', event => {
+        event.target.disabled = true;
+        event.target.textContent = '正在创建…';
+        window.setTimeout(() => {
+          const affected = scanStatus === 'issues' ? uniqueAffectedCases().length : 0;
+          const total = state.expectedSource === 'EXCEL' ? currentCases().length : datasets[state.config.dataset].rows;
+          root.querySelector('#success-content').innerHTML = `
+            <div class="review-row"><span>Run ID</span><code>RUN-20260728-015</code></div>
+            <div class="review-row"><span>状态</span><span class="viz-badge">待启动</span></div>
+            <div class="review-row"><span>Case</span><span>${total} 个已创建</span></div>
+            <div class="review-row"><span>预置 ERROR</span><span>${affected} 个</span></div>`;
+          root.querySelector('#review-stage').classList.add('hidden');
+          root.querySelector('#success-stage').classList.remove('hidden');
+          event.target.disabled = false;
+          event.target.textContent = '确认创建';
+          dirty = false;
+          root.querySelector('#dirty-badge').textContent = '已创建新 Run';
+          refreshIcons();
+        }, 650);
+      });
+      root.querySelector('#success-close').addEventListener('click', () => {
+        root.querySelector('#create-dialog').close();
+        showNotice('新 Run 已创建', 'RUN-20260728-015 当前为待启动状态', 'success');
+      });
+      root.querySelector('#view-run').addEventListener('click', () => {
+        root.querySelector('#create-dialog').close();
+        showNotice('已打开新 Run', 'RUN-20260728-015 · 待启动 · 结果校验点已保存', 'success');
+      });
+
+      renderDataset();
+      renderMapping();
+      renderSourceControls();
+      renderRules();
+      renderScan();
+      refreshIcons();
+    })();
+  </script>
+</div>
+
+<script src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"></script>
+<script src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"></script>
+<script>
+(() => {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set(["top", "right", "bottom", "left"]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =>
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest("[data-tooltip]")
+      : null;
+  const containsTarget = (trigger, target) =>
+    target?.nodeType != null && trigger.contains(target);
+  const getContent = (trigger) =>
+    trigger.getAttribute("data-tooltip")?.trim() ?? "";
+  const getPlacement = (trigger) => {
+    const placement = trigger.getAttribute("data-tooltip-placement");
+    return tooltipPlacements.has(placement) ? placement : "top";
+  };
+  const getTooltip = () => {
+    if (tooltip == null) {
+      tooltip = document.createElement("div");
+      tooltip.id = tooltipId;
+      tooltip.className = "tooltip";
+      tooltip.setAttribute("role", "tooltip");
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) => {
+    const ids = new Set(
+      (trigger.getAttribute("aria-describedby") ?? "")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute("aria-describedby");
+    } else {
+      trigger.setAttribute("aria-describedby", [...ids].join(" "));
+    }
+  };
+  const clearOpenTimeout = () => {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) => {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) => {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              "--tooltip-available-width",
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              "--tooltip-available-height",
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: "fixed",
+    })
+      .then(({ x, y }) => {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = "visible";
+      })
+      .catch(() => {
+        if (activeTrigger === trigger && request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) => {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = "hidden";
+    floating.style.transform = "translate(0, 0)";
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () => {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) => {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() < skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() => {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) => {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) => {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(":focus-visible")) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) => {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () => {
+    closeTooltip(false);
+    document.removeEventListener("pointerover", handlePointerOpen);
+    document.removeEventListener("pointerout", handleLeave);
+    document.removeEventListener("focusin", handleFocusIn);
+    document.removeEventListener("focusout", handleLeave);
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("contextmenu", handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener("pointerover", handlePointerOpen);
+  document.addEventListener("pointerout", handleLeave);
+  document.addEventListener("focusin", handleFocusIn);
+  document.addEventListener("focusout", handleLeave);
+  document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("contextmenu", handleContextMenu);
+  window.addEventListener("pagehide", destroy, { once: true });
+})();
+</script>
+<script id="codex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
+<script>
+(() => {
+  const initialize = () => {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById("codex-visualization-lucide")
+    ?.addEventListener("load", initialize, { once: true });
+})();
+</script>
+
+
+<script>
+window.addEventListener('load', () => {
+  const hash = location.hash.slice(1);
+  const $ = s => document.querySelector(s);
+  if (hash === 'issues' || hash === 'review') {
+    $('#scan-button').click();
+    setTimeout(() => {
+      const t = document.querySelector('[data-issue-toggle="0"]');
+      if (t) t.click();
+      const cont = $('#policy-continue');
+      if (cont) cont.click();
+      if (hash === 'review') setTimeout(() => document.querySelector('[data-action="create"]').click(), 100);
+    }, 1200);
+  } else if (hash === 'literal') {
+    const src = $('#expected-source');
+    src.value = 'LITERAL';
+    src.dispatchEvent(new Event('change', {bubbles: true}));
+  } else if (hash === 'cancel') {
+    const name = $('#run-name');
+    name.value += ' x';
+    name.dispatchEvent(new Event('input', {bubbles: true}));
+    document.querySelector('[data-action="cancel"]').click();
+  }
+});
+</script>
+</body>
+</html>

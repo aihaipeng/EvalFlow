@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -9,7 +8,12 @@ from openpyxl import load_workbook
 from pydantic import BaseModel
 
 from storage.excel import ExcelCaseRepository
-from web.routes_config import _load_yaml, _save_yaml, _get_input_path
+from storage.excel_set_meta import ExcelSetMetaRepository
+from web.local_config_service import (
+    input_path_for,
+    load_local_config,
+    update_local_config,
+)
 from web.files import INPUTS_DIR, get_existing_input_path, project_relative, resolve_config_input_path
 
 router = APIRouter(prefix="/api/excel", tags=["excel"])
@@ -58,19 +62,33 @@ def _ensure_unique_set_name(filename: str, name: str, meta: dict[str, dict]) -> 
 
 def _read_sets_meta_file() -> dict:
     """读取测试集文件级元数据。"""
-    if not SETS_META_FILE.is_file():
-        return {}
-    try:
-        with open(SETS_META_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return ExcelSetMetaRepository(SETS_META_FILE).load()
 
 
 def _load_sets_meta() -> dict[str, dict]:
     """读取存在测试集的元数据，过滤过期文件记录。"""
-    data = _read_sets_meta_file()
+    return _normalize_sets_meta(_read_sets_meta_file())
+
+
+def _save_sets_meta(meta: dict[str, dict]) -> None:
+    """保存测试集文件级元数据。"""
+    INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    ExcelSetMetaRepository(SETS_META_FILE).save(_meta_for_storage(meta))
+
+
+def _update_sets_meta(mutate) -> dict[str, dict]:
+    repository = ExcelSetMetaRepository(SETS_META_FILE)
+
+    def update(raw: dict[str, dict]) -> None:
+        normalized = _normalize_sets_meta(raw)
+        mutate(normalized)
+        raw.clear()
+        raw.update(_meta_for_storage(normalized))
+
+    return repository.update(update)
+
+
+def _normalize_sets_meta(data: dict[str, dict]) -> dict[str, dict]:
     result: dict[str, dict] = {}
     for filename, meta in data.items():
         if not isinstance(meta, dict):
@@ -91,9 +109,7 @@ def _load_sets_meta() -> dict[str, dict]:
     return result
 
 
-def _save_sets_meta(meta: dict[str, dict]) -> None:
-    """保存测试集文件级元数据。"""
-    INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+def _meta_for_storage(meta: dict[str, dict]) -> dict[str, dict[str, str]]:
     data: dict[str, dict[str, str]] = {}
     for filename, item in sorted(meta.items()):
         name = _normalize_set_name(str(item.get("name") or ""))
@@ -105,15 +121,12 @@ def _save_sets_meta(meta: dict[str, dict]) -> None:
             saved["description"] = description
         if saved:
             data[filename] = saved
-    with open(SETS_META_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
 
 
 def _remove_set_meta(filename: str) -> None:
     """删除某个测试集对应的文件级元数据。"""
-    meta = _load_sets_meta()
-    meta.pop(filename, None)
-    _save_sets_meta(meta)
+    _update_sets_meta(lambda meta: meta.pop(filename, None))
 
 
 def _scan_input_files() -> list[dict]:
@@ -179,7 +192,7 @@ def _set_current_excel(config: dict, path: Path, sheets: list[dict] | None = Non
 
 
 @router.post("/upload")
-async def upload_excel(file: UploadFile) -> JSONResponse:
+def upload_excel(file: UploadFile) -> JSONResponse:
     """上传测试集 Excel 文件，同名文件覆盖。
 
     Args:
@@ -191,14 +204,14 @@ async def upload_excel(file: UploadFile) -> JSONResponse:
     Raises:
         HTTPException 400: 文件类型或大小不符合要求。
     """
-    filename = _get_input_path(file.filename).name
+    filename = input_path_for(file.filename).name
 
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(400, f"文件大小不能超过 {MAX_FILE_SIZE // 1024 // 1024} MB")
 
     INPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    dest = _get_input_path(filename)
+    dest = input_path_for(filename)
     tmp_path: Path | None = None
     try:
         with NamedTemporaryFile(
@@ -222,9 +235,7 @@ async def upload_excel(file: UploadFile) -> JSONResponse:
         raise HTTPException(400, f"Excel 文件不可读取: {exc}") from exc
 
     # 自动设置为当前使用的文件，sheet 保持当前配置或默认
-    config = _load_yaml()
-    _set_current_excel(config, dest, sheets)
-    _save_yaml(config)
+    update_local_config(lambda config: _set_current_excel(config, dest, sheets))
 
     return JSONResponse({"filename": filename, "sheets": sheets})
 
@@ -271,7 +282,7 @@ def list_sets(
     end = start + page_size
     page_files = all_files[start:end]
 
-    config = _load_yaml()
+    config = load_local_config()
     excel_cfg = config.get("excel", {})
     current_path = excel_cfg.get("input_path", "")
     current = ""
@@ -308,36 +319,38 @@ def get_set_meta(filename: str) -> JSONResponse:
 def update_set_meta(filename: str, body: SetMetaRequest) -> JSONResponse:
     """更新单个测试集的文件级元数据。"""
     path = get_existing_input_path(filename)
-    meta = _load_sets_meta()
-    item = dict(meta.get(path.name, {}))
+    saved_item: dict[str, str] = {}
 
-    if "name" in body.model_fields_set:
-        name = _normalize_set_name(body.name)
-        if not name:
-            raise HTTPException(400, "名称不能为空")
-        _ensure_unique_set_name(path.name, name, meta)
-        if name and name != path.stem:
-            item["name"] = name
+    def mutate(meta: dict[str, dict]) -> None:
+        nonlocal saved_item
+        item = dict(meta.get(path.name, {}))
+        if "name" in body.model_fields_set:
+            name = _normalize_set_name(body.name)
+            if not name:
+                raise HTTPException(400, "名称不能为空")
+            _ensure_unique_set_name(path.name, name, meta)
+            if name != path.stem:
+                item["name"] = name
+            else:
+                item.pop("name", None)
+        if "description" in body.model_fields_set:
+            description = _normalize_description(body.description)
+            if description:
+                item["description"] = description
+            else:
+                item.pop("description", None)
+        if item:
+            meta[path.name] = item
         else:
-            item.pop("name", None)
+            meta.pop(path.name, None)
+        saved_item = item
 
-    if "description" in body.model_fields_set:
-        description = _normalize_description(body.description)
-        if description:
-            item["description"] = description
-        else:
-            item.pop("description", None)
-
-    if item:
-        meta[path.name] = item
-    else:
-        meta.pop(path.name, None)
-    _save_sets_meta(meta)
+    _update_sets_meta(mutate)
     return JSONResponse(
         {
             "filename": path.name,
-            "name": item.get("name") or path.stem,
-            "description": item.get("description", ""),
+            "name": saved_item.get("name") or path.stem,
+            "description": saved_item.get("description", ""),
         }
     )
 
@@ -358,7 +371,7 @@ def list_sheets(filename: str | None = None) -> JSONResponse:
     if filename:
         input_path = get_existing_input_path(filename)
     else:
-        config = _load_yaml()
+        config = load_local_config()
         excel_cfg = config.get("excel", {})
         input_path_str = excel_cfg.get("input_path", "inputs/testcases.xlsx")
         input_path = resolve_config_input_path(input_path_str)
@@ -382,7 +395,7 @@ def refresh_cases() -> JSONResponse:
     Raises:
         HTTPException 400: 配置的 Excel 文件不存在。
     """
-    config = _load_yaml()
+    config = load_local_config()
     excel_cfg = config.get("excel", {})
     input_path_str = excel_cfg.get("input_path", "inputs/testcases.xlsx")
     input_path = resolve_config_input_path(input_path_str)
@@ -421,27 +434,30 @@ def delete_set(filename: str) -> JSONResponse:
     Raises:
         HTTPException 404: 文件不存在。
     """
-    input_path = _get_input_path(filename)
+    input_path = input_path_for(filename)
     if not input_path.is_file():
         raise HTTPException(404, f"文件不存在: {filename}")
 
     input_path.unlink()
     _remove_set_meta(input_path.name)
 
-    config = _load_yaml()
-    excel_cfg = config.setdefault("excel", {})
-    try:
-        current_path = resolve_config_input_path(excel_cfg.get("input_path", ""))
-    except HTTPException:
-        current_path = None
-    if current_path == input_path.resolve():
+    def update_config(config: dict) -> bool:
+        excel_cfg = config.setdefault("excel", {})
+        try:
+            current_path = resolve_config_input_path(excel_cfg.get("input_path", ""))
+        except HTTPException:
+            current_path = None
+        if current_path != input_path.resolve():
+            return False
         remaining = _scan_input_files()
         if remaining:
-            next_path = _get_input_path(remaining[0]["filename"])
+            next_path = input_path_for(remaining[0]["filename"])
             _set_current_excel(config, next_path)
         else:
             excel_cfg["input_path"] = "inputs/testcases.xlsx"
             excel_cfg["sheet_name"] = "Sheet1"
-        _save_yaml(config)
+        return True
+
+    update_local_config(update_config)
 
     return JSONResponse({"ok": True, "filename": input_path.name})

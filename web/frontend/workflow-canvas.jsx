@@ -579,6 +579,38 @@ function defaultHttpConfig() {
     };
 }
 
+function parseHttpJsonTemplate(text) {
+    let inString = false;
+    let escaped = false;
+    let normalized = '';
+    for (let index = 0; index < String(text || '').length;) {
+        const character = text[index];
+        if (inString) {
+            normalized += character;
+            if (escaped) escaped = false;
+            else if (character === '\\') escaped = true;
+            else if (character === '"') inString = false;
+            index += 1;
+            continue;
+        }
+        if (character === '"') {
+            inString = true;
+            normalized += character;
+            index += 1;
+            continue;
+        }
+        const reference = text.slice(index).match(/^\$\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[0-9]+\])*\}/);
+        if (reference) {
+            normalized += JSON.stringify(reference[0]);
+            index += reference[0].length;
+            continue;
+        }
+        normalized += character;
+        index += 1;
+    }
+    return JSON.parse(normalized);
+}
+
 function optionValues(args, names) {
     const values = [];
     args.forEach((arg, index) => {
@@ -1354,9 +1386,10 @@ function Inspector({
     const isLlm = node.data.nodeType === 'LLM';
     const isScript = node.data.nodeType === 'SCRIPT';
     const isStart = node.data.nodeType === 'START';
+    const isEnd = node.data.nodeType === 'END';
     const showCodeEditor = meta.executable && !isHttp && !isLlm;
     const showParametersTab = false;
-    const showOutputVariables = meta.executable;
+    const showOutputVariables = meta.executable || isEnd;
     const modelReference = modelReferenceStatus(
         providers,
         node.data.providerId || '',
@@ -1508,7 +1541,7 @@ function Inspector({
     };
     const beautifyJsonBody = () => {
         try {
-            const formatted = JSON.stringify(JSON.parse(httpConfig.bodyText), null, 2);
+            const formatted = JSON.stringify(parseHttpJsonTemplate(httpConfig.bodyText), null, 2);
             updateHttpConfig({bodyText: formatted});
             setBodyMessage('');
         } catch (error) {
@@ -1783,10 +1816,10 @@ function Inspector({
                                     />
                                 </section>
                             )}
-                            {meta.executable && <section className="wf-config-section wf-editor-full-row">
-                                <div className="wf-config-title"><Settings2 size={15} /><strong>运行配置</strong></div>
-                                <button type="button" aria-expanded={retryOpen} onClick={() => setRetryOpen((open) => !open)}><span>超时与重试</span><ChevronRight className={retryOpen ? 'is-open' : ''} size={15} /></button>
-                                {retryOpen && (
+                            {(meta.executable || isEnd) && <section className="wf-config-section wf-editor-full-row">
+                                <div className="wf-config-title"><Settings2 size={15} /><strong>{isEnd ? '最终结果' : '运行配置'}</strong></div>
+                                {meta.executable && <button type="button" aria-expanded={retryOpen} onClick={() => setRetryOpen((open) => !open)}><span>超时与重试</span><ChevronRight className={retryOpen ? 'is-open' : ''} size={15} /></button>}
+                                {meta.executable && retryOpen && (
                                     <div className="wf-config-panel wf-retry-grid">
                                         <label><span>单次超时（秒）</span><input type="number" min="0.001" step="0.1" value={node.data.timeoutSeconds ?? 600} onChange={(event) => onChange({timeoutSeconds: Number(event.target.value)})} /></label>
                                         <label><span>最大重试次数</span><input type="number" min="0" max="10" step="1" value={node.data.retryCount ?? 0} onChange={(event) => onChange({retryCount: Number(event.target.value)})} /></label>
@@ -1796,13 +1829,13 @@ function Inspector({
                                 )}
                                 {showOutputVariables && (
                                     <>
-                                        <button type="button" aria-expanded={mappingOpen} onClick={() => setMappingOpen((open) => !open)}><span>输出变量</span><ChevronRight className={mappingOpen ? 'is-open' : ''} size={15} /></button>
+                                        <button type="button" aria-expanded={mappingOpen} onClick={() => setMappingOpen((open) => !open)}><span>{isEnd ? '结果字段' : '输出变量'}</span><ChevronRight className={mappingOpen ? 'is-open' : ''} size={15} /></button>
                                         {mappingOpen && (
                                             <div className="wf-config-panel wf-output-variable-list">
                                                 {outputVariables.map((row, index) => (
                                                     <div className="wf-output-variable-row" key={row.id}>
                                                         <label><span>变量名</span><input aria-label={`输出变量名 ${index + 1}`} value={row.name} onChange={(event) => updateOutputVariable(row.id, {name: event.target.value})} /></label>
-                                                        <label><span>{isScript ? 'Python 变量' : '提取表达式'}</span><input aria-label={`输出变量来源 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
+                                                        <label><span>{isScript ? 'Python 变量' : isEnd ? 'Context 路径' : '提取表达式'}</span><input aria-label={`输出变量来源 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
                                                         <label><span>类型</span><select aria-label={`输出变量类型 ${index + 1}`} value={row.type || 'string'} onChange={(event) => updateOutputVariable(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
                                                         {index === 0 ? (
                                                             <button type="button" className="wf-inline-icon-button" onClick={addOutputVariable} title="添加输出变量" aria-label="添加输出变量"><Plus size={15} /></button>

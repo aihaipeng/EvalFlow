@@ -1,17 +1,19 @@
 # Agent Bench
 
-Agent Bench 是一个本机运行的企业 Agent 测试编排工具。它用于管理 Excel 测试集、Script/Agent 测试工具和 FastAPI Target，并通过可视化 Workflow 创建、运行、恢复和追溯批量测试。
+Agent Bench 是一个本机运行的企业 Agent 测试编排工具。它用于管理 Excel 测试集、模型供应商和可视化 Workflow，并通过画布 HTTP 节点对接被测服务，创建、运行、恢复和追溯批量测试。
 
 当前版本支持：
 
-- Excel 测试集上传、分页浏览和首个 Sheet 执行
+- Excel 测试集上传、分页浏览、任意 Sheet 批量执行和字段映射
 - Script / Agent 工具 CRUD、ZIP 导入导出、SSE 日志和运行中断
-- FastAPI Target、请求模板、连接失败重试和大响应 Artifact
+- Workflow HTTP 节点、请求模板、连接失败重试和大响应 Artifact
 - Parser、Evaluator、Check Aggregator、Case Aggregator 固定工作流
 - 多 Run 调度、Case 并发、取消、手工恢复和完整执行追溯
 - DeepSeek 与 DashScope 真实模型工具链测试
 
 系统只面向桌面浏览器和本机使用，服务固定绑定 `127.0.0.1`。
+Workflow 和节点测试调度器保存进程内活动状态，因此当前部署只支持单个 Uvicorn worker；`run.py` 已按该约束启动。不要使用 `--workers 2` 或其他多进程部署参数。
+同步 SQLite、文件和 Excel 操作由 FastAPI 同步处理器在线程池执行；模型供应商连接测试使用异步 HTTP 客户端，避免慢本地 I/O 阻塞事件循环。
 
 ## 环境要求
 
@@ -48,26 +50,25 @@ uv run python run.py
 
 ### 数据库初始化
 
-不需要手动创建数据库或执行建表 SQL。系统在首次访问 Target、模型或 Workflow 等相关页面/API 时自动完成以下操作：
+不需要手动创建数据库或执行建表 SQL。系统在首次访问模型或 Workflow 等相关页面/API 时自动完成以下操作：
 
 - 创建 `run_storage/` 本地数据目录；
 - 创建 `run_storage/agent_bench.sqlite3` SQLite 数据库；
-- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的 Target、模型、Node、Workflow、节点绑定和 Edge 表及索引。
+- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的模型、Node、Workflow、节点绑定和 Edge 表及索引。
 
-数据库初始化由 Repository 统一管理，请勿手工创建同名表或使用旧版本 Workflow 表结构。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的 Target、模型和 Workflow 列表是正常行为。
+数据库初始化由 Repository 统一管理，请勿手工创建同名表或使用旧版本 Workflow 表结构。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的模型和 Workflow 列表是正常行为。
 
 如果需要把另一台机器的已有数据迁移过来，应在服务停止后整体备份和迁移 `run_storage/`；测试集还需要同步 `inputs/` 和 `config.yaml`。这些目录和文件可能包含 API Key、请求响应与执行日志，不应提交到 GitHub。
 
 ## 首次使用
 
 1. 在“测试集”页面上传 `.xlsx` 或 `.xlsm` 文件。
-2. 测试集前两列使用 `case_id | question`，第一行可以是表头。
-3. 在“工具”页面创建 Parser、Evaluator 或 Aggregator 所需的 Script/Agent 工具。
-4. 在“Target”页面配置待测 FastAPI 地址和并发上限。
-5. 在“Workflow”页面编排工具并绑定测试集。
-6. 在“运行中心”创建 Run，设置超时、Case 并发和连接重试参数后手工启动。
+2. Excel 可以有表头，也可以从第一行直接保存数据；无表头的旧格式默认把前两列识别为 `case_id / question`。
+3. 在“Workflow 管理”页面创建 START、业务节点和 END，START 声明批量输入变量。
+4. 在“运行调度”页面选择测试集、Sheet、首行模式和 Workflow，把 Excel 列映射到 START 变量或 object 字段。
+5. 设置 Case 并发数，创建并手工启动 Run；在详情页查看、取消或恢复 Case。
 
-仓库不附带真实测试集、API Key、Target、工具 manifest 或运行记录。新用户需要在页面中创建自己的本地数据。
+仓库不附带真实测试集、API Key、Workflow 或运行记录。新用户需要在页面中创建自己的本地数据。
 
 ## 开发与测试
 
@@ -118,7 +119,9 @@ package.json / package-lock.json    # Workflow 前端构建依赖与 npm 脚本
 
 web/
 ├─ app.py                           # FastAPI 应用、路由注册和静态站点挂载
-├─ routes_*.py                      # 测试集、配置、Target、模型和 Workflow API
+├─ routes_*.py                      # 测试集、配置、模型和 Workflow API
+├─ local_config_service.py          # 本地配置应用服务
+├─ workflow_services.py             # lifespan 管理的 Workflow 应用级资源
 ├─ frontend/                        # Workflow Studio React Flow 源码与样式
 │  ├─ workflow-canvas.jsx
 │  ├─ workflow-canvas.css
@@ -127,15 +130,30 @@ web/
    └─ assets/workflow-canvas.*      # npm run build 生成的 Workflow bundle
 
 execution/
-├─ targets.py                       # Target Structural Model 与 SQLite Repository
+├─ init_db.py                       # SQLite 默认路径、共享初始化锁与连接设置
 ├─ model_providers.py               # 模型供应商配置与 SQLite Repository
 ├─ model_gateway.py                 # 模型协议调用与响应解析
+├─ node_codec.py / time_utils.py    # Structural 公共序列化与时间
 ├─ node_structural_models.py        # 五类 Node Structural Model 与持久化
 ├─ workflow_structural_models.py    # Workflow、binding、Edge 与事务仓储
-├─ workflow_execution.py            # Workflow/Node 调度、执行与 JSON 事实记录
+├─ workflow_application.py          # Workflow 跨资源应用事务
+├─ workflow_execution.py            # 完整 Workflow DAG 调度与公开兼容入口
+├─ workflow_execution_store.py      # Execution JSON 原子存储与进程恢复
+├─ workflow_execution_control.py    # 取消信号与活动 Worker 控制
+├─ workflow_node_executor.py        # Node Runner 注册、分派与 Context commit
+├─ workflow_*_runner.py             # 公共生命周期及 SCRIPT/LLM/HTTP Runner
+├─ tool_runtime.py / tool_worker.py # 可取消子进程 Runtime 与 Worker
+├─ workflow_node_tests.py           # 单节点临时测试会话与 SSE
+├─ batch_inputs.py                  # Excel 行到 START 输入映射与冻结快照
+├─ batch_execution_store.py         # Batch/Case 原子 JSON 存储与恢复
+├─ batch_scheduler.py               # Case 并发、取消和手工恢复
 └─ workflow_values.py               # Context 引用、类型转换与输出提取
 
-storage/                            # Excel 测试集读取与本地元数据
+storage/
+├─ excel.py                         # Excel 测试集读取
+├─ atomic_files.py                  # 同路径锁和原子文本替换
+├─ local_config.py                  # config.yaml Repository
+└─ excel_set_meta.py                # 测试集元数据 Repository
 scripts/build-workflow.mjs          # Workflow 前端生产构建脚本
 tests/                              # Python 单元/集成测试及 Node 几何测试
 docs/                               # 产品需求与企业编排业务基线
@@ -148,7 +166,8 @@ config.example.yaml                 # 可公开提交的本地配置模板
 inputs/                             # 本机 Excel 测试集，内容不提交
 run_storage/
 ├─ agent_bench.sqlite3              # Structural Model SQLite 数据库，不提交
-└─ workflow_executions/             # Workflow/Node Execution JSON，不提交
+├─ workflow_executions/             # Workflow/Node Execution JSON，不提交
+└─ batch_executions/                # Batch/Case/Input Snapshot JSON，不提交
 outputs/ / logs/                    # 本地导出结果与日志，不提交
 ```
 

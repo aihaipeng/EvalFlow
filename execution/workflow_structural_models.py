@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
-import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
@@ -17,10 +16,15 @@ from execution.node_structural_models import (
     NODE_STRUCTURAL_ADAPTER,
     NodeStructuralModel,
     NodeStructuralRepository,
-    _dump_definition,
-    utc_now_iso,
 )
-from execution.targets import DEFAULT_DATABASE_PATH
+from execution.node_codec import dump_node_definition
+from execution.time_utils import utc_now_iso
+from execution.init_db import (
+    DEFAULT_DATABASE_PATH,
+    configure_sqlite_connection,
+    database_initialize_lock_for,
+    initialize_sqlite_pragmas,
+)
 
 
 WORKFLOW_STRUCTURAL_TABLE_DESCRIPTIONS = {
@@ -49,10 +53,6 @@ WORKFLOW_STRUCTURAL_COLUMN_DESCRIPTIONS = {
         "target_node_id": "TEXT。同一 Workflow 内的下游 Node ID。",
     },
 }
-
-_INITIALIZE_LOCKS_GUARD = threading.Lock()
-_INITIALIZE_LOCKS: dict[Path, threading.Lock] = {}
-
 
 def _validate_uuid4(value: str, *, label: str) -> str:
     try:
@@ -179,11 +179,6 @@ def _raise_workflow_integrity_error(operation: str, exc: sqlite3.IntegrityError)
     ) from exc
 
 
-def _initialize_lock_for(database_path: Path) -> threading.Lock:
-    with _INITIALIZE_LOCKS_GUARD:
-        return _INITIALIZE_LOCKS.setdefault(database_path, threading.Lock())
-
-
 def validate_workflow_graph(
     workflow: WorkflowStructuralModel,
     node_models: list[NodeStructuralModel],
@@ -278,7 +273,7 @@ class WorkflowStructuralRepository:
 
     def __init__(self, database_path: str | Path = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path).resolve()
-        self._initialize_lock = _initialize_lock_for(self.database_path)
+        self._initialize_lock = database_initialize_lock_for(self.database_path)
         self._initialized = False
 
     def initialize(self) -> None:
@@ -289,6 +284,7 @@ class WorkflowStructuralRepository:
                 return
             NodeStructuralRepository(self.database_path).initialize()
             with self._connect(initialize=False) as connection:
+                initialize_sqlite_pragmas(connection)
                 connection.executescript(
                     """
                     CREATE TABLE IF NOT EXISTS workflow_structural_models (
@@ -425,7 +421,7 @@ class WorkflowStructuralRepository:
                         connection.execute(
                             "UPDATE node_structural_models SET name = ?, description = ?, "
                             "definition_json = ?, updated_at = ? WHERE id = ?",
-                            (node.name, node.description, _dump_definition(node), now, node.id),
+                            (node.name, node.description, dump_node_definition(node), now, node.id),
                         )
                     else:
                         self._insert_node(connection, node, now)
@@ -490,7 +486,7 @@ class WorkflowStructuralRepository:
         connection.execute(
             "INSERT INTO node_structural_models(id,type,name,description,definition_json,created_at,updated_at) "
             "VALUES (?,?,?,?,?,?,?)",
-            (node.id, node.type, node.name, node.description, _dump_definition(node), timestamp, timestamp),
+            (node.id, node.type, node.name, node.description, dump_node_definition(node), timestamp, timestamp),
         )
 
     @staticmethod
@@ -550,7 +546,7 @@ class WorkflowStructuralRepository:
             self.initialize()
         connection = sqlite3.connect(self.database_path, timeout=30)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
+        configure_sqlite_connection(connection, foreign_keys=True)
         try:
             yield connection
         except Exception:

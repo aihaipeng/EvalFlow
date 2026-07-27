@@ -6,6 +6,7 @@ from execution.workflow_values import (
     WorkflowValueError,
     convert_output,
     extract_output,
+    parse_json_template,
     resolve_template,
 )
 
@@ -30,6 +31,25 @@ def test_template_resolution_is_case_sensitive_and_supports_escape():
     assert inputs == {"name": "ok"}
     with pytest.raises(WorkflowValueError, match="Name"):
         resolve_template("${Name}", {"name": "ok"})
+
+
+def test_json_template_safely_injects_unquoted_and_quoted_string_variables():
+    question = '中文 "quote" \\ path\nnext line'
+
+    resolved, inputs = parse_json_template(
+        '{"raw": ${input.question}, "quoted": "${input.question}"}',
+        {"input": {"question": question}},
+    )
+
+    assert resolved == {"raw": question, "quoted": question}
+    assert inputs == {"input": {"question": question}}
+
+
+def test_json_template_rejects_invalid_final_json_and_missing_variables():
+    with pytest.raises(WorkflowValueError, match="不是合法 JSON"):
+        parse_json_template('{"question": ${input.question}', {"input": {"question": "x"}})
+    with pytest.raises(WorkflowValueError, match="Context 变量不存在"):
+        parse_json_template('{"question": ${missing}}', {})
 
 
 @pytest.mark.parametrize(

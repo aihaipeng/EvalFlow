@@ -1,7 +1,11 @@
+import math
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from pathlib import Path
+from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 
 CASE_ID_HEADERS = {"case_id", "case id", "用例id", "用例编号"}
@@ -83,5 +87,136 @@ class ExcelCaseRepository:
         try:
             sheet = self._select_sheet(workbook)
             return read_test_cases_from_sheet(sheet)
+        finally:
+            workbook.close()
+
+
+@dataclass(frozen=True)
+class ExcelSheetRow:
+    """批量运行使用的一条严格表头行记录。"""
+
+    row_number: int
+    values: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ExcelSheetSnapshot:
+    """批量运行创建前读取的 Sheet 表头与非空数据行。"""
+
+    headers: tuple[str, ...]
+    rows: tuple[ExcelSheetRow, ...]
+    header_mode: str
+
+
+def _json_cell_value(value: Any, *, coordinate: str) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"单元格 {coordinate} 包含非有限数值")
+        return value
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    raise ValueError(f"单元格 {coordinate} 的类型不支持批量执行: {type(value).__name__}")
+
+
+class ExcelSheetRepository:
+    """按首行表头读取批量运行输入，不应用用例过滤或字段映射。"""
+
+    def __init__(
+        self,
+        file_path: str | Path,
+        sheet_name: str,
+        header_mode: str = "AUTO",
+    ):
+        self.path = Path(file_path)
+        self.sheet_name = sheet_name
+        self.header_mode = header_mode.upper()
+        if self.header_mode not in {"AUTO", "HEADER", "DATA"}:
+            raise ValueError("首行模式必须是 AUTO、HEADER 或 DATA")
+
+    def read_snapshot(self) -> ExcelSheetSnapshot:
+        if not self.path.is_file():
+            raise FileNotFoundError(f"Excel 文件不存在: {self.path}")
+
+        workbook = load_workbook(self.path, read_only=True, data_only=True)
+        try:
+            if self.sheet_name not in workbook.sheetnames:
+                available = ", ".join(workbook.sheetnames)
+                raise ValueError(f"Sheet 不存在: {self.sheet_name}。可用: {available}")
+            sheet = workbook[self.sheet_name]
+            raw_rows = [tuple(row) for row in sheet.iter_rows(values_only=True)]
+            if not raw_rows:
+                raise ValueError("Sheet 为空，没有可执行数据")
+
+            first = [_as_text(value) for value in raw_rows[0]]
+            auto_header = bool(first) and (
+                first[0].casefold() in CASE_ID_HEADERS
+                or (len(first) > 1 and first[1].casefold() in QUESTION_HEADERS)
+            )
+            resolved_mode = (
+                "HEADER"
+                if self.header_mode == "HEADER" or (self.header_mode == "AUTO" and auto_header)
+                else "DATA"
+            )
+            if resolved_mode == "HEADER":
+                last_header = max(
+                    (index for index, header in enumerate(first) if header),
+                    default=-1,
+                )
+                if last_header < 0:
+                    raise ValueError("Sheet 第一行必须提供至少一个非空表头")
+                headers = tuple(first[: last_header + 1])
+                if any(not header for header in headers):
+                    raise ValueError("Sheet 有效表头区间中不能包含空列名")
+                for raw_row in raw_rows[1:]:
+                    if any(
+                        value is not None and (not isinstance(value, str) or value.strip())
+                        for value in raw_row[len(headers) :]
+                    ):
+                        raise ValueError("Sheet 存在没有表头的数据列")
+                data_rows = raw_rows[1:]
+                first_row_number = 2
+            else:
+                width = max(
+                    (
+                        index + 1
+                        for row in raw_rows
+                        for index, value in enumerate(row)
+                        if value is not None and (not isinstance(value, str) or value.strip())
+                    ),
+                    default=0,
+                )
+                if width == 0:
+                    raise ValueError("Sheet 没有可执行数据")
+                headers = tuple(
+                    "case_id" if index == 1 else "question" if index == 2 else f"column_{index}"
+                    for index in range(1, width + 1)
+                )
+                data_rows = raw_rows
+                first_row_number = 1
+            duplicates = sorted({header for header in headers if headers.count(header) > 1})
+            if duplicates:
+                raise ValueError(f"Sheet 表头不能重复: {', '.join(duplicates)}")
+
+            rows: list[ExcelSheetRow] = []
+            for row_number, raw_row in enumerate(data_rows, start=first_row_number):
+                values = list(raw_row) + [None] * (len(headers) - len(raw_row))
+                values = values[: len(headers)]
+                if all(value is None or (isinstance(value, str) and not value.strip()) for value in values):
+                    continue
+                normalized = {
+                    header: _json_cell_value(
+                        values[index],
+                        coordinate=f"{get_column_letter(index + 1)}{row_number}",
+                    )
+                    for index, header in enumerate(headers)
+                }
+                rows.append(ExcelSheetRow(row_number=row_number, values=normalized))
+            return ExcelSheetSnapshot(
+                headers=headers,
+                rows=tuple(rows),
+                header_mode=resolved_mode,
+            )
         finally:
             workbook.close()

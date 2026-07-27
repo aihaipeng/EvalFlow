@@ -299,7 +299,7 @@ def test_empty_execution_object_uses_platform_defaults():
                     "follow_redirects": True,
                     "headers": [],
                     "params": [],
-                    "body": {"type": "none", "content": None},
+                    "body": {"type": "none", "content": None, "template_text": None},
                 }
             },
         ),

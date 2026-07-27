@@ -253,6 +253,18 @@ def test_available_variables_include_dag_ancestors_current_draft_and_temporary_o
     assert "if (!variablesOpen || !node) return undefined" in source
 
 
+def test_end_node_exposes_explicit_workflow_result_mappings():
+    source = read("web/frontend/workflow-canvas.jsx")
+    adapter = read("web/static/execution.js")
+
+    assert "const isEnd = node.data.nodeType === 'END';" in source
+    assert "const showOutputVariables = meta.executable || isEnd;" in source
+    assert "isEnd ? '最终结果' : '运行配置'" in source
+    assert "isEnd ? '结果字段' : '输出变量'" in source
+    assert "isEnd ? 'Context 路径' : '提取表达式'" in source
+    assert "if (data.nodeType === 'END') return Object.assign(common, {outputs: outputBindings(node)});" in adapter
+
+
 def test_built_workflow_assets_exist_and_are_nonempty():
     script = ROOT / "web/static/assets/workflow-canvas.js"
     styles = ROOT / "web/static/assets/workflow-canvas.css"

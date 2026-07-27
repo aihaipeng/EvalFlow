@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -12,36 +11,25 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from execution import (
-    DEFAULT_DATABASE_PATH,
-    DEFAULT_EXECUTION_ROOT,
-    ModelProviderRepository,
-    NodeTestManager,
     WorkflowEdge,
     WorkflowNameConflictError,
     WorkflowNodeBinding,
     WorkflowStructuralModel,
     WorkflowStructuralRecord,
-    WorkflowStructuralRepository,
     WorkflowStructuralRepositoryError,
     WorkflowStructuralSummary,
     WorkflowExecutionError,
-    WorkflowExecutionManager,
-    WorkflowExecutionStore,
-    validate_workflow_graph,
 )
 from execution.node_structural_models import NodeStructuralModel
+from execution.workflow_application import (
+    WorkflowApplicationConflictError,
+    WorkflowApplicationNotFoundError,
+)
 from web.files import open_directory_in_explorer
+from web.workflow_services import WorkflowServices, WorkflowServicesDependency
 
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
-DATABASE_PATH = DEFAULT_DATABASE_PATH
-_repository_instance: WorkflowStructuralRepository | None = None
-_repository_path: Path | None = None
-EXECUTION_ROOT = DEFAULT_EXECUTION_ROOT
-_manager_instance: WorkflowExecutionManager | None = None
-_manager_key: tuple[Path, Path] | None = None
-_node_test_manager_instance: NodeTestManager | None = None
-_node_test_manager_path: Path | None = None
 
 
 def _raise_repository_http_error(exc: WorkflowStructuralRepositoryError) -> None:
@@ -146,54 +134,10 @@ class NodeTestCancelResponse(_WorkflowApiModel):
     interrupted: bool = Field(description="是否找到并通知了活动 Worker。")
 
 
-def _get_repository() -> WorkflowStructuralRepository:
-    """返回当前数据库路径对应的 Repository，支持测试隔离临时数据库。"""
-
-    global _repository_instance, _repository_path
-    path = Path(DATABASE_PATH).resolve()
-    if _repository_instance is None or _repository_path != path:
-        _repository_instance = WorkflowStructuralRepository(path)
-        _repository_path = path
-    return _repository_instance
-
-
-def _get_manager() -> WorkflowExecutionManager:
-    """返回当前数据库和 Execution 根目录对应的进程内调度器。"""
-
-    global _manager_instance, _manager_key
-    database_path = Path(DATABASE_PATH).resolve()
-    execution_root = Path(EXECUTION_ROOT).resolve()
-    key = (database_path, execution_root)
-    if _manager_instance is None or _manager_key != key:
-        structural_repository = WorkflowStructuralRepository(database_path)
-        _manager_instance = WorkflowExecutionManager(
-            structural_repository,
-            ModelProviderRepository(database_path),
-            WorkflowExecutionStore(execution_root),
-        )
-        _manager_key = key
-    return _manager_instance
-
-
-def _get_node_test_manager() -> NodeTestManager:
-    """返回当前数据库路径对应的进程内单节点临时测试管理器。"""
-
-    global _node_test_manager_instance, _node_test_manager_path
-    database_path = Path(DATABASE_PATH).resolve()
-    if (
-        _node_test_manager_instance is None
-        or _node_test_manager_path != database_path
-    ):
-        _node_test_manager_instance = NodeTestManager(
-            WorkflowStructuralRepository(database_path),
-            ModelProviderRepository(database_path),
-        )
-        _node_test_manager_path = database_path
-    return _node_test_manager_instance
-
-
-def _get_or_404(workflow_id: str) -> WorkflowStructuralRecord:
-    record = _get_repository().get(workflow_id)
+def _get_or_404(
+    workflow_id: str, services: WorkflowServices
+) -> WorkflowStructuralRecord:
+    record = services.repository.get(workflow_id)
     if record is None:
         raise HTTPException(404, f"Workflow 不存在: {workflow_id}")
     return record
@@ -221,52 +165,50 @@ def _structural_model(
 
 
 @router.get("", response_model=WorkflowListResponse)
-def list_workflows() -> WorkflowListResponse:
+def list_workflows(services: WorkflowServicesDependency) -> WorkflowListResponse:
     """列出 Workflow 管理页所需的名称、说明和更新时间摘要。"""
 
-    return WorkflowListResponse(workflows=_get_repository().list())
+    return WorkflowListResponse(workflows=services.repository.list())
 
 
 @router.post("", response_model=WorkflowEnvelope, status_code=201)
-def create_workflow(body: WorkflowWriteRequest) -> WorkflowEnvelope:
+def create_workflow(
+    body: WorkflowWriteRequest, services: WorkflowServicesDependency
+) -> WorkflowEnvelope:
     """完整校验并原子创建 Workflow、Node、binding 和 Edge。"""
 
     workflow, nodes = _structural_model(str(uuid4()), body)
     try:
-        record = _get_repository().create(workflow, nodes)
+        record = services.repository.create(workflow, nodes)
     except WorkflowStructuralRepositoryError as exc:
         _raise_repository_http_error(exc)
     return WorkflowEnvelope(workflow=record)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowEnvelope)
-def get_workflow(workflow_id: str) -> WorkflowEnvelope:
+def get_workflow(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> WorkflowEnvelope:
     """读取可完整还原画布的 Workflow Structural Record。"""
 
-    return WorkflowEnvelope(workflow=_get_or_404(workflow_id))
+    return WorkflowEnvelope(workflow=_get_or_404(workflow_id, services))
 
 
 @router.put("/{workflow_id}", response_model=WorkflowEnvelope)
-def update_workflow(workflow_id: str, body: WorkflowWriteRequest) -> WorkflowEnvelope:
+def update_workflow(
+    workflow_id: str,
+    body: WorkflowWriteRequest,
+    services: WorkflowServicesDependency,
+) -> WorkflowEnvelope:
     """完整校验并原子替换既有 Workflow 当前结构。"""
 
-    current = _get_or_404(workflow_id)
     workflow, nodes = _structural_model(workflow_id, body)
     try:
-        validate_workflow_graph(workflow, nodes)
-    except WorkflowStructuralRepositoryError as exc:
-        _raise_repository_http_error(exc)
-    next_node_ids = {item.node.id for item in body.nodes}
-    removed_node_ids = {
-        node.id for node in current.node_models if node.id not in next_node_ids
-    }
-    try:
-        for node_id in removed_node_ids:
-            _get_node_test_manager().cancel_node(workflow_id, node_id)
-    except WorkflowExecutionError as exc:
+        record = services.application.update_workflow(workflow, nodes)
+    except WorkflowApplicationNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except WorkflowApplicationConflictError as exc:
         raise HTTPException(409, str(exc)) from exc
-    try:
-        record = _get_repository().update(workflow, nodes)
     except WorkflowStructuralRepositoryError as exc:
         _raise_repository_http_error(exc)
     return WorkflowEnvelope(workflow=record)
@@ -274,46 +216,44 @@ def update_workflow(workflow_id: str, body: WorkflowWriteRequest) -> WorkflowEnv
 
 @router.put("/{workflow_id}/metadata", response_model=WorkflowEnvelope)
 def update_workflow_metadata(
-    workflow_id: str, body: WorkflowMetadataRequest
+    workflow_id: str,
+    body: WorkflowMetadataRequest,
+    services: WorkflowServicesDependency,
 ) -> WorkflowEnvelope:
     """复用当前合法图，只更新 Workflow 名称和说明。"""
 
-    current = _get_or_404(workflow_id)
+    current = _get_or_404(workflow_id, services)
     workflow = current.workflow.model_copy(
         update={"name": body.name, "description": body.description}
     )
     try:
-        record = _get_repository().update(workflow, current.node_models)
+        record = services.repository.update(workflow, current.node_models)
     except WorkflowStructuralRepositoryError as exc:
         _raise_repository_http_error(exc)
     return WorkflowEnvelope(workflow=record)
 
 
 @router.delete("/{workflow_id}", response_model=WorkflowEnvelope)
-def delete_workflow(workflow_id: str) -> WorkflowEnvelope:
+def delete_workflow(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> WorkflowEnvelope:
     """删除 Workflow 及其当前 Node、binding 和 Edge，并返回删除前快照。"""
 
-    current = _get_or_404(workflow_id)
-    manager = _get_manager()
+    references = [
+        batch for batch in services.batch_store.list()
+        if batch.get("workflow", {}).get("id") == workflow_id
+    ]
+    if references:
+        raise HTTPException(409, "Workflow 已被 Batch Run 引用，请先删除相关 Batch Run")
+
     try:
-        _get_node_test_manager().cancel_workflow(workflow_id)
-    except WorkflowExecutionError as exc:
+        current = services.application.delete_workflow(workflow_id)
+    except WorkflowApplicationNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except WorkflowApplicationConflictError as exc:
         raise HTTPException(409, str(exc)) from exc
-    if manager.has_active_workflow(workflow_id):
-        raise HTTPException(409, "Workflow 存在活动 Execution，请先全局中断并等待终态")
-    staged_execution_root = manager.store.stage_workflow_root_deletion(workflow_id)
-    try:
-        deleted = _get_repository().delete(workflow_id)
     except WorkflowStructuralRepositoryError as exc:
-        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
         _raise_repository_http_error(exc)
-    except Exception:
-        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
-        raise
-    if not deleted:
-        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
-        raise HTTPException(404, f"Workflow 不存在: {workflow_id}")
-    manager.store.finalize_workflow_root_deletion(staged_execution_root)
     return WorkflowEnvelope(workflow=current)
 
 
@@ -322,11 +262,15 @@ def delete_workflow(workflow_id: str) -> WorkflowEnvelope:
     response_model=NodeTestEnvelope,
     status_code=202,
 )
-def start_node_test(workflow_id: str, body: NodeTestRequest) -> NodeTestEnvelope:
+def start_node_test(
+    workflow_id: str,
+    body: NodeTestRequest,
+    services: WorkflowServicesDependency,
+) -> NodeTestEnvelope:
     """测试当前节点草稿，不校验整图、不执行上下游且不创建持久化事实。"""
 
     try:
-        envelope, _created = _get_node_test_manager().start(
+        envelope, _created = services.node_test_manager.start(
             workflow_id, body.node, body.context
         )
     except WorkflowExecutionError as exc:
@@ -335,10 +279,14 @@ def start_node_test(workflow_id: str, body: NodeTestRequest) -> NodeTestEnvelope
 
 
 @router.get("/{workflow_id}/node-tests/{test_id}/events")
-def stream_node_test_events(workflow_id: str, test_id: str) -> StreamingResponse:
+def stream_node_test_events(
+    workflow_id: str,
+    test_id: str,
+    services: WorkflowServicesDependency,
+) -> StreamingResponse:
     """以 SSE 交付实时临时快照；终态交付后服务端立即释放会话。"""
 
-    manager = _get_node_test_manager()
+    manager = services.node_test_manager
 
     def events():
         try:
@@ -366,34 +314,42 @@ def stream_node_test_events(workflow_id: str, test_id: str) -> StreamingResponse
     "/{workflow_id}/node-tests/{test_id}/cancel",
     response_model=NodeTestCancelResponse,
 )
-def cancel_node_test(workflow_id: str, test_id: str) -> NodeTestCancelResponse:
+def cancel_node_test(
+    workflow_id: str,
+    test_id: str,
+    services: WorkflowServicesDependency,
+) -> NodeTestCancelResponse:
     """幂等中断单节点临时测试，不影响活动 Workflow Execution。"""
 
     return NodeTestCancelResponse(
         test_id=test_id,
-        interrupted=_get_node_test_manager().cancel(workflow_id, test_id),
+        interrupted=services.node_test_manager.cancel(workflow_id, test_id),
     )
 
 
 @router.post("/{workflow_id}/runs", response_model=WorkflowExecutionEnvelope, status_code=202)
-def start_workflow_execution(workflow_id: str) -> WorkflowExecutionEnvelope:
+def start_workflow_execution(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> WorkflowExecutionEnvelope:
     """使用当前 Structural Snapshot 异步启动一次手动 Workflow Execution。"""
 
-    _get_or_404(workflow_id)
+    _get_or_404(workflow_id, services)
     try:
-        execution = _get_manager().start(workflow_id)
+        execution = services.manager.start(workflow_id)
     except (WorkflowExecutionError, WorkflowStructuralRepositoryError) as exc:
         raise HTTPException(400, str(exc)) from exc
     return WorkflowExecutionEnvelope(execution=execution)
 
 
 @router.get("/{workflow_id}/runs", response_model=WorkflowExecutionListResponse)
-def list_workflow_executions(workflow_id: str) -> WorkflowExecutionListResponse:
+def list_workflow_executions(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> WorkflowExecutionListResponse:
     """读取最近 10 次 Workflow Execution，全部事实来自本地 JSON。"""
 
-    _get_or_404(workflow_id)
+    _get_or_404(workflow_id, services)
     return WorkflowExecutionListResponse(
-        executions=_get_manager().store.list(workflow_id, limit=10)
+        executions=services.store.list(workflow_id, limit=10)
     )
 
 
@@ -401,11 +357,13 @@ def list_workflow_executions(workflow_id: str) -> WorkflowExecutionListResponse:
     "/{workflow_id}/runs/{execution_id}", response_model=WorkflowExecutionEnvelope
 )
 def get_workflow_execution(
-    workflow_id: str, execution_id: str
+    workflow_id: str,
+    execution_id: str,
+    services: WorkflowServicesDependency,
 ) -> WorkflowExecutionEnvelope:
     """读取一次完整 Workflow Execution JSON。"""
 
-    execution = _get_manager().store.get_workflow(workflow_id, execution_id)
+    execution = services.store.get_workflow(workflow_id, execution_id)
     if execution is None:
         raise HTTPException(404, f"Workflow Execution 不存在: {execution_id}")
     return WorkflowExecutionEnvelope(execution=execution)
@@ -415,14 +373,16 @@ def get_workflow_execution(
     "/{workflow_id}/runs/{execution_id}/nodes", response_model=NodeExecutionListResponse
 )
 def list_node_executions(
-    workflow_id: str, execution_id: str
+    workflow_id: str,
+    execution_id: str,
+    services: WorkflowServicesDependency,
 ) -> NodeExecutionListResponse:
     """读取一次 Workflow Execution 已创建的全部 Node Execution JSON。"""
 
-    if _get_manager().store.get_workflow(workflow_id, execution_id) is None:
+    if services.store.get_workflow(workflow_id, execution_id) is None:
         raise HTTPException(404, f"Workflow Execution 不存在: {execution_id}")
     return NodeExecutionListResponse(
-        executions=_get_manager().store.get_nodes(workflow_id, execution_id)
+        executions=services.store.get_nodes(workflow_id, execution_id)
     )
 
 
@@ -431,11 +391,13 @@ def list_node_executions(
     response_model=WorkflowExecutionEnvelope,
 )
 def cancel_workflow_execution(
-    workflow_id: str, execution_id: str
+    workflow_id: str,
+    execution_id: str,
+    services: WorkflowServicesDependency,
 ) -> WorkflowExecutionEnvelope:
     """幂等全局中断一次活动 Workflow Execution。"""
 
-    manager = _get_manager()
+    manager = services.manager
     current = manager.store.get_workflow(workflow_id, execution_id)
     if current is None:
         raise HTTPException(404, f"Workflow Execution 不存在: {execution_id}")
@@ -448,9 +410,11 @@ def cancel_workflow_execution(
 @router.post(
     "/{workflow_id}/execution-directory", response_model=ExecutionDirectoryResponse
 )
-def open_workflow_execution_directory(workflow_id: str) -> ExecutionDirectoryResponse:
+def open_workflow_execution_directory(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> ExecutionDirectoryResponse:
     """打开当前 Workflow 固定的 Execution 根目录。"""
 
-    _get_or_404(workflow_id)
-    path = _get_manager().store.workflow_root(workflow_id, create=True)
+    _get_or_404(workflow_id, services)
+    path = services.store.workflow_root(workflow_id, create=True)
     return ExecutionDirectoryResponse(ok=True, path=open_directory_in_explorer(path))

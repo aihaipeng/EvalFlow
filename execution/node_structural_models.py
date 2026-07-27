@@ -6,9 +6,7 @@ import json
 import math
 import re
 import sqlite3
-import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypeAlias
 from urllib.parse import urlsplit
@@ -23,7 +21,14 @@ from pydantic import (
     model_validator,
 )
 
-from execution.targets import DEFAULT_DATABASE_PATH
+from execution.init_db import (
+    DEFAULT_DATABASE_PATH,
+    configure_sqlite_connection,
+    database_initialize_lock_for,
+    initialize_sqlite_pragmas,
+)
+from execution.node_codec import dump_node_definition
+from execution.time_utils import utc_now_iso
 
 
 NODE_TYPES = ("START", "SCRIPT", "LLM", "HTTP", "END")
@@ -82,12 +87,6 @@ _HEADER_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 _HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
 _STATUS_RANGE = re.compile(r"^[1-5][0-9]{2}-[1-5][0-9]{2}$")
 _RESERVED_REQUEST_HEADERS = {"content-length", "transfer-encoding", "content-encoding"}
-_INITIALIZE_LOCKS_GUARD = threading.Lock()
-_INITIALIZE_LOCKS: dict[Path, threading.Lock] = {}
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _validate_uuid4(value: str) -> str:
@@ -465,13 +464,22 @@ class HttpBody(_NodeModel):
     content: Any = Field(
         default=None, description="Body 模板；结构由 type 决定并支持 Context 引用。"
     )
+    template_text: str | None = Field(
+        default=None, description="raw Body 的原始 JSON 模板文本。"
+    )
 
     @model_validator(mode="after")
     def validate_content(self) -> "HttpBody":
         if self.type == "none":
-            if self.content is not None:
-                raise ValueError("HTTP none Body 的 content 必须是 null")
+            if self.content is not None or self.template_text is not None:
+                raise ValueError("HTTP none Body 的 content 和 template_text 必须是 null")
             return self
+        if self.type == "raw" and self.template_text is not None:
+            if self.content is not None:
+                raise ValueError("HTTP raw Body 不能同时提供 content 和 template_text")
+            return self
+        if self.template_text is not None:
+            raise ValueError("只有 HTTP raw Body 可以提供 template_text")
         _validate_json_value(self.content, path="HTTP body.content")
         if self.type in {"form_data", "form_urlencoded"}:
             self.content = TypeAdapter(list[HttpFormField]).validate_python(self.content)
@@ -629,9 +637,18 @@ class HttpNodeStructuralModel(NodeCommon):
 
 
 class EndNodeStructuralModel(NodeCommon):
-    """END 节点结构模型，只作为图结构结束标志，不声明执行或变量逻辑。"""
+    """END 节点结构模型，声明 Workflow 最终结果映射。"""
 
     type: Literal["END"] = Field(default="END", description="固定节点类型 END。")
+    outputs: list[NodeOutput] = Field(
+        default_factory=list,
+        description="从最终 Context 映射出的 Workflow 结果字段。",
+    )
+
+    @field_validator("outputs")
+    @classmethod
+    def validate_outputs(cls, value: list[NodeOutput]) -> list[NodeOutput]:
+        return _validate_unique_names(value, label="END outputs")
 
 
 NodeStructuralModel: TypeAlias = Annotated[
@@ -657,24 +674,12 @@ class NodeStructuralRepositoryError(RuntimeError):
     """节点结构模型无法持久化、读取或满足 Repository 不变量时抛出的领域错误。"""
 
 
-def _initialize_lock_for(database_path: Path) -> threading.Lock:
-    with _INITIALIZE_LOCKS_GUARD:
-        return _INITIALIZE_LOCKS.setdefault(database_path, threading.Lock())
-
-
-def _dump_definition(node: NodeStructuralModel) -> str:
-    payload = node.model_dump(
-        mode="json", exclude={"id", "type", "name", "description"}
-    )
-    return json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
-
-
 class NodeStructuralRepository:
     """独立持久化节点结构模型，并在首次初始化时定点删除旧 Workflow 表。"""
 
     def __init__(self, database_path: str | Path = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path).resolve()
-        self._initialize_lock = _initialize_lock_for(self.database_path)
+        self._initialize_lock = database_initialize_lock_for(self.database_path)
         self._initialized = False
 
     def initialize(self) -> None:
@@ -685,7 +690,7 @@ class NodeStructuralRepository:
                 return
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
             with self._connect(initialize=False) as connection:
-                connection.execute("PRAGMA journal_mode = WAL")
+                initialize_sqlite_pragmas(connection)
                 connection.execute("PRAGMA foreign_keys = OFF")
                 for table in LEGACY_WORKFLOW_TABLES:
                     connection.execute(f'DROP TABLE IF EXISTS "{table}"')
@@ -732,7 +737,7 @@ class NodeStructuralRepository:
                         validated.type,
                         validated.name,
                         validated.description,
-                        _dump_definition(validated),
+                        dump_node_definition(validated),
                         now,
                         now,
                     ),
@@ -797,7 +802,7 @@ class NodeStructuralRepository:
                     validated.type,
                     validated.name,
                     validated.description,
-                    _dump_definition(validated),
+                    dump_node_definition(validated),
                     now,
                     validated.id,
                 ),
@@ -821,6 +826,7 @@ class NodeStructuralRepository:
             self.initialize()
         connection = sqlite3.connect(self.database_path, timeout=30)
         connection.row_factory = sqlite3.Row
+        configure_sqlite_connection(connection)
         try:
             yield connection
         finally:
