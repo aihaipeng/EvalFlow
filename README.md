@@ -112,13 +112,44 @@ uv run pytest tests/test_agent_live_integration.py -m live -q
 ## 项目结构
 
 ```text
-run.py                     # 本机服务入口
-web/                       # FastAPI 路由、工具仓储和单页前端
-execution/                 # Target、Workflow、Run、调度、执行和 Artifact
-storage/                   # Excel 测试集读取
-tests/                     # 单元、集成和真实模型测试
-inputs/                    # 本机测试集，内容不提交
-run_storage/               # 本机运行数据库与 Artifact，不提交
+run.py                              # Uvicorn 本机服务入口，固定监听 127.0.0.1:8010
+pyproject.toml / uv.lock            # Python 版本、运行依赖和锁定依赖
+package.json / package-lock.json    # Workflow 前端构建依赖与 npm 脚本
+
+web/
+├─ app.py                           # FastAPI 应用、路由注册和静态站点挂载
+├─ routes_*.py                      # 测试集、配置、Target、模型和 Workflow API
+├─ frontend/                        # Workflow Studio React Flow 源码与样式
+│  ├─ workflow-canvas.jsx
+│  ├─ workflow-canvas.css
+│  └─ workflow-alignment.mjs
+└─ static/                          # 单页应用及可直接运行的已构建静态资源
+   └─ assets/workflow-canvas.*      # npm run build 生成的 Workflow bundle
+
+execution/
+├─ targets.py                       # Target Structural Model 与 SQLite Repository
+├─ model_providers.py               # 模型供应商配置与 SQLite Repository
+├─ model_gateway.py                 # 模型协议调用与响应解析
+├─ node_structural_models.py        # 五类 Node Structural Model 与持久化
+├─ workflow_structural_models.py    # Workflow、binding、Edge 与事务仓储
+├─ workflow_execution.py            # Workflow/Node 调度、执行与 JSON 事实记录
+└─ workflow_values.py               # Context 引用、类型转换与输出提取
+
+storage/                            # Excel 测试集读取与本地元数据
+scripts/build-workflow.mjs          # Workflow 前端生产构建脚本
+tests/                              # Python 单元/集成测试及 Node 几何测试
+docs/                               # 产品需求与企业编排业务基线
+prototypes/                         # HTTP、LLM 等高保真交互原型，不参与生产运行
+
+WORKFLOW_SPEC.md                    # 当前 Workflow Structural/Execution 契约
+PLAN.md                             # 分阶段实现决策、验收记录与回归结果
+config.example.yaml                 # 可公开提交的本地配置模板
+
+inputs/                             # 本机 Excel 测试集，内容不提交
+run_storage/
+├─ agent_bench.sqlite3              # Structural Model SQLite 数据库，不提交
+└─ workflow_executions/             # Workflow/Node Execution JSON，不提交
+outputs/ / logs/                    # 本地导出结果与日志，不提交
 ```
 
 更完整的业务边界和执行语义见 [企业 Agent 测试编排需求基线](docs/enterprise-agent-test-orchestration.md)。
