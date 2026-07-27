@@ -18,21 +18,45 @@ Agent Bench 是一个本机运行的企业 Agent 测试编排工具。它用于�
 - Windows 10 或 Windows 11
 - [uv](https://docs.astral.sh/uv/)
 - Git，仅在通过 Git 获取项目时需要
-- Node.js 不是运行依赖；只有修改 CodeMirror 编辑器源码时才需要
+- Node.js 不是运行依赖；只有修改 Workflow 前端源码并重新构建静态资源时才需要
 
 ## 安装与启动
 
-进入项目目录后执行：
+从 GitHub 克隆项目并进入项目目录：
+
+```powershell
+git clone https://github.com/aihaipeng/agent-bench-v2.git
+cd agent-bench-v2
+```
+
+首次安装 Python 与项目依赖：
 
 ```powershell
 uv python install 3.14
 uv sync --locked --python 3.14
+```
+
+以后启动项目只需执行：
+
+```powershell
 uv run python run.py
 ```
 
 浏览器打开 [http://127.0.0.1:8010](http://127.0.0.1:8010)。停止服务时在 PowerShell 中按 `Ctrl+C`。
 
 首次启动不需要创建配置文件。系统在缺少 `config.yaml` 时使用安全默认值，并在首次上传测试集后自动创建本机配置。
+
+### 数据库初始化
+
+不需要手动创建数据库或执行建表 SQL。系统在首次访问 Target、模型或 Workflow 等相关页面/API 时自动完成以下操作：
+
+- 创建 `run_storage/` 本地数据目录；
+- 创建 `run_storage/agent_bench.sqlite3` SQLite 数据库；
+- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的 Target、模型、Node、Workflow、节点绑定和 Edge 表及索引。
+
+数据库初始化由 Repository 统一管理，请勿手工创建同名表或使用旧版本 Workflow 表结构。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的 Target、模型和 Workflow 列表是正常行为。
+
+如果需要把另一台机器的已有数据迁移过来，应在服务停止后整体备份和迁移 `run_storage/`；测试集还需要同步 `inputs/` 和 `config.yaml`。这些目录和文件可能包含 API Key、请求响应与执行日志，不应提交到 GitHub。
 
 ## 首次使用
 
@@ -54,9 +78,9 @@ uv run pytest -q
 # 启动开发服务
 uv run python run.py
 
-# 修改 CodeMirror 源码后重新构建
+# 修改 Workflow 前端源码后重新构建
 npm ci
-npm run build:editor
+npm run build
 ```
 
 缺少真实模型凭据时，对应 live Agent 用例会跳过，不影响其他功能测试。
