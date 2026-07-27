@@ -617,6 +617,30 @@ def test_store_read_retries_transient_windows_permission_error(tmp_path, monkeyp
     assert attempts == 2
 
 
+def test_store_atomic_write_retries_transient_windows_permission_error(tmp_path, monkeypatch):
+    store = WorkflowExecutionStore(tmp_path / "executions")
+    workflow_id = str(uuid4())
+    execution_id = str(uuid4())
+    document = {"id": execution_id, "workflow_id": workflow_id, "status": "SUCCESS"}
+    original_replace = workflow_execution_module.os.replace
+    attempts = 0
+
+    def transient_replace_error(source, target):
+        nonlocal attempts
+        if Path(target).name == "workflow.json" and attempts < 2:
+            attempts += 1
+            raise PermissionError("workflow.json is temporarily locked")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(workflow_execution_module.os, "replace", transient_replace_error)
+
+    store.create(document)
+
+    assert store.get_workflow(workflow_id, execution_id) == document
+    assert attempts == 2
+    assert list(store.execution_root(workflow_id, execution_id).glob("*.tmp")) == []
+
+
 def test_execution_json_is_readable_standard_json_without_execution_database_tables(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node("START")

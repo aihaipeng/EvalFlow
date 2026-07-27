@@ -391,6 +391,11 @@ Workflow Structural Model 只定义 Workflow 身份、展示信息、Node 归属
 - 已绑定 Node 的创建、编辑、删除统一经过 `WorkflowStructuralRepository`；一次保存原子更新 Workflow、Node、binding 和 Edge，任一失败全部回滚并保持原结构不变。
 - Workflow 名称按数据库原文全局唯一。创建、完整保存或 metadata 更新命中 `workflow_structural_models.name` 唯一约束时，Repository 必须转换为 `WorkflowNameConflictError`；API 必须返回 HTTP `409` 和固定文案“Workflow 名称已存在，请使用其他名称”，不得向页面暴露 SQLite `UNIQUE constraint` 原文。
 - 从当前 Workflow 删除 Node 时删除 binding 和当前 Node Structural Model，但不删除历史 Execution JSON；历史文件依赖执行快照继续离线可读。删除整个 Workflow 时才定点清理其全部 Execution 目录。
+- Workflow Studio 的节点右键“更换节点”只允许 `SCRIPT / LLM / HTTP` 三类业务节点互换，START/END 不显示该入口。更换不是修改既有 Node 的 type，而是在前端图中创建目标类型的新 Node ID、删除旧 Node，并把所有引用旧 ID 的入边/出边端点改到新 ID；Edge ID、节点坐标和当前选中状态保持不变。
+- 更换后的 name 使用目标类型默认名称、description 为空，类型专属配置、输出声明、临时测试状态和旧节点日志均不继承；目标节点完整使用当前 `makeNode` 默认结构。旧历史 Execution JSON 继续按旧 Node ID 和快照离线可读，不迁移到新节点。
+- Workflow 或当前节点临时测试运行期间禁止更换。更换进入画布撤销/重做历史并把 Workflow 标记为未保存；显式保存时 Repository 必须在同一事务中插入新 Node、更新 binding/Edge、删除旧 Node，任一失败回滚整张图。
+- Workflow Studio 不提供多选节点批量对齐按钮或菜单。拖动任一节点时，前端以画布坐标对比该节点与其他节点的顶边 `position.y` 和左边 `position.x`；取整后的差值严格位于 `(-5, 5)` 时显示对应的 1px 水平或垂直参考线，等于或超过 5px 时不显示。两轴可同时命中，线段必须覆盖拖动节点和同轴命中节点的完整几何范围。
+- 对齐参考线只提供视觉反馈，不吸附、不修正或舍入 Node position，也不改变选择、Edge 和执行拓扑。参考线按当前 viewport 的平移与缩放投影到屏幕，必须忽略指针事件；拖动停止后立即清空。一次拖动只在开始时写入一个撤销快照，停止时 Workflow 标记为未保存；显式保存原样持久化最终 position，重新打开必须还原相同坐标。
 - Workflow RUNNING 时允许编辑并保存当前 Structural Model，活动执行只读取启动时快照；Workflow 存在活动执行时禁止删除，必须先全局中断并等待终态。
 
 <a id="chapter-2-5"></a>
@@ -499,7 +504,7 @@ Workflow JSON 不保存完整调度事件。每个已创建的 Node Execution �
 #### 错误、写入和恢复
 
 - Workflow error code 固定为 `NODE_FAILED / USER_INTERRUPTED / PROCESS_RESTARTED / PERSISTENCE_FAILED`。NODE_FAILED 同时保存触发根因的 node_id 和 node_execution_id；其他节点错误保留在各自 JSON。
-- 每次 JSON 更新写入同目录临时文件，flush、fsync 后原子替换正式文件；Node Execution 终态先成功落盘，再更新 workflow.json 引用和 Context。
+- 每次 JSON 更新写入同目录临时文件，flush、fsync 后原子替换正式文件；Windows 下读取或原子替换遇到瞬时 `PermissionError` 时最多执行 6 次、每次间隔 10ms 的有界重试，最终失败仍显式抛错。Node Execution 终态先成功落盘，再更新 workflow.json 引用和 Context。
 - 应用启动时扫描遗留 PENDING/RUNNING Execution，不自动续跑；Workflow 终结为 `FAILED + PROCESS_RESTARTED`，已启动但无终态的 Node Execution 终结为 `FAILED + RUNTIME_LOST`。
 - Workflow Execution 全部保留，界面最多展示最近 10 次。删除 Workflow 时原子移动对应 Workflow Execution 根目录到临时回收目录，数据库删除事务失败则恢复目录，事务成功后彻底删除回收目录。
 
@@ -508,6 +513,7 @@ Workflow JSON 不保存完整调度事件。每个已创建的 Node Execution �
 - 当前 Workflow 管理只负责开发和测试迭代：Workflow CRUD、画布编排、完整校验、单节点临时测试、手动运行完整 Workflow、查看真实结果和错误。
 - 一级 Workflow 列表业务字段只展示名称、说明、更新时间。
 - 画布保留最近 10 次 Workflow Execution 历史，并增加独立“执行记录”按钮；按钮固定打开当前 Workflow 的 Execution 根目录 `run_storage/workflow_executions/{workflow_id}/`，不自动跳入最近一次或选中的单次 Execution 目录。
+- 新建 Workflow 和打开已有 Workflow 时，画布先使用标准 Fit View 完整适配当前全部节点，再以画布中心为锚点把 zoom 精确乘以 `0.67`；该规则只改变初始视口，不缩小节点尺寸、文字、Inspector 或页面容器。用户之后点击 Fit View、缩放或平移仍使用标准交互，不持续强制 67%。
 - Excel、期望结果、用例映射、Batch Run、批量并发和批量结果页属于后续独立模块，不进入 Workflow Structural Model。未来每条用例创建独立 Workflow Execution，批量模块只负责调度。
 - 数据库在未来批量阶段仍然只保存 Structural Model；Batch/Workflow/Node Execution 继续只保存本地 JSON。
 
@@ -2033,6 +2039,8 @@ HTTP 节点用于在内网 Workflow 中调用普通 HTTP/HTTPS API。它不是�
 - params value 允许 string、number、integer、boolean 或 null；object 和 array 不允许。发送前统一转换为 Query 字符串。
 - body.type 支持 none、raw、form_data、form_urlencoded。GET/HEAD 只允许 none。
 - raw content 可以是任意 JSON 值；object/array 中的字符串递归解析 Context 引用。form_data 和 form_urlencoded 使用 key/value 数组。
+- 前端回读 Query/Form 时必须同时保留后端原始 JSON value 和用户可见文本；value 未编辑时重新保存必须恢复原 number/boolean/null/object/array 类型，不得因为文本输入控件而自动改成 string。用户实际修改 value 后按当前文本值保存。
+- `success_statuses / retry_non_idempotent / retry_statuses` 即使暂未提供可见编辑控件，也必须进入 Canvas 会话模型并在打开、保存、单节点测试和完整运行之间原样传递，不得用平台默认值覆盖已有非默认配置。
 - HTTP 节点暂不支持文件上传。需要上传文件时使用 SCRIPT 节点。
 - 最终编码后的请求 Body 上限为 10 MiB；超限时不发送请求，使用 HTTP_REQUEST_TOO_LARGE。
 - HTTP 客户端最终生成的 URL、Header 和 Body 才是 Execution Model 中的请求事实。
@@ -2342,7 +2350,7 @@ HTTP 日志展示底层客户端报告的最终实际请求、重定向链、最
 | 最终结果概览 | response 非 null 时 response.body；否则 error.message | JSON/text/Base64 只做视觉预览 |
 | 展开-输入 | inputs | 请求实际引用的 Context 原值 |
 | 展开-网络 | network | 实际 Proxy 模式、地址、凭据和 verify_ssl；不脱敏 |
-| 展开-请求 | request | 最终尝试的实际 method、url、headers、body_type、body |
+| 展开-请求 | request | 直接将 Node Execution Model 顶层 request 按 JSON 格式化展示并复制，完整保留最终尝试的实际 method、url、headers、body_type、body；不得重构成 HTTP/1.1 文本或从 Structural Model 补值 |
 | 展开-重定向 | redirects | 客户端报告的实际重定向链；空数组显示“无” |
 | 展开-响应 | response | 最终 status_code、headers、body_type、body |
 | 展开-输出 | outputs | 成功提交到 Context 的完整 JSON |

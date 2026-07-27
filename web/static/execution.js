@@ -244,6 +244,25 @@ function workflowLlmMessages(messages) {
     });
 }
 
+function workflowHttpValueRow(row) {
+    var text = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+    return {
+        id: crypto.randomUUID(),
+        key: row.key,
+        value: text,
+        originalValue: row.value,
+        originalText: text,
+    };
+}
+
+function workflowHttpRowValue(row) {
+    if (
+        Object.prototype.hasOwnProperty.call(row, 'originalValue')
+        && row.value === row.originalText
+    ) return row.originalValue;
+    return row.value;
+}
+
 function workflowNodeData(node) {
     var base = {
         nodeType: node.type,
@@ -278,11 +297,11 @@ function workflowNodeData(node) {
             method: node.request.method,
             url: node.request.url,
             headers: (node.request.headers || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: row.value}; }),
-            params: (node.request.params || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: row.value === null ? '' : String(row.value)}; }),
+            params: (node.request.params || []).map(workflowHttpValueRow),
             bodyType: bodyType,
             bodyText: bodyType === 'raw' ? JSON.stringify(node.request.body.content, null, 2) : '',
             bodyFields: ['form-data', 'x-www-form-urlencoded'].indexOf(bodyType) >= 0
-                ? (node.request.body.content || []).map(function (row) { return {id: crypto.randomUUID(), key: row.key, value: String(row.value)}; }) : [],
+                ? (node.request.body.content || []).map(workflowHttpValueRow) : [],
             followRedirects: node.request.follow_redirects,
             proxyMode: node.network.proxy.mode,
             proxyUrl: node.network.proxy.url || '',
@@ -290,6 +309,9 @@ function workflowNodeData(node) {
             proxyPassword: node.network.proxy.password || '',
             verifySsl: node.network.verify_ssl,
             responseBodyType: String(node.response.mode || 'AUTO').toLowerCase(),
+            successStatuses: node.response.success_statuses.slice(),
+            retryNonIdempotent: node.execution.retry_non_idempotent,
+            retryStatuses: node.execution.retry_statuses.slice(),
         };
     }
     return base;
@@ -357,6 +379,13 @@ function filteredKeyValueRows(rows, label) {
     });
 }
 
+function filteredHttpValueRows(rows, label) {
+    return (rows || []).filter(function (row) { return row.key || row.value; }).map(function (row) {
+        if (!row.key) throw new Error(label + ' 的 key 不能为空');
+        return {key: row.key, value: workflowHttpRowValue(row)};
+    });
+}
+
 function workflowCanvasNode(node) {
     var data = node.data || {};
     var common = {id: node.id, type: data.nodeType, name: data.label, description: data.description || ''};
@@ -406,13 +435,13 @@ function workflowCanvasNode(node) {
         if (bodyType === 'raw') {
             try { bodyContent = JSON.parse(config.bodyText); } catch (_error) { throw new Error(data.label + ' 的 Raw Body 必须是合法 JSON'); }
         } else if (bodyType === 'form_data' || bodyType === 'form_urlencoded') {
-            bodyContent = filteredKeyValueRows(config.bodyFields, data.label + ' Body');
+            bodyContent = filteredHttpValueRows(config.bodyFields, data.label + ' Body');
         }
         return Object.assign(common, {
             request: {
                 method: config.method, url: String(config.url || '').trim(), follow_redirects: Boolean(config.followRedirects),
                 headers: filteredKeyValueRows(config.headers, data.label + ' Header'),
-                params: filteredKeyValueRows(config.params, data.label + ' Query'),
+                params: filteredHttpValueRows(config.params, data.label + ' Query'),
                 body: {type: bodyType || 'none', content: bodyContent},
             },
             network: {proxy: {
@@ -421,10 +450,13 @@ function workflowCanvasNode(node) {
                 username: config.proxyMode === 'CUSTOM' ? config.proxyUsername || null : null,
                 password: config.proxyMode === 'CUSTOM' ? config.proxyPassword || null : null,
             }, verify_ssl: config.verifySsl !== false},
-            response: {mode: String(config.responseBodyType || 'auto').toUpperCase(), success_statuses: ['200-299']},
+            response: {
+                mode: String(config.responseBodyType || 'auto').toUpperCase(),
+                success_statuses: config.successStatuses || ['200-299'],
+            },
             execution: Object.assign(execution, {
-                retry_non_idempotent: false,
-                retry_statuses: [408, 429, 500, 502, 503, 504],
+                retry_non_idempotent: Boolean(config.retryNonIdempotent),
+                retry_statuses: config.retryStatuses || [408, 429, 500, 502, 503, 504],
             }),
             outputs: outputBindings(node),
         });

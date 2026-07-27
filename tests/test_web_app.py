@@ -4,10 +4,16 @@ from web.app import app
 
 
 def test_index_serves_frontend():
-    response = TestClient(app).get("/")
+    client = TestClient(app)
+    response = client.get("/")
+    favicon = client.get("/assets/favicon.png")
 
     assert response.status_code == 200
     assert "Agent Bench" in response.text
+    assert '<link rel="icon" type="image/png" sizes="100x100" href="/assets/favicon.png" />' in response.text
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"] == "image/png"
+    assert favicon.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_index_loads_new_workflow_structural_studio():

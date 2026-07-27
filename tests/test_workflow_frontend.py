@@ -71,18 +71,52 @@ def test_llm_inspector_supports_few_shot_drafts_and_run_only_validation():
     assert '<div><Settings2 size={15} /><strong>高级参数</strong></div>' in source
 
 
-def test_canvas_multi_selection_exposes_six_alignment_actions_with_history():
+def test_canvas_uses_dify_style_drag_guides_without_alignment_actions_or_snapping():
     source = read("web/frontend/workflow-canvas.jsx")
+    alignment = read("web/frontend/workflow-alignment.mjs")
     styles = read("web/frontend/workflow-canvas.css")
 
-    assert "function alignCanvasNodes(nodes, selectedNodeIds, alignment)" in source
-    assert "const canAlignNodes = selectedNodeIds.length >= 2;" in source
-    assert "recordHistory();\n        setNodes((current) => alignCanvasNodes" in source
-    assert "setSaveState('未保存');" in source
+    assert "export const ALIGNMENT_GUIDE_THRESHOLD = 5;" in alignment
+    assert "export function calculateAlignmentGuides(nodes, draggingNode" in alignment
+    assert "onNodeDrag={(event, node) =>" in source
+    assert "calculateAlignmentGuides(getNodes(), node)" in source
+    assert "onNodeDragStop={() =>" in source
+    assert "setAlignmentGuides(null);\n                        setSaveState('未保存');" in source
+    assert '<AlignmentGuides guides={alignmentGuides} />' in source
+    assert ".wf-alignment-guide.is-horizontal" in styles
+    assert ".wf-alignment-guide.is-vertical" in styles
+    assert "alignCanvasNodes" not in source
+    assert "wf-alignment-actions" not in source
+    assert "wf-alignment-actions" not in styles
     for label in ("左对齐", "水平居中", "右对齐", "顶部对齐", "垂直居中", "底部对齐"):
-        assert f'aria-label="{label}"' in source
-    assert 'role="group" aria-label="节点对齐"' in source
-    assert ".wf-alignment-actions" in styles
+        assert f'aria-label="{label}"' not in source
+
+
+def test_new_and_existing_workflows_open_at_sixty_seven_percent_of_fit_view():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "const INITIAL_OVERVIEW_SCALE = 0.67;" in source
+    assert "await fitView({padding: 0.16, duration: 0});" in source
+    assert "zoom: viewport.zoom * ratio" in source
+    assert "centerX - (centerX - viewport.x) * ratio" in source
+    assert "window.setTimeout(() => void fitInitialOverview(), 0);" in source
+    assert 'minZoom={0.1}' in source
+
+
+def test_business_node_context_menu_replaces_type_with_new_identity_and_preserved_edges():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "function replaceCanvasNode(nodes, edges, currentNodeId, targetType)" in source
+    assert "...makeNode(targetType, {...currentNode.position})" in source
+    assert "source: edge.source === currentNodeId ? replacement.id : edge.source" in source
+    assert "target: edge.target === currentNodeId ? replacement.id : edge.target" in source
+    assert "<span>更换节点</span>" in source
+    assert "excludeType={menu.nodeType}" in source
+    assert "INSERTABLE_TYPES.includes(menu.nodeType)" in source
+    assert "setSelectedNodeIds((current) => current.map" in source
+    assert "setSaveState('未保存');" in source
+    assert "节点运行期间不能更换类型" in source
+    assert "<span className=\"wf-node-runtime\">{meta.runtime}</span>" in source
 
 
 def test_canvas_node_tests_are_ephemeral_and_independent_from_workflow_runs():
@@ -107,6 +141,16 @@ def test_canvas_node_tests_are_ephemeral_and_independent_from_workflow_runs():
     assert "onRun: runAll" not in source
     assert "friendlyNodeError(data.snapshot.error, '节点临时测试失败')" in source
     assert "friendlyNodeError(failedNode?.error || run.error, 'Workflow 执行失败')" in source
+
+
+def test_http_log_prints_execution_model_request_without_reconstruction():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "const requestContent = run.request ? parameterDataText(run.request, true) : '';" in source
+    assert '{requestContent && <HttpLogSection title="request" text={requestContent} />}' in source
+    assert "function rawHttpRequest(" not in source
+    assert "function rawHttpRequestBody(" not in source
+    assert "function HttpRequestLogSection(" not in source
 
 
 def test_available_variables_use_latest_node_execution_outputs():
@@ -166,6 +210,23 @@ def test_http_url_trims_on_blur_and_workflow_serialization():
     assert "onBlur={(event) => updateHttpConfig({url: event.currentTarget.value.trim()})}" in source
     assert "url: String(config.url || '').trim()" in javascript
     assert ">NETWORK<" not in source
+
+
+def test_http_hidden_options_and_json_values_round_trip_without_type_loss():
+    source = read("web/frontend/workflow-canvas.jsx")
+    javascript = read("web/static/execution.js")
+
+    assert "successStatuses: ['200-299']" in source
+    assert "retryNonIdempotent: false" in source
+    assert "retryStatuses: [408, 429, 500, 502, 503, 504]" in source
+    assert "function workflowHttpValueRow(row)" in javascript
+    assert "originalValue: row.value" in javascript
+    assert "row.value === row.originalText" in javascript
+    assert "params: (node.request.params || []).map(workflowHttpValueRow)" in javascript
+    assert "successStatuses: node.response.success_statuses.slice()" in javascript
+    assert "retryStatuses: node.execution.retry_statuses.slice()" in javascript
+    assert "params: filteredHttpValueRows(config.params" in javascript
+    assert "retry_non_idempotent: Boolean(config.retryNonIdempotent)" in javascript
 
 
 def test_node_inspector_enforces_shared_control_and_section_rules():

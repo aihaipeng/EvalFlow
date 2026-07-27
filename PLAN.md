@@ -1,5 +1,111 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.27 Dify 式节点拖动对齐参考线（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：T13.21 的多选六按钮方案把低频几何命令常驻在画布工具栏，增加界面密度，也不能在单节点拖动时及时反馈节点是否对齐。
+- Who / Where：Workflow 作者在新建或已有 Workflow 画布中拖动任一节点，整理串行、并行和汇聚结构的视觉位置。
+- What / Priority：P1 高频编排体验。按用户确认的 `1C / 2A`，删除全部批量对齐入口；参考 Dify，仅在节点拖动时对比其他节点的顶边和左边，严格小于 `5` 个画布像素时显示水平/垂直参考线。参考线不吸附、不改写拖动坐标，松手立即消失。
+- How to Measure：旧 `.wf-alignment-actions` 和六个对齐按钮为 0；两轴在阈值内可独立或同时出现，等于或超过 5px 不出现；拖动期间节点坐标不被参考线计算修改；松手标记未保存，撤销/重做和保存回读保持最终坐标；专项、构建、全量与浏览器回归通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.27.1 | 参考线几何 | 当前节点集合、拖动节点 / 水平和垂直线段 | Node 运行时单测 | T13.21 | completed |
+| 13.27.2 | 拖动生命周期 | React Flow drag start/move/stop / 显示、清理和未保存状态 | 前端专项、生产 DOM | 13.27.1 | completed |
+| 13.27.3 | 删除旧方案 | 六个图标、坐标对齐函数和 CSS / 无批量对齐入口 | 源码与生产 DOM 扫描 | 13.27.2 | completed |
+| 13.27.4 | 坐标闭环 | 最终 position / undo、redo、数据库 binding、重新打开位置 | 浏览器与 API E2E | 13.27.2 | completed |
+| 13.27.5 | 完整回归 | 前端、Python 与生产 bundle | pytest、Node test、build、compileall、语法、diff check | 13.27.1-13.27.4 | completed |
+
+### 验证记录
+
+- 几何单测 `3 passed`：覆盖双轴命中、严格 5px 边界、跨全部对齐节点延展和输入坐标不变；前端专项 `18 passed`。
+- 生产画布旧对齐入口为 0。SCRIPT 拖到 START 顶边阈值内时出现 1px 水平参考线，屏幕边界与节点顶边一致；松手后参考线为 0，SCRIPT 保持 `y=42.3361`、START 为 `y=40`，确认未吸附并显示“未保存”。
+- 撤销将 SCRIPT `x` 从 `30.4439` 恢复为 `45.6288`，重做精确回到 `30.4439`。保存后的 API binding 为 `position_x=30.443867618429465`、`position_y=347.20311486048024`，关闭再打开后 React Flow 位置为 `translate(30.4439px, 347.203px)`。
+- `npm run build`、Python `compileall`、bundle 语法和 `git diff --check` 均成功；全量 `273 passed, 4 skipped, 1 warning`。浏览器控制台 error/warn 为 0，临时 Workflow 已删除，原有 Workflow 未改动。
+
+## T13.26 HTTP 日志 request 直接投影 Execution Model（已完成，2026-07-27）
+
+- Why：HTTP 日志原先把 Node Execution `request` 二次重构为 HTTP/1.1 文本，Headers 为有序数组时甚至会被漏掉，不符合日志只读投影 Execution Model 的顶层约束。
+- Who / Where：Workflow 作者在 HTTP 节点日志中展开一次持久化执行或单节点临时测试，并查看/复制 request。
+- What / Priority：P0 可追溯准确性。request 展示和复制必须直接使用 Node Execution Model 顶层 `request` 的格式化 JSON，不读取 Structural Model、不重组请求行、不补默认字段。
+- How to Measure：页面 request JSON 与 `/runs/{execution_id}/nodes` 返回的对应 `execution.request` 深度一致；Headers、body_type 和 body 完整；复制内容等于显示内容；专项、浏览器和全量回归通过。
+- 当前实现：删除 `rawHttpRequest*` 与 `HttpRequestLogSection` 重构链，HTTP 分支复用 `parameterDataText(run.request, true)` 和通用 `HttpLogSection`。
+- 验证：前端专项 `18 passed`；真实 HTTP Workflow SUCCESS 后，页面 request 解析对象与 `/runs/{execution_id}/nodes` 中对应 Node Execution `request` 深度一致，完整包含实际 method/url、有序 Headers、body_type/body。页面显示与系统剪贴板均为 542 字符且 SHA-256 同为 `5bc9310a674192ffc61fb5861cc16efcf2bb961ff72255297d49eb3d086ddceb`，控制台 error/warn 为 0。
+- 最终回归：`npm run build`、bundle 语法检查通过；全量 `uv run pytest -q` -> `273 passed, 4 skipped, 1 warning`。临时 Workflow 和独立 HTTP 服务均已清理；4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
+## T13.25 Workflow 初始视口 67% 与全链路契约审计（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：新建或打开复杂 Workflow 时，标准 Fit View 仍占满画布，用户难以同时观察外围拓扑；同时管理模块跨前端、API、SQLite 和本地 Execution JSON，未暴露字段容易在打开保存时静默丢失。
+- Who / Where：Workflow 作者首次进入新建/已有画布，以及通过页面打开、保存、运行、删除 Workflow 的完整本机流程。
+- What / Priority：P0 数据一致性、P1 画布可视范围。初始视口使用标准 Fit View zoom 的 67%，不缩小节点/文字/面板；逐字段审计 Canvas Model、API DTO、Pydantic、SQLite 和 Execution JSON，并修复确认偏差。
+- How to Measure：新建和已有画布实测 `initialZoom / fitZoom = 0.67` 且中心不漂移；非默认 HTTP 隐藏策略和 JSON 类型无编辑保存后不变；删除数据库失败恢复 Execution 目录；Structural Snapshot 与 API/SQLite 完全一致；全量回归通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.25.1 | 初始视口 67% | 标准 Fit View / 中心锚定 0.67 zoom | 前端专项、新建/已有浏览器测量 | 无 | completed |
+| 13.25.2 | 前端/API/SQLite 字段审计 | 五类节点、Workflow、Edge / 无损往返矩阵 | 源码核对、复杂 HTTP 浏览器保存、SQLite 回读 | 无 | completed |
+| 13.25.3 | DB/本地 JSON 一致性 | 删除、运行快照 / 可回滚目录和完整 snapshot | API 故障注入、Execution JSON 对比 | 13.25.2 | completed |
+| 13.25.4 | 完整回归与规范 | 所有受影响模块 | build、compileall、pytest、diff check | 13.25.1-13.25.3 | completed |
+
+### 审计发现与修复
+
+- 已修复：HTTP 已有 `success_statuses / retry_non_idempotent / retry_statuses` 原先在前端重存时被硬编码默认值覆盖；现作为隐藏 Canvas 配置原样传递。
+- 已修复：HTTP Query/Form 的 number/boolean/null/object/array 原先回显后被强制转为 string；现保留原始 JSON value，只有实际编辑 value 后才采用新文本。
+- 已修复：删除 Workflow 原先先删 SQLite 再 `rmtree` Execution 根目录，与规范的可回滚顺序不一致；现先同盘原子暂存目录，数据库失败恢复，提交成功才清理。
+- 已修复：更新 Workflow 原先在完整图校验前取消将删除节点的临时测试；现先完成 Structural 图校验，非法保存不产生取消副作用。
+- 已修复：Execution JSON 读取已有 Windows 瞬时文件锁重试，但原子 `os.replace` 写入没有重试，偶发导致调度线程退出并留下 RUNNING；现读写均使用最多 6 次、10ms 间隔的有界重试，故障注入和原失败用例连续 10 次通过。
+- 核对一致：Workflow 名称/说明、Node ID/type/name/description、START inputs、SCRIPT 代码、LLM 模型/Few-shot/高级参数、HTTP request/network/response/execution、outputs、位置和 Edge 均由前端 DTO 进入严格 API/Pydantic，SQLite 分列+definition_json 回读后无字段缺失。
+- 核对一致：Workflow Run 从 SQLite 当前结构生成不可变 `structural_snapshot`，节点完整定义、position 和 Edge 与 API Structural Record 一致；运行状态、Context、Node Execution 只写本地 JSON，不反写 SQLite。
+
+### 当前验证记录
+
+- 专项 `45 passed, 1 warning`；包含非法图更新零取消副作用、Execution 目录删除失败恢复/成功清理、API/SQLite/structural_snapshot 全字段对比。
+- 首轮全量回归捕获一次 Windows `os.replace` PermissionError，修复后原子写专项与配置失败组合 `4 passed`，原失败 LLM 用例连续复跑 10 次全部通过。
+- 浏览器已有 Workflow：初始 zoom `0.769595`，标准 Fit View `1.14865`，比值 `0.6699996`；新建 Workflow：`0.922801 / 1.37731 = 0.6700024`。节点尺寸和 Inspector 未改变，控制台 error/warn 为 0。
+- 复杂 HTTP 无编辑保存回读：Query 保持 `42 / false / null`，Form 保持 object/array/null，成功码保持 `[201,"204-205"]`，非幂等重试保持 true，重试状态保持 `[409,503]`；SQLite definition_json、API 和画布位置/Edge 一致。临时 Workflow 已删除，只保留用户“未命名工作流”。
+- 最终验证：`npm run build`、Python compileall、生产 bundle/`execution.js` 语法和 `git diff --check` 通过；修复后全量 `uv run pytest -q` -> `272 passed, 4 skipped, 1 warning`。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
+## T13.24 业务节点右键更换类型（已完成，2026-07-27）
+
+### 业务背景与目标
+
+- Why：Workflow 作者选错业务节点类型后只能删除、重新添加并手工恢复连线，复杂图中容易破坏拓扑和位置。
+- Who / Where：开发者在画布中右键 `SCRIPT / LLM / HTTP` 节点，通过二级节点选择器更换为另外一种业务节点。
+- What / Priority：P1 编辑效率。用户确认 1A/2A/3A：仅三类业务节点互换；保留位置和全部 Edge 但生成新 Node ID；名称、说明和类型配置使用目标默认值，旧日志不继承。START/END 与运行中节点不可更换。
+- How to Measure：菜单排除当前类型；更换后 ID 改变、位置和 Edge ID 不变、端点指向新 ID；撤销/重做稳定；保存事务删除旧 Node 并回读目标默认结构；浏览器与完整回归通过。
+
+### 子任务与验证
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.24.1 | 右键菜单与原子图替换 | 旧业务节点、目标类型 / 新节点和重定向 Edge | 前端专项、撤销/重做 | 无 | completed |
+| 13.24.2 | 保存事务 | 新旧 Node 与原 Edge / 新结构持久化 | Workflow API 与 Repository 回读 | 13.24.1 | completed |
+| 13.24.3 | 生产浏览器 E2E | SCRIPT → HTTP | 菜单范围、默认配置、ID/位置/Edge、保存回读、清理 | 13.24.1-13.24.2 | completed |
+| 13.24.4 | 完整回归与规范 | 全部受影响模块 | pytest、build、compileall、diff check | 13.24.3 | completed |
+
+### 当前验证记录
+
+- 前端专项 `15 passed`；生产构建成功。右键菜单复用现有 NodePicker，SCRIPT 只列 HTTP/LLM；START/END 不显示更换入口，Workflow 或节点测试运行时入口禁用。
+- API 专项 `24 passed, 1 warning`：以新 ID HTTP 替换已保存 SCRIPT 后，旧 Node Structural Model 删除，新 HTTP 使用空白默认结构，两条原 Edge ID 保留且端点指向新 ID。
+- 浏览器 E2E：SCRIPT `d427...` 更换为 HTTP `b24a...`，坐标均为 `translate(354px, 40px)`，两条 Edge ID 前后一致；撤销恢复原 SCRIPT/ID，重做恢复新 HTTP/ID。保存回读为 `name=HTTP / description="" / POST / url="" / SYSTEM / AUTO / timeout=600`，控制台 error/warn 为 0；临时 Workflow 删除后 GET 为 404，用户原 Workflow 未修改。
+- 节点卡片运行标识同步改为类型元数据：SCRIPT=`Python`、LLM=`Gateway`、HTTP=`HTTP`，避免更换为 HTTP 后仍显示 Python。
+- 最终验证：`npm run build`、Python compileall、生产 bundle 与 `execution.js` 语法检查通过；全量 `uv run pytest -q` -> `265 passed, 4 skipped, 1 warning`。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
+## T13.23 浏览器标签图标替换（已完成，2026-07-27）
+
+- Why：系统首页显式禁用了 favicon，浏览器启动后只能显示默认地球，无法识别 Agent Bench。
+- Who / Where：本机用户启动系统并在浏览器标签页、收藏入口或历史记录中识别 Agent Bench 页面。
+- What / Priority：P1 视觉识别。使用用户提供的 100×100 透明纸飞机 PNG 作为唯一 favicon，不修改页面内业务图标。
+- How to Measure：首页 `link[rel=icon]` 指向 `/assets/favicon.png`；资源返回 `200 image/png` 且 PNG 签名正确；真实浏览器解析到该绝对地址，控制台 error/warn 为 0。
+- 实现与验证：新增 `web/static/assets/favicon.png`，替换原 `data:,` 空 favicon；Web 专项 `4 passed, 1 warning`，全量 `263 passed, 4 skipped, 1 warning`，`npm run build` 与 `git diff --check` 通过。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
+
 ## T13.22 节点中断入口收敛与 HTTP Request Options 后端核验（已完成，2026-07-27）
 
 ### 业务背景与目标
@@ -29,28 +135,28 @@
 - 生产构建与浏览器：`npm run build`、Python compileall 通过；真实新建草稿中节点卡片、节点右键菜单和 Inspector 的节点中断入口均为 0，顶栏 Workflow 中断为 1，控制台 error/warn 为 0，草稿未保存且未产生数据库记录。
 - 最终验证：严格响应解析专项 `40 passed`；`uv run pytest -q` -> `263 passed, 4 skipped, 1 warning`。4 项 skip 为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
 
-## T13.21 画布多节点对齐与 LLM 上下文降噪（已完成，2026-07-27）
+## T13.21 画布多节点对齐与 LLM 上下文降噪（历史实现；节点对齐已由 T13.27 废止，2026-07-27）
 
 ### 业务背景与目标
 
 - Why：复杂 Workflow 手工拖拽后缺少批量对齐能力，节点位置难以快速整理；LLM 上下文中重复解释消息顺序的提示占用编辑空间。
 - Who / Where：Workflow 开发者在桌面画布中通过 Ctrl 多选或框选多个节点，并在左上浮动工具栏整理布局；LLM 节点作者在 Inspector 中直接编辑消息卡片。
-- What / When：用户确认 1A/2A；选中至少两个节点后显示左对齐、水平居中、右对齐、顶部对齐、垂直居中、底部对齐六个图标按钮。对齐只修改节点坐标，保留选中、连线和执行拓扑，并进入撤销/重做历史。删除 LLM 上下文说明句和 `SYSTEM -> USER -> (ASSISTANT -> USER)...` 提示，但不改变消息顺序执行契约。
-- How to Measure：单选不显示对齐组，多选显示六项；每项按选中节点包围盒得到一致边界或中心，Workflow 标记未保存且一次撤销恢复原位置；LLM Inspector 不再渲染两行提示；构建、专项、浏览器和全量回归通过。
+- What / When（历史）：当时按用户确认的 1A/2A，选中至少两个节点后显示六个图标按钮。该批量对齐交互已由 T13.27 全部删除；本节仅保留历史验收事实。LLM 上下文降噪仍是现行行为。
+- How to Measure（历史）：当时按选中节点包围盒验证六项坐标对齐；现行节点对齐验收以 T13.27 的拖动参考线为准。LLM Inspector 仍不得渲染两行已删除提示。
 
 ### 子任务与验证
 
 | 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| 13.21.1 | 六种节点坐标对齐 | 多选节点与实际尺寸 / 新 position | 前端专项、真实画布几何检查 | 13.16 | completed |
-| 13.21.2 | 浮动工具栏与历史 | 选中数量 / 条件工具组、undo/redo | 多选/单选浏览器交互、撤销检查 | 13.21.1 | completed |
+| 13.21.1 | 六种节点坐标对齐（历史，T13.27 已删除） | 多选节点与实际尺寸 / 新 position | 前端专项、真实画布几何检查 | 13.16 | superseded |
+| 13.21.2 | 浮动工具栏与历史（历史，T13.27 已删除） | 选中数量 / 条件工具组、undo/redo | 多选/单选浏览器交互、撤销检查 | 13.21.1 | superseded |
 | 13.21.3 | LLM 上下文降噪 | 说明句、序列提示 / 删除后的消息列表 | 源码/CSS 扫描、生产 Inspector DOM | 13.18 | completed |
 | 13.21.4 | 完整回归 | 生产 bundle 与现有 Workflow 功能 | pytest、build、语法、diff check | 13.21.1-13.21.3 | completed |
 
 ### 验证记录
 
-- 生产画布 Ctrl 多选两个节点后出现六个对齐按钮；取消到单选后 `.wf-alignment-actions` 数量为 0。左/右/水平中心/顶部/垂直中心/底部逐项实测，选中节点对应边界或中心一致；浏览器缩放后的 DOM 几何误差不超过 1 CSS px。
-- 每次对齐前写入现有历史栈，对齐后 Workflow 状态为“未保存”；实测点击“回退”恢复对齐前的不同坐标。
+- 历史验收：生产画布 Ctrl 多选两个节点后曾出现六个对齐按钮，并逐项通过边界/中心检查；该入口、函数和样式已由 T13.27 删除。
+- 历史验收：批量对齐曾接入历史栈与未保存状态；现行拖动参考线的历史与保存闭环见 T13.27。
 - LLM Inspector 的上下文区域只保留消息卡片和“添加消息”，说明句、序列提示及 `.wf-llm-context-intro` 样式均已删除；消息结构和运行校验不变。
 - 临时验收 Workflow 已删除，浏览器 error/warn 为 0。
 - 构建与回归：前端专项 `14 passed`，`npm run build`、`compileall`、bundle/`execution.js` 语法检查和 `git diff --check` 通过；顺序全量回归 `255 passed, 4 skipped, 1 warning`。首次全量运行中既有 LLM Node Execution 轮询用例在 8 秒窗口内未读取到节点而失败，单独复跑通过，随后顺序全量复跑通过；4 项 skip 与 warning 仍为未注入真实供应商环境变量和既有 Starlette/httpx 弃用提示。
@@ -437,13 +543,14 @@
    - 布局：Method 列宽由 `58px` 扩为 `76px`，避免 DELETE 等较长方法名放大后挤压 URL；日志内容区继续独立滚动。
    - 浏览器 E2E：真实 HTTP 日志计算字号与上述值一致；主标题仍为 `12px`、列表摘要仍为 `10px`，页面及编辑器横向溢出为 0，控制台错误为 0。
    - 回归：主题与前端专项 `13 passed, 1 warning`；`npm run build`、Python `compileall`、Workflow bundle 语法检查和 `git diff --check` 均成功；全量 `220 passed, 6 skipped, 1 warning`。
-   - 后续变化：第 10 项删除请求分区后，原始请求改为与原始响应一致的单一 `pre` 文本块，请求正文统一使用 `16.9px`；原始响应的 30% 放大保持不变。
-10. **Postman 式完整 HTTP 原始请求**（已完成，2026-07-23）
-   - 格式：单一原始文本块按“请求行、已记录 Headers、空行、原始 Body”排列；请求行为 `METHOD URL HTTP/1.1`，Query Params 使用 `URLSearchParams` 合并进 URL。
-   - 数据真实性：只展示运行记录中实际保存的 Headers，不伪造未持久化的 Host、User-Agent、Accept 或 Content-Length；RAW Body 保持原字符串且不进行 JSON 美化，表单 Body 按 URL 编码文本展示。
-   - 交互：删除 Postman 的 Headers/Params/Body 分区组件和对应 CSS；原始请求与原始响应使用相同日志容器、`16.9px` 正文和可选择文本；“复制原始请求”复制与页面相同的报文文本。
-   - 浏览器 E2E：真实 `POST /orders?source=raw+log` 展示请求行、两条 Header、空行和紧凑 JSON Body，不包含旧分区标签；Windows 剪贴板与页面内容一致，仅按系统规范使用 CRLF，页面横向溢出为 0，控制台错误为 0；临时 Workflow 已删除。
-   - 回归：主题、前端及节点运行专项 `24 passed, 1 warning`；`npm run build`、Python `compileall` 和 `git diff --check` 均成功；全量 `220 passed, 6 skipped, 1 warning`。
+   - 历史变化：第 10 项曾把请求改为单一 `pre` 文本块；该 HTTP/1.1 重构格式已由 T13.26 废止，当前 `pre` 直接展示 Execution Model request JSON。
+10. **Postman 式完整 HTTP 原始请求**（历史实现，已由 T13.26 废止）
+   - 当前规则：本项只保留 2026-07-23 的历史验收事实，不代表现行产品行为。当前 HTTP 日志 request 必须直接格式化 Node Execution Model 顶层 `request` JSON，不再生成请求行或报文文本。
+   - 历史格式：单一原始文本块按“请求行、已记录 Headers、空行、原始 Body”排列；请求行为 `METHOD URL HTTP/1.1`，Query Params 使用 `URLSearchParams` 合并进 URL。
+   - 历史数据处理：只展示运行记录中实际保存的 Headers，不伪造未持久化的 Host、User-Agent、Accept 或 Content-Length；RAW Body 保持原字符串且不进行 JSON 美化，表单 Body 按 URL 编码文本展示。
+   - 历史交互：删除 Postman 的 Headers/Params/Body 分区组件和对应 CSS；原始请求与原始响应使用相同日志容器、`16.9px` 正文和可选择文本；“复制原始请求”复制与页面相同的报文文本。
+   - 历史浏览器 E2E：真实 `POST /orders?source=raw+log` 展示请求行、两条 Header、空行和紧凑 JSON Body，不包含旧分区标签；Windows 剪贴板与页面内容一致，仅按系统规范使用 CRLF，页面横向溢出为 0，控制台错误为 0；临时 Workflow 已删除。
+   - 历史回归：主题、前端及节点运行专项 `24 passed, 1 warning`；`npm run build`、Python `compileall` 和 `git diff --check` 均成功；全量 `220 passed, 6 skipped, 1 warning`。
 11. **RAW JSON 请求体字段提取**（已完成，2026-07-23）
    - 业务目标：Workflow 编排人员可用 `request.body.username` 提取 HTTP RAW JSON 请求体字段，供下游节点引用，不需要把整个请求体当作字符串再次处理。
    - 数据契约：真实发送请求和运行日志继续保留变量替换后的 RAW 原字符串；仅输出变量提取上下文在 RAW Body 为合法 JSON 时使用 `json.loads` 解析。非 JSON RAW Body 保持字符串，不做隐式转换。

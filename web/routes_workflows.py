@@ -27,6 +27,7 @@ from execution import (
     WorkflowExecutionError,
     WorkflowExecutionManager,
     WorkflowExecutionStore,
+    validate_workflow_graph,
 )
 from execution.node_structural_models import NodeStructuralModel
 from web.files import open_directory_in_explorer
@@ -250,6 +251,11 @@ def update_workflow(workflow_id: str, body: WorkflowWriteRequest) -> WorkflowEnv
     """完整校验并原子替换既有 Workflow 当前结构。"""
 
     current = _get_or_404(workflow_id)
+    workflow, nodes = _structural_model(workflow_id, body)
+    try:
+        validate_workflow_graph(workflow, nodes)
+    except WorkflowStructuralRepositoryError as exc:
+        _raise_repository_http_error(exc)
     next_node_ids = {item.node.id for item in body.nodes}
     removed_node_ids = {
         node.id for node in current.node_models if node.id not in next_node_ids
@@ -259,7 +265,6 @@ def update_workflow(workflow_id: str, body: WorkflowWriteRequest) -> WorkflowEnv
             _get_node_test_manager().cancel_node(workflow_id, node_id)
     except WorkflowExecutionError as exc:
         raise HTTPException(409, str(exc)) from exc
-    workflow, nodes = _structural_model(workflow_id, body)
     try:
         record = _get_repository().update(workflow, nodes)
     except WorkflowStructuralRepositoryError as exc:
@@ -296,9 +301,19 @@ def delete_workflow(workflow_id: str) -> WorkflowEnvelope:
         raise HTTPException(409, str(exc)) from exc
     if manager.has_active_workflow(workflow_id):
         raise HTTPException(409, "Workflow 存在活动 Execution，请先全局中断并等待终态")
-    if not _get_repository().delete(workflow_id):
+    staged_execution_root = manager.store.stage_workflow_root_deletion(workflow_id)
+    try:
+        deleted = _get_repository().delete(workflow_id)
+    except WorkflowStructuralRepositoryError as exc:
+        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
+        _raise_repository_http_error(exc)
+    except Exception:
+        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
+        raise
+    if not deleted:
+        manager.store.restore_workflow_root_deletion(workflow_id, staged_execution_root)
         raise HTTPException(404, f"Workflow 不存在: {workflow_id}")
-    manager.store.delete_workflow_root(workflow_id)
+    manager.store.finalize_workflow_root_deletion(staged_execution_root)
     return WorkflowEnvelope(workflow=current)
 
 

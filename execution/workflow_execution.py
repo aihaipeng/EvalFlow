@@ -154,9 +154,30 @@ class WorkflowExecutionStore:
         return documents[:limit]
 
     def delete_workflow_root(self, workflow_id: str) -> None:
+        staged = self.stage_workflow_root_deletion(workflow_id)
+        self.finalize_workflow_root_deletion(staged)
+
+    def stage_workflow_root_deletion(self, workflow_id: str) -> Path | None:
         root = self.workflow_root(workflow_id)
-        if root.is_dir():
-            shutil.rmtree(root)
+        if not root.is_dir():
+            return None
+        staged = self.root / f".deleting-{_uuid(workflow_id, 'workflow_id')}-{uuid4()}"
+        with self._write_lock:
+            os.replace(root, staged)
+        return staged
+
+    def restore_workflow_root_deletion(self, workflow_id: str, staged: Path | None) -> None:
+        if staged is None or not staged.exists():
+            return
+        root = self.workflow_root(workflow_id)
+        with self._write_lock:
+            if root.exists():
+                raise WorkflowExecutionError(f"Workflow Execution 目录恢复冲突: {workflow_id}")
+            os.replace(staged, root)
+
+    def finalize_workflow_root_deletion(self, staged: Path | None) -> None:
+        if staged is not None and staged.is_dir():
+            shutil.rmtree(staged)
 
     def recover_incomplete(self) -> int:
         recovered = 0
@@ -212,7 +233,14 @@ class WorkflowExecutionStore:
                 stream.write(serialized)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, path)
+            for attempt in range(6):
+                try:
+                    os.replace(temporary, path)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.01)
         finally:
             if temporary.exists():
                 temporary.unlink()

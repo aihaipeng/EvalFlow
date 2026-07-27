@@ -6,6 +6,8 @@ import time
 from fastapi.testclient import TestClient
 
 from execution.model_providers import ModelProviderRecord, ModelProviderRepository
+from execution.node_structural_models import NodeStructuralRepository
+from execution.workflow_structural_models import WorkflowStructuralRepositoryError
 from web.app import create_app
 from web import routes_workflows
 
@@ -15,6 +17,7 @@ SCRIPT_ID = "550e8400-e29b-41d4-a716-446655440000"
 END_ID = "8d9e6679-7425-40de-944b-e07fc1f90ae7"
 EDGE_ONE_ID = "9d9e6679-7425-40de-944b-e07fc1f90ae7"
 EDGE_TWO_ID = "ad9e6679-7425-40de-944b-e07fc1f90ae7"
+REPLACEMENT_HTTP_ID = "650e8400-e29b-41d4-a716-446655440001"
 
 
 @pytest.fixture
@@ -115,6 +118,44 @@ def test_workflow_api_crud_round_trip_and_list_shape(client):
     assert client.get("/api/workflows").json() == {"workflows": []}
 
 
+def test_workflow_delete_restores_execution_directory_when_database_delete_fails(
+    client, monkeypatch
+):
+    created = client.post("/api/workflows", json=workflow_body("删除回滚"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    manager = routes_workflows._get_manager()
+    execution_root = manager.store.workflow_root(workflow_id, create=True)
+    marker = execution_root / "marker.json"
+    marker.write_text("{}", encoding="utf-8")
+    repository = routes_workflows._get_repository()
+
+    def fail_delete(_workflow_id):
+        raise WorkflowStructuralRepositoryError("模拟数据库删除失败")
+
+    monkeypatch.setattr(repository, "delete", fail_delete)
+
+    response = client.delete(f"/api/workflows/{workflow_id}")
+
+    assert response.status_code == 400
+    assert marker.is_file()
+    assert list(manager.store.root.glob(f".deleting-{workflow_id}-*")) == []
+    assert client.get(f"/api/workflows/{workflow_id}").status_code == 200
+
+
+def test_workflow_delete_finalizes_staged_execution_directory_after_database_commit(client):
+    created = client.post("/api/workflows", json=workflow_body("删除提交"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    manager = routes_workflows._get_manager()
+    execution_root = manager.store.workflow_root(workflow_id, create=True)
+    (execution_root / "marker.json").write_text("{}", encoding="utf-8")
+
+    response = client.delete(f"/api/workflows/{workflow_id}")
+
+    assert response.status_code == 200
+    assert not execution_root.exists()
+    assert list(manager.store.root.glob(f".deleting-{workflow_id}-*")) == []
+
+
 def test_workflow_api_trims_http_url_before_saving(client):
     body = workflow_body("HTTP URL 清理")
     body["nodes"][1]["node"] = {
@@ -130,6 +171,37 @@ def test_workflow_api_trims_http_url_before_saving(client):
     assert created.status_code == 201, created.text
     saved = created.json()["workflow"]["node_models"][1]
     assert saved["request"]["url"] == "https://example.com/path?q=a%20b"
+
+
+def test_workflow_api_replaces_business_node_with_new_identity_and_preserves_edges(client):
+    created = client.post("/api/workflows", json=workflow_body("更换节点事务"))
+    assert created.status_code == 201, created.text
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    replacement = workflow_body("更换节点事务")
+    replacement["nodes"][1]["node"] = {
+        "id": REPLACEMENT_HTTP_ID,
+        "type": "HTTP",
+        "name": "HTTP",
+        "description": "",
+    }
+    replacement["edges"][0]["target_node_id"] = REPLACEMENT_HTTP_ID
+    replacement["edges"][1]["source_node_id"] = REPLACEMENT_HTTP_ID
+
+    updated = client.put(f"/api/workflows/{workflow_id}", json=replacement)
+
+    assert updated.status_code == 200, updated.text
+    record = updated.json()["workflow"]
+    assert [node["id"] for node in record["node_models"]] == [
+        START_ID,
+        REPLACEMENT_HTTP_ID,
+        END_ID,
+    ]
+    assert record["node_models"][1]["type"] == "HTTP"
+    assert record["node_models"][1]["request"]["url"] == ""
+    assert record["workflow"]["edges"] == replacement["edges"]
+    repository = NodeStructuralRepository(routes_workflows.DATABASE_PATH)
+    assert repository.get(SCRIPT_ID) is None
+    assert repository.get(REPLACEMENT_HTTP_ID).node.type == "HTTP"
 
 
 def test_workflow_api_applies_and_round_trips_platform_execution_defaults(client):
@@ -174,6 +246,27 @@ def test_workflow_api_rejects_invalid_graph_without_creating_record(client):
     assert response.status_code == 400
     assert "END" in response.json()["detail"]
     assert client.get("/api/workflows").json() == {"workflows": []}
+
+
+def test_invalid_workflow_update_is_rejected_before_node_test_cleanup(client, monkeypatch):
+    created = client.post("/api/workflows", json=workflow_body("无副作用校验"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    invalid = workflow_body("无副作用校验")
+    invalid["nodes"].pop()
+    invalid["edges"].pop()
+    cancelled = []
+    manager = routes_workflows._get_node_test_manager()
+    monkeypatch.setattr(
+        manager,
+        "cancel_node",
+        lambda active_workflow_id, node_id: cancelled.append((active_workflow_id, node_id)),
+    )
+
+    response = client.put(f"/api/workflows/{workflow_id}", json=invalid)
+
+    assert response.status_code == 400
+    assert cancelled == []
+    assert client.get(f"/api/workflows/{workflow_id}").status_code == 200
 
 
 def test_workflow_api_rejects_duplicate_name_and_preserves_first(client):
@@ -367,6 +460,33 @@ def test_workflow_run_api_persists_and_returns_real_execution_json(client):
     ).json()["executions"]
     assert {node["type"] for node in nodes} == {"START", "SCRIPT", "END"}
     assert all(node["status"] == "SUCCESS" for node in nodes)
+
+
+def test_workflow_execution_snapshot_matches_structural_api_and_sqlite_record(client):
+    created = client.post("/api/workflows", json=workflow_body("快照一致性"))
+    record = created.json()["workflow"]
+    workflow_id = record["workflow"]["id"]
+    started = client.post(f"/api/workflows/{workflow_id}/runs")
+
+    assert started.status_code == 202, started.text
+    snapshot = started.json()["execution"]["structural_snapshot"]
+    bindings = {
+        binding["node_id"]: binding for binding in record["workflow"]["nodes"]
+    }
+    assert snapshot["workflow"] == {
+        "id": workflow_id,
+        "name": "快照一致性",
+        "description": "本机开发验证",
+    }
+    assert snapshot["nodes"] == [
+        {
+            "node": node,
+            "position_x": bindings[node["id"]]["position_x"],
+            "position_y": bindings[node["id"]]["position_y"],
+        }
+        for node in record["node_models"]
+    ]
+    assert snapshot["edges"] == record["workflow"]["edges"]
 
 
 def test_workflow_run_cancel_is_global_and_idempotent(client):

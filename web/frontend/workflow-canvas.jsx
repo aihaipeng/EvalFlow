@@ -25,14 +25,9 @@ import {
     useEdgesState,
     useNodesState,
     useReactFlow,
+    useViewport,
 } from '@xyflow/react';
 import {
-    AlignHorizontalJustifyCenter,
-    AlignHorizontalJustifyEnd,
-    AlignHorizontalJustifyStart,
-    AlignVerticalJustifyCenter,
-    AlignVerticalJustifyEnd,
-    AlignVerticalJustifyStart,
     ArrowLeft,
     BrainCircuit,
     Check,
@@ -71,16 +66,18 @@ import {
 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 import './workflow-canvas.css';
+import {calculateAlignmentGuides} from './workflow-alignment.mjs';
 
 const NODE_TYPES = {
     START: {label: '开始', caption: 'START', icon: CirclePlay, color: '#16803c', executable: false},
-    HTTP: {label: 'HTTP', caption: 'HTTP', icon: Globe2, color: '#2563eb', executable: true},
-    LLM: {label: 'LLM', caption: 'LLM', icon: BrainCircuit, color: '#7048c6', executable: true},
-    SCRIPT: {label: 'SCRIPT', caption: 'SCRIPT', icon: Code2, color: '#c56a12', executable: true},
+    HTTP: {label: 'HTTP', caption: 'HTTP', icon: Globe2, color: '#2563eb', executable: true, runtime: 'HTTP'},
+    LLM: {label: 'LLM', caption: 'LLM', icon: BrainCircuit, color: '#7048c6', executable: true, runtime: 'Gateway'},
+    SCRIPT: {label: 'SCRIPT', caption: 'SCRIPT', icon: Code2, color: '#c56a12', executable: true, runtime: 'Python'},
     END: {label: '结束', caption: 'END', icon: Check, color: '#3f4b5f', executable: false},
 };
 
 const INSERTABLE_TYPES = ['HTTP', 'LLM', 'SCRIPT'];
+const INITIAL_OVERVIEW_SCALE = 0.67;
 const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'INTERRUPTED'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw'];
@@ -480,55 +477,6 @@ function HttpLogSection({title, text}) {
     );
 }
 
-function rawHttpScalar(value) {
-    if (value === undefined || value === null) return '';
-    return typeof value === 'string' ? value : parameterDataText(value);
-}
-
-function appendHttpParameters(searchParams, values) {
-    if (!values || typeof values !== 'object' || Array.isArray(values)) return;
-    Object.entries(values).forEach(([key, value]) => {
-        const entries = Array.isArray(value) ? value : [value];
-        entries.forEach((entry) => searchParams.append(key, rawHttpScalar(entry)));
-    });
-}
-
-function rawHttpRequestUrl(request) {
-    // Run-Time request.url is already the fully encoded URL after query merging.
-    return String(request?.url || '');
-}
-
-function rawHttpRequestBody(request) {
-    const bodyType = String(request?.body_type || 'NONE').toUpperCase();
-    if (bodyType === 'NONE' || request?.body === undefined || request?.body === null) return '';
-    if (bodyType === 'FORM_DATA' || bodyType === 'FORM_URLENCODED') {
-        if (typeof request.body === 'string') return request.body;
-        const form = new URLSearchParams();
-        appendHttpParameters(form, request.body);
-        return form.toString();
-    }
-    return rawHttpScalar(request.body);
-}
-
-function rawHttpRequest(request) {
-    const method = String(request?.method || 'GET').toUpperCase();
-    const requestLine = `${method} ${rawHttpRequestUrl(request)} HTTP/1.1`;
-    const headers = request?.headers && typeof request.headers === 'object' && !Array.isArray(request.headers)
-        ? Object.entries(request.headers).map(([key, value]) => {
-            const headerValue = Array.isArray(value)
-                ? value.map((item) => rawHttpScalar(item)).join(', ')
-                : rawHttpScalar(value);
-            return `${key}: ${headerValue}`;
-        })
-        : [];
-    return [requestLine, ...headers, '', rawHttpRequestBody(request)].join('\n');
-}
-
-function HttpRequestLogSection({request}) {
-    const rawText = rawHttpRequest(request);
-    return <HttpLogSection title="request" text={rawText} />;
-}
-
 function runResultSummary(run) {
     if (run.status === 'RUNNING') {
         const liveText = typeof run.response_body === 'string'
@@ -625,6 +573,9 @@ function defaultHttpConfig() {
         proxyPassword: '',
         verifySsl: true,
         responseBodyType: 'auto',
+        successStatuses: ['200-299'],
+        retryNonIdempotent: false,
+        retryStatuses: [408, 429, 500, 502, 503, 504],
     };
 }
 
@@ -791,44 +742,24 @@ function initialGraph() {
     };
 }
 
-function alignCanvasNodes(nodes, selectedNodeIds, alignment) {
-    const selectedIds = new Set(selectedNodeIds);
-    const selected = nodes.filter((node) => selectedIds.has(node.id));
-    if (selected.length < 2) return nodes;
-    const frames = selected.map((node) => {
-        const width = Number(node.measured?.width || node.width || 236);
-        const height = Number(node.measured?.height || node.height || 112);
-        return {
-            node,
-            width,
-            height,
-            left: node.position.x,
-            right: node.position.x + width,
-            top: node.position.y,
-            bottom: node.position.y + height,
-        };
-    });
-    const bounds = {
-        left: Math.min(...frames.map((frame) => frame.left)),
-        right: Math.max(...frames.map((frame) => frame.right)),
-        top: Math.min(...frames.map((frame) => frame.top)),
-        bottom: Math.max(...frames.map((frame) => frame.bottom)),
+function replaceCanvasNode(nodes, edges, currentNodeId, targetType) {
+    const currentNode = nodes.find((node) => node.id === currentNodeId);
+    if (!currentNode || !INSERTABLE_TYPES.includes(currentNode.data?.nodeType)) return null;
+    if (!INSERTABLE_TYPES.includes(targetType) || targetType === currentNode.data.nodeType) return null;
+    const replacement = {
+        ...makeNode(targetType, {...currentNode.position}),
+        selected: Boolean(currentNode.selected),
     };
-    const horizontalCenter = (bounds.left + bounds.right) / 2;
-    const verticalCenter = (bounds.top + bounds.bottom) / 2;
-    const frameById = new Map(frames.map((frame) => [frame.node.id, frame]));
-    return nodes.map((node) => {
-        const frame = frameById.get(node.id);
-        if (!frame) return node;
-        let {x, y} = node.position;
-        if (alignment === 'left') x = bounds.left;
-        if (alignment === 'horizontal-center') x = horizontalCenter - frame.width / 2;
-        if (alignment === 'right') x = bounds.right - frame.width;
-        if (alignment === 'top') y = bounds.top;
-        if (alignment === 'vertical-center') y = verticalCenter - frame.height / 2;
-        if (alignment === 'bottom') y = bounds.bottom - frame.height;
-        return {...node, position: {x, y}};
-    });
+    return {
+        oldNodeId: currentNodeId,
+        newNodeId: replacement.id,
+        nodes: nodes.map((node) => node.id === currentNodeId ? replacement : node),
+        edges: edges.map((edge) => ({
+            ...edge,
+            source: edge.source === currentNodeId ? replacement.id : edge.source,
+            target: edge.target === currentNodeId ? replacement.id : edge.target,
+        })),
+    };
 }
 
 function graphFromDraft(draft) {
@@ -903,7 +834,7 @@ function WorkflowNode({data, selected}) {
             <footer className="wf-node-footer">
                 <span className={`wf-node-status is-${statusClass}`}><i />{status}</span>
                 <span className="wf-node-meta">
-                    {meta.executable && <span className="wf-node-runtime">{data.nodeType === 'LLM' ? 'Gateway' : 'Python'}</span>}
+                    {meta.executable && <span className="wf-node-runtime">{meta.runtime}</span>}
                     {data.savedAt && !data.isDirty && <span className="wf-node-saved-state"><Check size={10} />已保存</span>}
                     <span className={`wf-node-execution is-${statusClass}`} aria-label={`执行耗时 ${executionDuration}`}>
                         <LoaderCircle className="wf-execution-spinner" size={12} />
@@ -916,8 +847,9 @@ function WorkflowNode({data, selected}) {
     );
 }
 
-function NodePicker({onSelect, compact = false, includeSystem = false}) {
-    const types = includeSystem ? ['START', 'END', ...INSERTABLE_TYPES] : INSERTABLE_TYPES;
+function NodePicker({onSelect, compact = false, includeSystem = false, excludeType = null}) {
+    const types = (includeSystem ? ['START', 'END', ...INSERTABLE_TYPES] : INSERTABLE_TYPES)
+        .filter((type) => type !== excludeType);
     return (
         <div className={`wf-node-picker ${compact ? 'is-compact' : ''}`} role="menu">
             {types.map((type) => {
@@ -958,7 +890,7 @@ function InsertableEdge({id, sourceX, sourceY, targetX, targetY, sourcePosition,
 const nodeTypes = {workflowNode: WorkflowNode};
 const edgeTypes = {insertable: InsertableEdge};
 
-function ContextMenu({menu, canPaste, onAction, onAdd}) {
+function ContextMenu({menu, canPaste, canReplace, onAction, onAdd, onReplace}) {
     const [submenuOpen, setSubmenuOpen] = useState(false);
     useEffect(() => setSubmenuOpen(false), [menu?.kind, menu?.x, menu?.y]);
     if (!menu) return null;
@@ -973,6 +905,16 @@ function ContextMenu({menu, canPaste, onAction, onAdd}) {
         return (
             <div className="wf-context-menu" style={{left: menu.x, top: menu.y}} role="menu" data-testid="node-context-menu">
                 {menu.nodeType !== 'END' && <button type="button" onClick={() => onAction('run-node')}><Play size={15} /><span>运行此步骤</span></button>}
+                {INSERTABLE_TYPES.includes(menu.nodeType) && (
+                    <div className={`wf-context-submenu-trigger ${submenuOpen ? 'is-open' : ''}`}>
+                        <button type="button" disabled={!canReplace} aria-expanded={submenuOpen} onClick={() => setSubmenuOpen((open) => !open)}><RefreshCw size={15} /><span>更换节点</span><ChevronRight size={14} /></button>
+                        {canReplace && (
+                            <div className="wf-context-submenu">
+                                <NodePicker compact excludeType={menu.nodeType} onSelect={(type) => onReplace(menu.nodeId, type)} />
+                            </div>
+                        )}
+                    </div>
+                )}
                 <button type="button" onClick={() => onAction('copy-node')}><Copy size={15} /><span>拷贝</span></button>
                 <div className="wf-menu-separator" />
                 <button type="button" className="is-danger" onClick={() => onAction('delete-node')}><Trash2 size={15} /><span>删除</span></button>
@@ -988,6 +930,35 @@ function ContextMenu({menu, canPaste, onAction, onAdd}) {
             <button type="button" onClick={() => onAction('test-run')}><Zap size={15} /><span>测试运行</span></button>
             <button type="button" className="is-danger" onClick={() => onAction('interrupt-workflow')}><Square size={15} /><span>中断测试</span></button>
             <button type="button" disabled={!canPaste} onClick={() => onAction('paste-node')}><Clipboard size={15} /><span>粘贴节点</span></button>
+        </div>
+    );
+}
+
+function AlignmentGuides({guides}) {
+    const {x, y, zoom} = useViewport();
+    if (!guides) return null;
+    return (
+        <div className="wf-alignment-guides" aria-hidden="true">
+            {guides.horizontal && (
+                <span
+                    className="wf-alignment-guide is-horizontal"
+                    style={{
+                        top: guides.horizontal.top * zoom + y,
+                        left: guides.horizontal.left * zoom + x,
+                        width: guides.horizontal.width * zoom,
+                    }}
+                />
+            )}
+            {guides.vertical && (
+                <span
+                    className="wf-alignment-guide is-vertical"
+                    style={{
+                        top: guides.vertical.top * zoom + y,
+                        left: guides.vertical.left * zoom + x,
+                        height: guides.vertical.height * zoom,
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -1178,7 +1149,7 @@ function NodeRunHistory({runs, nodeType, temporaryRun = null}) {
                                 {nodeType === 'HTTP' ? (
                                     <>
                                         {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
-                                        {run.request && <HttpRequestLogSection request={run.request} />}
+                                        {requestContent && <HttpLogSection title="request" text={requestContent} />}
                                         {responseContent && <HttpLogSection title="response" text={responseContent} />}
                                         {outputsContent && <HttpLogSection title="outputs" text={outputsContent} />}
                                     </>
@@ -1905,6 +1876,7 @@ function WorkflowStudio({options}) {
     const [insertEdgeId, setInsertEdgeId] = useState(null);
     const [clipboard, setClipboard] = useState(null);
     const [marquee, setMarquee] = useState(null);
+    const [alignmentGuides, setAlignmentGuides] = useState(null);
     const [nodeSaveNotice, setNodeSaveNotice] = useState(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [workflowHistory, setWorkflowHistory] = useState([]);
@@ -1949,7 +1921,8 @@ function WorkflowStudio({options}) {
     const nodeTestTimersRef = useRef(new Map());
     const hiddenNodeTestsRef = useRef(new Set());
     const studioClosedRef = useRef(false);
-    const {screenToFlowPosition, fitView} = useReactFlow();
+    const canvasRef = useRef(null);
+    const {screenToFlowPosition, fitView, getNodes, getViewport, setViewport} = useReactFlow();
 
     const loadModelProviders = useCallback(async () => {
         const sequence = providerLoadSequence.current + 1;
@@ -2663,6 +2636,28 @@ function WorkflowStudio({options}) {
 
     const deleteNode = useCallback((id) => deleteNodes([id]), [deleteNodes]);
 
+    const replaceNode = useCallback((id, targetType) => {
+        const currentNode = nodes.find((node) => node.id === id);
+        if (!currentNode || !INSERTABLE_TYPES.includes(currentNode.data.nodeType)) return;
+        if (workflowRunRef.current.active || currentNode.data.nodeTestActive) {
+            if (window.showToast) window.showToast('节点运行期间不能更换类型', 'error');
+            return;
+        }
+        const replacement = replaceCanvasNode(nodes, edges, id, targetType);
+        if (!replacement) return;
+        recordHistory();
+        stopNodeTestTimer(id);
+        nodeTestSourcesRef.current.delete(id);
+        hiddenNodeTestsRef.current.delete(id);
+        setNodes(replacement.nodes);
+        setEdges(replacement.edges);
+        setEditorNodeId((current) => current === id ? null : current);
+        setSelectedNodeIds((current) => current.map((nodeId) => nodeId === id ? replacement.newNodeId : nodeId));
+        setSaveState('未保存');
+        closeMenus();
+        if (window.showToast) window.showToast(`节点已更换为 ${targetType}`, 'success');
+    }, [closeMenus, edges, nodes, recordHistory, setEdges, setNodes, stopNodeTestTimer]);
+
     const copyNodes = useCallback((ids) => {
         const idSet = new Set(ids);
         const copiedNodes = nodes.filter((node) => idSet.has(node.id)).map((node) => ({
@@ -2904,14 +2899,29 @@ function WorkflowStudio({options}) {
         window.setTimeout(() => fitView({padding: 0.16, duration: 450}), 0);
     }, [edges, fitView, recordHistory, setNodes]);
 
+    const fitInitialOverview = useCallback(async () => {
+        await fitView({padding: 0.16, duration: 0});
+        const viewport = getViewport();
+        const bounds = canvasRef.current?.getBoundingClientRect();
+        if (!bounds || !viewport.zoom) return;
+        const ratio = INITIAL_OVERVIEW_SCALE;
+        const centerX = bounds.width / 2;
+        const centerY = bounds.height / 2;
+        await setViewport({
+            x: centerX - (centerX - viewport.x) * ratio,
+            y: centerY - (centerY - viewport.y) * ratio,
+            zoom: viewport.zoom * ratio,
+        }, {duration: 0});
+    }, [fitView, getViewport, setViewport]);
+
     useEffect(() => {
         if (initialLayoutDone.current) return;
         initialLayoutDone.current = true;
         if (!options.draft?.nodes?.length) {
             setNodes((current) => layoutGraph(current, edges));
         }
-        window.setTimeout(() => fitView({padding: 0.16, duration: 0}), 0);
-    }, [edges, fitView, options.draft, setNodes]);
+        window.setTimeout(() => void fitInitialOverview(), 0);
+    }, [edges, fitInitialOverview, options.draft, setNodes]);
 
     const save = useCallback(async () => {
         try {
@@ -2952,15 +2962,6 @@ function WorkflowStudio({options}) {
 
     const canUndo = historyTick >= 0 && undoStack.current.length > 0;
     const canRedo = historyTick >= 0 && redoStack.current.length > 0;
-    const canAlignNodes = selectedNodeIds.length >= 2;
-    const alignSelectedNodes = useCallback((alignment) => {
-        if (!canAlignNodes) return;
-        recordHistory();
-        setNodes((current) => alignCanvasNodes(current, selectedNodeIds, alignment));
-        setSaveState('未保存');
-        closeMenus();
-    }, [canAlignNodes, closeMenus, recordHistory, selectedNodeIds, setNodes]);
-
     return (
         <div className="workflow-studio-shell" tabIndex={0} aria-label="工作流画布" onKeyDown={handleKeyboard} onCopy={handleCopy} onPaste={handlePaste} onPointerDownCapture={handleMarqueeStart} onPointerMoveCapture={handleMarqueeMove} onPointerUpCapture={handleMarqueeEnd} onContextMenu={(event) => event.preventDefault()}>
             <header className="wf-studio-header">
@@ -3030,7 +3031,7 @@ function WorkflowStudio({options}) {
                     <button type="button" className="wf-primary-button" onClick={save}><Save size={15} />保存</button>
                 </div>
             </header>
-            <main className="wf-canvas-wrap">
+            <main className="wf-canvas-wrap" ref={canvasRef}>
                 {marquee && (
                     <div className="wf-selection-marquee" style={{
                         left: Math.min(marquee.startClientX, marquee.clientX) - marquee.canvasLeft,
@@ -3083,7 +3084,17 @@ function WorkflowStudio({options}) {
                         recordHistory();
                         setEdges((current) => addEdge(makeEdge(connection.source, connection.target, connection), current));
                     }}
-                    onNodeDragStart={recordHistory}
+                    onNodeDragStart={() => {
+                        recordHistory();
+                        setAlignmentGuides(null);
+                    }}
+                    onNodeDrag={(event, node) => {
+                        setAlignmentGuides(calculateAlignmentGuides(getNodes(), node));
+                    }}
+                    onNodeDragStop={() => {
+                        setAlignmentGuides(null);
+                        setSaveState('未保存');
+                    }}
                     onPaneClick={closeMenus}
                     onNodeClick={handleNodeClick}
                     onSelectionChange={({nodes: selectedNodes, edges: selectedEdges}) => {
@@ -3148,7 +3159,7 @@ function WorkflowStudio({options}) {
                     }}
                     fitView
                     fitViewOptions={{padding: 0.16}}
-                    minZoom={0.35}
+                    minZoom={0.1}
                     maxZoom={1.8}
                     selectionOnDrag={false}
                     selectionKeyCode="Control"
@@ -3159,6 +3170,7 @@ function WorkflowStudio({options}) {
                     proOptions={{hideAttribution: true}}
                 >
                     <Background color="#c8d1de" gap={20} size={1.2} />
+                    <AlignmentGuides guides={alignmentGuides} />
                     <MiniMap pannable zoomable nodeColor={(node) => NODE_TYPES[node.data.nodeType]?.color || '#64748b'} maskColor="rgba(238, 242, 247, 0.76)" />
                     <Controls showInteractive={false} />
                     <div className="wf-floating-toolbar">
@@ -3166,26 +3178,20 @@ function WorkflowStudio({options}) {
                         <button type="button" disabled={!canRedo} onClick={redo} title="前进" aria-label="前进"><Redo2 size={16} /></button>
                         <span />
                         <button type="button" onClick={autoLayout} title="自动布局" aria-label="自动布局"><LayoutGrid size={16} /></button>
-                        {canAlignNodes && (
-                            <>
-                                <span />
-                                <div className="wf-alignment-actions" role="group" aria-label="节点对齐">
-                                    <button type="button" onClick={() => alignSelectedNodes('left')} title="左对齐" aria-label="左对齐"><AlignHorizontalJustifyStart size={16} /></button>
-                                    <button type="button" onClick={() => alignSelectedNodes('horizontal-center')} title="水平居中" aria-label="水平居中"><AlignHorizontalJustifyCenter size={16} /></button>
-                                    <button type="button" onClick={() => alignSelectedNodes('right')} title="右对齐" aria-label="右对齐"><AlignHorizontalJustifyEnd size={16} /></button>
-                                    <button type="button" onClick={() => alignSelectedNodes('top')} title="顶部对齐" aria-label="顶部对齐"><AlignVerticalJustifyStart size={16} /></button>
-                                    <button type="button" onClick={() => alignSelectedNodes('vertical-center')} title="垂直居中" aria-label="垂直居中"><AlignVerticalJustifyCenter size={16} /></button>
-                                    <button type="button" onClick={() => alignSelectedNodes('bottom')} title="底部对齐" aria-label="底部对齐"><AlignVerticalJustifyEnd size={16} /></button>
-                                </div>
-                            </>
-                        )}
                     </div>
                 </ReactFlow>
                 <ContextMenu
                     menu={contextMenu}
                     canPaste={Boolean(clipboard?.nodes?.length)}
+                    canReplace={Boolean(
+                        contextMenu?.kind === 'node'
+                        && INSERTABLE_TYPES.includes(contextMenu.nodeType)
+                        && workflowRunState !== 'RUNNING'
+                        && !nodes.find((node) => node.id === contextMenu.nodeId)?.data.nodeTestActive
+                    )}
                     onAction={contextAction}
                     onAdd={(type) => contextMenu?.flowPosition && addNodeAt(type, contextMenu.flowPosition)}
+                    onReplace={replaceNode}
                 />
                 <NodeTestVariablesDialog
                     dialog={nodeTestDialog}

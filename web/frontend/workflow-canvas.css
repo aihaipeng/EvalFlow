@@ -969,7 +969,8 @@ body.workflow-studio-open {
     color: #182235;
 }
 
-.wf-context-menu > button:disabled {
+.wf-context-menu > button:disabled,
+.wf-context-submenu-trigger > button:disabled {
     opacity: 0.42;
     cursor: default;
 }
@@ -3426,9 +3427,26 @@ textarea.wf-script-console {
     background: #e1e6ed;
 }
 
-.wf-alignment-actions {
-    display: flex;
-    align-items: center;
+.wf-alignment-guides {
+    position: absolute;
+    z-index: 9;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.wf-alignment-guide {
+    position: absolute;
+    display: block;
+    background: #4f7cff;
+}
+
+.wf-alignment-guide.is-horizontal {
+    height: 1px;
+}
+
+.wf-alignment-guide.is-vertical {
+    width: 1px;
 }
 
 .workflow-studio-shell .react-flow__controls {
