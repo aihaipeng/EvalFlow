@@ -50,6 +50,7 @@ dist/
 .agents/
 .idea/
 .vscode/
+.proto-shots/ud-*/
 .codex_server_*.log
 .codex_server_*.err
 .codex_server_*.out.log
