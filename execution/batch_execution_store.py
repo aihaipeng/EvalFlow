@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -55,15 +54,11 @@ class BatchExecutionStore:
         self,
         batch: dict[str, Any],
         cases: list[dict[str, Any]],
-        source_path: str | Path,
         input_snapshot: dict[str, Any],
     ) -> None:
         target = self.batch_root(batch["id"])
         if target.exists():
             raise BatchExecutionError(f"Batch Execution 已存在: {batch['id']}")
-        source = Path(source_path).resolve()
-        if not source.is_file():
-            raise BatchExecutionError(f"Batch 输入文件不存在: {source}")
         temporary = self.root / f".creating-{batch['id']}-{uuid4()}"
         try:
             (temporary / "cases").mkdir(parents=True)
@@ -71,7 +66,6 @@ class BatchExecutionStore:
             input_dir.mkdir()
             self._atomic_write(temporary / "batch.json", batch)
             self._atomic_write(input_dir / "snapshot.json", input_snapshot)
-            shutil.copyfile(source, input_dir / f"source{source.suffix.lower()}")
             for case in cases:
                 self._atomic_write(
                     temporary / "cases" / f"{_uuid(case['id'], 'case_run_id')}.json",

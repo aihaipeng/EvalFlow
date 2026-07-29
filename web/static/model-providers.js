@@ -2,6 +2,8 @@
 var modelProviderState = {
     providers: [],
     query: '',
+    page: 1,
+    pageSize: 10,
     editingId: null,
     discovered: [],
     selected: [],
@@ -45,8 +47,20 @@ function renderModelProviderRows() {
     var body = document.getElementById('model-provider-list-body');
     var count = document.getElementById('model-provider-count');
     if (!body || !count) return;
-    var providers = filteredModelProviders();
+    var filteredProviders = filteredModelProviders();
+    var pagination = globalPageSlice(filteredProviders, modelProviderState.page, modelProviderState.pageSize);
+    var providers = pagination.items;
+    modelProviderState.page = pagination.page;
+    modelProviderState.pageSize = pagination.pageSize;
     count.textContent = modelProviderState.providers.length + ' 个供应商';
+    renderGlobalListPagination('model-provider-pagination', pagination.total, pagination.page, pagination.pageSize, function (nextPage) {
+        modelProviderState.page = nextPage;
+        renderModelProviderRows();
+    }, function (nextPageSize) {
+        modelProviderState.page = 1;
+        modelProviderState.pageSize = nextPageSize;
+        renderModelProviderRows();
+    }, '个供应商');
     if (!providers.length) {
         body.innerHTML = '<tr><td colspan="6"><div class="execution-empty"><strong>' +
             (modelProviderState.providers.length ? '没有匹配的模型供应商' : '尚未添加模型供应商') +
@@ -63,8 +77,7 @@ function renderModelProviderRows() {
         var remaining = (provider.models || []).length - 2;
         if (remaining > 0) modelPreview += '<span class="model-provider-more">+' + remaining + '</span>';
         return '<tr>' +
-            '<td><button class="execution-name-button" type="button" data-provider-edit="' + escAttr(provider.id) + '">' + esc(modelProviderName(provider)) + '</button>' + website +
-                '<div class="execution-id">' + esc(provider.id) + '</div></td>' +
+            '<td><button class="execution-name-button" type="button" data-provider-edit="' + escAttr(provider.id) + '">' + esc(modelProviderName(provider)) + '</button>' + website + '</td>' +
             '<td><span class="model-provider-url" title="' + escAttr(provider.base_url) + '">' + esc(provider.base_url) + '</span></td>' +
             '<td><span class="model-provider-protocol is-' + escAttr(provider.protocol.toLowerCase()) + '">' + esc(modelProviderProtocolLabel(provider.protocol)) + '</span></td>' +
             '<td><div class="model-provider-model-preview">' + modelPreview + '</div></td>' +
@@ -101,7 +114,7 @@ function viewModelProviders() {
     modelProviderState.editingId = null;
     contentArea.innerHTML =
         '<section class="execution-page model-provider-page" aria-labelledby="model-provider-title">' +
-            '<header class="execution-page-header"><div><h1 id="model-provider-title">模型管理</h1></div><span class="execution-count" id="model-provider-count">0 个供应商</span></header>' +
+            '<header class="execution-page-header"><div><h1 id="model-provider-title">供应商管理</h1></div><span class="execution-count" id="model-provider-count">0 个供应商</span></header>' +
             '<div class="toolbar execution-toolbar" id="model-provider-toolbar">' +
                 '<button class="btn btn-primary" id="btn-model-provider-add" type="button">' + icon('add') + '新增模型</button>' +
                 '<button class="btn" id="btn-model-provider-refresh" type="button">' + icon('refresh') + '刷新</button>' +
@@ -112,6 +125,7 @@ function viewModelProviders() {
                 '<thead><tr><th>供应商</th><th>BASE_URL</th><th>协议</th><th>模型</th><th>更新时间</th><th>操作</th></tr></thead>' +
                 '<tbody id="model-provider-list-body"></tbody>' +
             '</table></div>' +
+            '<div id="model-provider-pagination" class="global-list-footer"></div>' +
         '</section>';
     document.getElementById('btn-model-provider-add').addEventListener('click', function () {
         viewModelProviderEditor(null);
@@ -119,6 +133,7 @@ function viewModelProviders() {
     document.getElementById('btn-model-provider-refresh').addEventListener('click', loadModelProviders);
     document.getElementById('model-provider-search').addEventListener('input', function () {
         modelProviderState.query = this.value.trim().toLowerCase();
+        modelProviderState.page = 1;
         renderModelProviderRows();
     });
     loadModelProviders();

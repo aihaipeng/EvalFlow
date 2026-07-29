@@ -2,6 +2,12 @@
 var executionState = {
     workflows: [],
     batches: [],
+    workflowPage: 1,
+    workflowPageSize: 10,
+    batchPage: 1,
+    batchPageSize: 10,
+    batchDetailPageSize: 10,
+    batchCreating: false,
     batchPoll: null,
     batchPreviewRequestId: 0,
 };
@@ -366,20 +372,31 @@ function renderWorkflowTable() {
     var body = document.getElementById('workflow-list-body');
     var count = document.getElementById('workflow-count');
     if (!body || !count) return;
-    count.textContent = executionState.workflows.length + ' 个 Workflow';
+    count.textContent = executionState.workflows.length + ' 个工作流';
+    var pagination = globalPageSlice(executionState.workflows, executionState.workflowPage, executionState.workflowPageSize);
+    executionState.workflowPage = pagination.page;
+    executionState.workflowPageSize = pagination.pageSize;
+    renderGlobalListPagination('workflow-pagination', pagination.total, pagination.page, pagination.pageSize, function (nextPage) {
+        executionState.workflowPage = nextPage;
+        renderWorkflowTable();
+    }, function (nextPageSize) {
+        executionState.workflowPage = 1;
+        executionState.workflowPageSize = nextPageSize;
+        renderWorkflowTable();
+    }, '个工作流');
     if (!executionState.workflows.length) {
-        body.innerHTML = '<tr><td colspan="4">' + executionEmpty('尚未创建 Workflow', '新增 Workflow', 'workflow-empty-add') + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="4">' + executionEmpty('尚未创建工作流', '新增工作流', 'workflow-empty-add') + '</td></tr>';
         document.getElementById('workflow-empty-add').addEventListener('click', function () { openWorkflowCanvas(); });
         return;
     }
-    body.innerHTML = executionState.workflows.map(function (workflow) {
+    body.innerHTML = pagination.items.map(function (workflow) {
         return '<tr>' +
             '<td><button class="execution-name-button" type="button" data-workflow-open="' + esc(workflow.id) + '">' + esc(workflow.name) + '</button></td>' +
             '<td class="workflow-description-cell">' + esc(workflow.description || '—') + '</td>' +
             '<td>' + esc(formatDateTime(workflow.updated_at)) + '</td>' +
             '<td><div class="execution-row-actions">' +
-                '<button class="btn-icon" type="button" data-workflow-open="' + esc(workflow.id) + '" title="编辑 Workflow" aria-label="编辑 Workflow">' + icon('edit') + '</button>' +
-                '<button class="btn-icon" type="button" data-workflow-delete="' + esc(workflow.id) + '" title="删除 Workflow" aria-label="删除 Workflow">' + icon('trash') + '</button>' +
+                '<button class="btn-icon" type="button" data-workflow-open="' + esc(workflow.id) + '" title="编辑工作流" aria-label="编辑工作流">' + icon('edit') + '</button>' +
+                '<button class="btn-icon" type="button" data-workflow-delete="' + esc(workflow.id) + '" title="删除工作流" aria-label="删除工作流">' + icon('trash') + '</button>' +
             '</div></td></tr>';
     }).join('');
     body.querySelectorAll('[data-workflow-open]').forEach(function (button) {
@@ -404,12 +421,13 @@ function viewWorkflows() {
     currentView = 'workflows';
     contentArea.innerHTML =
         '<section class="execution-page" aria-labelledby="workflows-title">' +
-            '<header class="execution-page-header"><div><h1 id="workflows-title">Workflow 管理</h1><p>开发、保存和手动验证工作流结构</p></div><span class="execution-count" id="workflow-count">0 个 Workflow</span></header>' +
+            '<header class="execution-page-header"><div><h1 id="workflows-title">工作流管理</h1><p>开发、保存和手动验证工作流结构</p></div><span class="execution-count" id="workflow-count">0 个工作流</span></header>' +
             '<div class="toolbar execution-toolbar" id="workflows-toolbar">' +
-                '<button class="btn btn-primary" id="btn-workflow-add" type="button">' + icon('add') + '新增 Workflow</button>' +
+                '<button class="btn btn-primary" id="btn-workflow-add" type="button">' + icon('add') + '新增工作流</button>' +
                 '<button class="btn" id="btn-workflow-refresh" type="button">' + icon('refresh') + '刷新</button>' +
             '</div>' +
             '<div class="table-wrap execution-table-wrap"><table class="table execution-table workflow-table"><thead><tr><th>名称</th><th>说明</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="workflow-list-body"></tbody></table></div>' +
+            '<div id="workflow-pagination" class="global-list-footer"></div>' +
         '</section>';
     document.getElementById('btn-workflow-add').addEventListener('click', function () { openWorkflowCanvas(); });
     document.getElementById('btn-workflow-refresh').addEventListener('click', loadWorkflows);
@@ -418,7 +436,7 @@ function viewWorkflows() {
 
 async function openWorkflowCanvas(workflowId) {
     if (!window.AgentBenchWorkflowCanvas) {
-        showToast('Workflow 画布资源未加载', 'error');
+        showToast('工作流画布资源未加载', 'error');
         return;
     }
     var options = {name: '未命名工作流', description: '', draft: null, createOnMount: false, executionEnabled: true};
@@ -458,13 +476,13 @@ function deleteWorkflow(workflowId) {
     var workflow = executionState.workflows.find(function (item) { return item.id === workflowId; });
     if (!workflow) return;
     openExecutionModal(
-        '删除 Workflow',
-        '<p>确定删除 Workflow“<strong>' + esc(workflow.name) + '</strong>”吗？</p><p class="info-text" style="margin-top:8px">当前节点和连线将一并删除。</p>',
+        '删除工作流',
+        '<p>确定删除工作流“<strong>' + esc(workflow.name) + '</strong>”吗？</p><p class="info-text" style="margin-top:8px">当前节点和连线将一并删除。</p>',
         async function () {
             try {
                 await API.del('/api/workflows/' + encodeURIComponent(workflowId));
                 closeExecutionModal();
-                showToast('Workflow 已删除', 'success');
+                showToast('工作流已删除', 'success');
                 await loadWorkflows();
             } catch (error) {
                 showToast(executionErrorMessage(error), 'error');
@@ -474,24 +492,9 @@ function deleteWorkflow(workflowId) {
     );
 }
 
-function batchStatusLabel(status) {
-    return {
-        QUEUED: '待启动', RUNNING: '运行中', SUCCESS: '成功',
-        COMPLETED_WITH_ERRORS: '部分失败', INTERRUPTED: '已中断',
-    }[status] || status;
-}
 
-function batchStatusClass(status) {
-    return 'batch-status batch-status-' + String(status || '').toLowerCase().replaceAll('_', '-');
-}
 
-function batchVerdictLabel(verdict) {
-    return {PASS: '通过', FAIL: '不通过', ERROR: '校验错误', NOT_EVALUATED: '未校验'}[verdict] || verdict || '未校验';
-}
 
-function batchVerdictClass(verdict) {
-    return 'batch-verdict is-' + String(verdict || 'NOT_EVALUATED').toLowerCase().replaceAll('_', '-');
-}
 
 function batchProgress(batch) {
     var summary = batch.summary || {};
@@ -502,25 +505,29 @@ function batchProgress(batch) {
         '<small>' + done + ' / ' + total + '</small></div>';
 }
 
-function batchVerdictSummary(batch) {
-    var summary = batch.summary || {};
-    if (!(batch.evaluation_rules || []).length) return '<span class="batch-verdict is-not-evaluated">未校验</span>';
-    return '<span class="batch-verdict is-pass">通过 ' + (summary.pass || 0) + '</span>' +
-        '<span class="batch-verdict is-fail">不通过 ' + (summary.fail || 0) + '</span>' +
-        '<span class="batch-verdict is-error">错误 ' + (summary.error || 0) + '</span>';
-}
 
 function renderBatchTable() {
     var body = document.getElementById('batch-list-body');
     var count = document.getElementById('batch-count');
     if (!body || !count) return;
     count.textContent = executionState.batches.length + ' 个 Run';
+    var pagination = globalPageSlice(executionState.batches, executionState.batchPage, executionState.batchPageSize);
+    executionState.batchPage = pagination.page;
+    executionState.batchPageSize = pagination.pageSize;
+    renderGlobalListPagination('batch-pagination', pagination.total, pagination.page, pagination.pageSize, function (nextPage) {
+        executionState.batchPage = nextPage;
+        renderBatchTable();
+    }, function (nextPageSize) {
+        executionState.batchPage = 1;
+        executionState.batchPageSize = nextPageSize;
+        renderBatchTable();
+    }, '个 Run');
     if (!executionState.batches.length) {
-        body.innerHTML = '<tr><td colspan="8">' + executionEmpty('尚未创建批量 Run', '创建 Run', 'batch-empty-add') + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">' + executionEmpty('尚未创建批量 Run', '创建 Run', 'batch-empty-add') + '</td></tr>';
         document.getElementById('batch-empty-add').addEventListener('click', function () { openBatchCreate(); });
         return;
     }
-    body.innerHTML = executionState.batches.map(function (batch) {
+    body.innerHTML = pagination.items.map(function (batch) {
         var action = batch.status === 'QUEUED'
             ? '<button class="btn btn-sm btn-primary" data-batch-start="' + batch.id + '">启动</button>'
             : batch.status === 'RUNNING'
@@ -533,36 +540,20 @@ function renderBatchTable() {
         var remove = batch.status === 'RUNNING' ? '' : '<button class="btn-icon" data-batch-delete="' + batch.id + '" title="删除 Run" aria-label="删除 Run">' + icon('trash') + '</button>';
         return '<tr>' +
             '<td><button class="execution-name-button" data-batch-open="' + batch.id + '">' + esc(batch.name) + '</button></td>' +
-            '<td>' + esc(batch.input.filename + ' / ' + batch.input.sheet_name) + '</td>' +
+            '<td>' + esc(batch.input.test_set_name) + '</td>' +
             '<td>' + esc(batch.workflow.name) + '</td>' +
-            '<td><span class="' + batchStatusClass(batch.status) + '">' + batchStatusLabel(batch.status) + '</span></td>' +
             '<td>' + batchProgress(batch) + '</td>' +
-            '<td><div class="batch-verdicts">' + batchVerdictSummary(batch) + '</div></td>' +
             '<td>' + esc(formatDateTime(batch.created_at)) + '</td>' +
             '<td><div class="batch-row-actions"><button class="btn-icon" data-batch-open="' + batch.id + '" title="查看详情" aria-label="查看详情">' + icon('browse') + '</button>' + edit + action + remove + '</div></td>' +
         '</tr>';
     }).join('');
-    body.querySelectorAll('[data-batch-open]').forEach(function (button) {
-        button.addEventListener('click', function () { viewBatchDetail(button.getAttribute('data-batch-open')); });
-    });
-    body.querySelectorAll('[data-batch-edit]').forEach(function (button) {
-        button.addEventListener('click', function () { openBatchCreate(button.getAttribute('data-batch-edit')); });
-    });
-    body.querySelectorAll('[data-batch-start]').forEach(function (button) {
-        button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-start'), 'start', {}); });
-    });
-    body.querySelectorAll('[data-batch-cancel]').forEach(function (button) {
-        button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-cancel'), 'cancel', {}); });
-    });
-    body.querySelectorAll('[data-batch-resume]').forEach(function (button) {
-        button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-resume'), 'resume', {retry_failed: false}); });
-    });
-    body.querySelectorAll('[data-batch-retry]').forEach(function (button) {
-        button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-retry'), 'resume', {retry_failed: true}); });
-    });
-    body.querySelectorAll('[data-batch-delete]').forEach(function (button) {
-        button.addEventListener('click', function () { confirmBatchDelete(button.getAttribute('data-batch-delete')); });
-    });
+    body.querySelectorAll('[data-batch-open]').forEach(function (button) { button.addEventListener('click', function () { viewBatchDetail(button.getAttribute('data-batch-open')); }); });
+    body.querySelectorAll('[data-batch-edit]').forEach(function (button) { button.addEventListener('click', function () { openBatchCreate(button.getAttribute('data-batch-edit')); }); });
+    body.querySelectorAll('[data-batch-start]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-start'), 'start', {}); }); });
+    body.querySelectorAll('[data-batch-cancel]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-cancel'), 'cancel', {}); }); });
+    body.querySelectorAll('[data-batch-resume]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-resume'), 'resume', {retry_failed: false}); }); });
+    body.querySelectorAll('[data-batch-retry]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-retry'), 'resume', {retry_failed: true}); }); });
+    body.querySelectorAll('[data-batch-delete]').forEach(function (button) { button.addEventListener('click', function () { confirmBatchDelete(button.getAttribute('data-batch-delete')); }); });
 }
 
 function confirmBatchDelete(batchId) {
@@ -613,9 +604,10 @@ function viewBatchRuns() {
     scheduleBatchPoll(false);
     contentArea.innerHTML =
         '<section class="execution-page" aria-labelledby="batch-title">' +
-            '<header class="execution-page-header"><div><h1 id="batch-title">运行调度</h1><p>按 Excel 行并发执行已保存的 Workflow</p></div><span class="execution-count" id="batch-count">0 个 Run</span></header>' +
+            '<header class="execution-page-header"><div><h1 id="batch-title">运行调度</h1><p>按数据库测试集用例并发执行已保存的工作流</p></div><span class="execution-count" id="batch-count">0 个 Run</span></header>' +
             '<div class="toolbar execution-toolbar"><button class="btn btn-primary" id="btn-batch-add">' + icon('add') + '创建 Run</button><button class="btn" id="btn-batch-refresh">' + icon('refresh') + '刷新</button></div>' +
-            '<div class="table-wrap execution-table-wrap"><table class="table execution-table batch-table"><thead><tr><th>名称</th><th>测试集 / Sheet</th><th>Workflow</th><th>状态</th><th>进度</th><th>测试判定</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="batch-list-body"></tbody></table></div>' +
+            '<div class="table-wrap execution-table-wrap"><table class="table execution-table batch-table"><thead><tr><th>名称</th><th>测试集</th><th>工作流</th><th>进度</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="batch-list-body"></tbody></table></div>' +
+            '<div id="batch-pagination" class="global-list-footer"></div>' +
         '</section>';
     document.getElementById('btn-batch-add').addEventListener('click', function () { openBatchCreate(); });
     document.getElementById('btn-batch-refresh').addEventListener('click', loadBatchRuns);
@@ -625,78 +617,135 @@ function viewBatchRuns() {
 async function openBatchCreate(sourceBatchId) {
     try {
         var requests = [
-            API.get('/api/excel/sets?page=1&page_size=200'),
+            API.get('/api/test-sets?page=1&page_size=200'),
             API.get('/api/workflows'),
         ];
         if (sourceBatchId) requests.push(API.get('/api/batch-runs/' + encodeURIComponent(sourceBatchId)));
         var values = await Promise.all(requests);
-        var files = values[0].files || [];
+        var testSets = values[0].items || [];
         var workflows = values[1].workflows || [];
         var sourceBatch = values[2] ? values[2].batch : null;
-        if (!files.length || !workflows.length) {
-            showToast(!files.length ? '请先导入测试集' : '请先创建 Workflow', 'error');
+        if (!testSets.length || !workflows.length) {
+            showToast(!testSets.length ? '请先创建测试集' : '请先创建工作流', 'error');
             return;
         }
         var body =
             '<div class="batch-create-grid">' +
-                '<label>名称<input class="input" id="batch-name" maxlength="200" placeholder="默认使用测试集和 Workflow 名称" /></label>' +
-                '<label>测试集<select class="input" id="batch-file">' + files.map(function (file) { return '<option value="' + esc(file.filename) + '">' + esc(file.name) + '</option>'; }).join('') + '</select></label>' +
-                '<label>Sheet<select class="input" id="batch-sheet"></select></label>' +
-                '<label>Workflow<select class="input" id="batch-workflow">' + workflows.map(function (workflow) { return '<option value="' + workflow.id + '">' + esc(workflow.name) + '</option>'; }).join('') + '</select></label>' +
-                '<label>首行模式<select class="input" id="batch-header-mode"><option value="AUTO">自动识别</option><option value="HEADER">第一行是表头</option><option value="DATA">第一行是数据</option></select></label>' +
-                '<label>Case ID 列<select class="input" id="batch-case-id" disabled><option>正在读取表头...</option></select></label>' +
+                '<label>名称<input class="input" id="batch-name" maxlength="200" placeholder="默认使用测试集和工作流名称" /></label>' +
+                '<label>测试集<select class="input" id="batch-test-set">' + testSets.map(function (testSet) { return '<option value="' + esc(testSet.id) + '">' + esc(testSet.name) + '</option>'; }).join('') + '</select></label>' +
+                '<label>工作流<select class="input" id="batch-workflow">' + workflows.map(function (workflow) { return '<option value="' + workflow.id + '">' + esc(workflow.name) + '</option>'; }).join('') + '</select></label>' +
                 '<label>Case 并发数<input class="input" id="batch-concurrency" type="number" min="1" max="32" value="4" /></label>' +
-            '</div><div class="batch-preview-actions"><button class="btn btn-sm" id="batch-preview" type="button">刷新预览</button><span id="batch-preview-meta">正在读取数据...</span></div>' +
-            '<div id="batch-mapping" class="batch-mapping-empty">正在读取表头和样例数据...</div>' +
-            '<section class="batch-evaluation"><header><strong>结果校验</strong><button class="btn btn-sm" id="batch-rule-add" type="button">' + icon('add') + '添加规则</button></header><div id="batch-evaluation-rules"></div></section>' +
-            '<div id="batch-sample"></div>';
+            '</div><div class="batch-dataset-meta" id="batch-preview-meta">正在读取测试集字段...</div>' +
+            '<section class="batch-variable-injection"><header><div><strong>变量注入</strong><span>注入到工作流 Context，节点可通过 context["变量名"] 读取</span></div><button class="btn btn-sm" id="batch-variable-add" type="button">' + icon('add') + '添加变量</button></header><div class="batch-variable-table" id="batch-variables"><div class="batch-variable-empty">正在读取测试集字段...</div></div></section>' +
+            '<section class="batch-evaluation"><header><div><strong>结果校验</strong><span>全部校验点通过时，用例才通过</span></div><button class="btn btn-sm" id="batch-rule-add" type="button">' + icon('add') + '添加规则</button></header><div class="batch-evaluation-table" id="batch-evaluation-rules"></div></section>';
         openExecutionModal(sourceBatch ? '编辑 Run 配置' : '创建批量 Run', body, createBatchFromModal, sourceBatch ? '创建新 Run' : '创建');
         document.querySelector('.execution-modal').classList.add('is-batch-config');
         document.getElementById('execution-modal-save').disabled = true;
-        document.getElementById('batch-file').addEventListener('change', function () { loadBatchSheets(); });
-        document.getElementById('batch-sheet').addEventListener('change', function () { loadBatchPreview(); });
-        document.getElementById('batch-workflow').addEventListener('change', function () { loadBatchPreview(); });
-        document.getElementById('batch-header-mode').addEventListener('change', function () { loadBatchPreview(); });
-        document.getElementById('batch-case-id').addEventListener('change', function () { loadBatchPreview(); });
-        document.getElementById('batch-preview').addEventListener('click', function () { loadBatchPreview(); });
+        document.getElementById('batch-test-set').addEventListener('change', function () { loadBatchPreview(); });
+        document.getElementById('batch-variable-add').addEventListener('click', addBatchVariable);
         document.getElementById('batch-rule-add').addEventListener('click', function () { addBatchEvaluationRule(); });
         if (sourceBatch) {
-            var fileSelect = document.getElementById('batch-file');
+            var testSetSelect = document.getElementById('batch-test-set');
             var workflowSelect = document.getElementById('batch-workflow');
-            if (!Array.from(fileSelect.options).some(function (option) { return option.value === sourceBatch.input.filename; })) throw new Error('原 Run 的测试集已不存在');
-            if (!Array.from(workflowSelect.options).some(function (option) { return option.value === sourceBatch.workflow.id; })) throw new Error('原 Run 的 Workflow 已不存在');
+            if (!Array.from(testSetSelect.options).some(function (option) { return option.value === sourceBatch.input.test_set_id; })) throw new Error('原 Run 的测试集已不存在');
+            if (!Array.from(workflowSelect.options).some(function (option) { return option.value === sourceBatch.workflow.id; })) throw new Error('原 Run 的工作流已不存在');
             document.getElementById('batch-name').value = sourceBatch.name;
-            fileSelect.value = sourceBatch.input.filename;
+            testSetSelect.value = sourceBatch.input.test_set_id;
             workflowSelect.value = sourceBatch.workflow.id;
-            document.getElementById('batch-header-mode').value = sourceBatch.input.header_mode;
             document.getElementById('batch-concurrency').value = sourceBatch.case_concurrency;
         }
-        await loadBatchSheets(sourceBatch);
+        await loadBatchPreview(sourceBatch);
     } catch (error) {
         showToast(executionErrorMessage(error), 'error');
     }
 }
 
-function batchRuleDrafts() {
-    return Array.from(document.querySelectorAll('.batch-evaluation-rule')).map(function (row) {
+function batchVariableDrafts() {
+    return Array.from(document.querySelectorAll('.batch-variable-row')).map(function (row) {
         return {
-            name: row.querySelector('[data-rule-name]').value,
-            actual_path: row.querySelector('[data-rule-actual]').value,
-            operator: row.querySelector('[data-rule-operator]').value,
-            expected: {
-                source: row.querySelector('[data-rule-source]').value,
-                value: null,
-                literal_text: row.querySelector('[data-rule-literal]').value,
-                column: row.querySelector('[data-rule-source]').value === 'EXCEL' ? row.querySelector('[data-rule-column]').value : null,
-            },
+            source: row.querySelector('[data-variable-source]').value,
+            key: row.querySelector('[data-variable-key]').value,
+            value: row.querySelector('[data-variable-value]').value,
+            type: row.querySelector('[data-variable-type]').value,
         };
     });
 }
 
-function renderBatchEvaluationRules(rules, headers) {
-    var container = document.getElementById('batch-evaluation-rules');
+function batchVariableValueControl(variable, headers) {
+    if (variable.source === 'TEST_SET') {
+        var options = (headers || []).map(function (header) {
+            return '<option value="' + esc(header) + '"' + (variable.value === header ? ' selected' : '') + '>' + esc(header) + '</option>';
+        }).join('');
+        return '<select class="input" data-variable-value aria-label="测试集字段">' + options + '</select>';
+    }
+    if (variable.type === 'null') return '<input class="input" data-variable-value value="null" disabled aria-label="null 值" />';
+    if (variable.type === 'boolean') return '<select class="input" data-variable-value><option value="true" ' + (variable.value === 'true' ? 'selected' : '') + '>true</option><option value="false" ' + (variable.value === 'false' ? 'selected' : '') + '>false</option></select>';
+    if (variable.type === 'object' || variable.type === 'array') {
+        var placeholder = variable.type === 'object' ? '{"field":"value"}' : '["item"]';
+        return '<textarea class="input" data-variable-value rows="2" spellcheck="false" placeholder="' + esc(placeholder) + '">' + esc(variable.value) + '</textarea>';
+    }
+    return '<input class="input" data-variable-value value="' + esc(variable.value) + '" placeholder="' + (variable.type === 'string' ? '输入变量值' : '输入 JSON 数值') + '" />';
+}
+
+function renderBatchVariables(variables, headers) {
+    var container = document.getElementById('batch-variables');
     if (!container) return;
     container.dataset.headers = JSON.stringify(headers || []);
+    if (!variables.length) {
+        container.innerHTML = '<div class="batch-variable-empty">尚未配置变量。添加变量后，可选择测试集字段或填写自定义值。</div>';
+        return;
+    }
+    var types = ['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'];
+    container.innerHTML = '<div class="batch-variable-head"><span>#</span><span>Source</span><span>Key</span><span>Value</span><span>Type</span><span></span></div>' + variables.map(function (variable, index) {
+        return '<div class="batch-variable-row" data-variable-index="' + index + '">' +
+            '<span class="batch-variable-index">' + (index + 1) + '</span>' +
+            '<label><span class="batch-mobile-label">Source</span><select class="input" data-variable-source><option value="TEST_SET" ' + (variable.source === 'TEST_SET' ? 'selected' : '') + '>测试集字段</option><option value="CUSTOM" ' + (variable.source === 'CUSTOM' ? 'selected' : '') + '>自定义</option></select></label>' +
+            '<label><span class="batch-mobile-label">Key</span><input class="input" data-variable-key value="' + esc(variable.key) + '" placeholder="例如 question" /></label>' +
+            '<label><span class="batch-mobile-label">Value</span>' + batchVariableValueControl(variable, headers) + '</label>' +
+            '<label><span class="batch-mobile-label">Type</span><select class="input" data-variable-type>' + types.map(function (type) { return '<option value="' + type + '" ' + (variable.type === type ? 'selected' : '') + '>' + type + '</option>'; }).join('') + '</select></label>' +
+            '<button class="btn-icon" type="button" data-variable-delete title="删除变量" aria-label="删除变量">' + icon('trash') + '</button>' +
+        '</div>';
+    }).join('');
+    container.querySelectorAll('.batch-variable-row').forEach(function (row) {
+        var rerender = function (changed) {
+            var rows = batchVariableDrafts();
+            var current = rows[Number(row.dataset.variableIndex)];
+            current[changed] = row.querySelector('[data-variable-' + changed + ']').value;
+            if (changed === 'source') current.value = '';
+            if (changed === 'type' && current.type === 'null') current.value = 'null';
+            renderBatchVariables(rows, headers);
+        };
+        row.querySelector('[data-variable-source]').addEventListener('change', function () { rerender('source'); });
+        row.querySelector('[data-variable-type]').addEventListener('change', function () { rerender('type'); });
+        row.querySelector('[data-variable-delete]').addEventListener('click', function () {
+            renderBatchVariables(batchVariableDrafts().filter(function (_item, rowIndex) { return rowIndex !== Number(row.dataset.variableIndex); }), headers);
+        });
+    });
+}
+
+function addBatchVariable() {
+    var container = document.getElementById('batch-variables');
+    if (!container) return;
+    var variables = batchVariableDrafts();
+    var headers = JSON.parse(container.dataset.headers || '[]');
+    variables.push({source: 'TEST_SET', key: '', value: headers[0] || '', type: 'string'});
+    renderBatchVariables(variables, headers);
+}
+
+function batchRuleDrafts() {
+    return Array.from(document.querySelectorAll('.batch-evaluation-rule')).map(function (row) {
+        return {
+            result_path: row.querySelector('[data-rule-result-path]').value,
+            operator: row.querySelector('[data-rule-operator]').value,
+            expected_value: row.querySelector('[data-rule-expected-value]').value,
+            type: row.querySelector('[data-rule-type]').value,
+        };
+    });
+}
+
+function renderBatchEvaluationRules(rules) {
+    var container = document.getElementById('batch-evaluation-rules');
+    if (!container) return;
     if (!(rules || []).length) {
         container.innerHTML = '<div class="batch-evaluation-empty">暂无校验规则</div>';
         return;
@@ -706,193 +755,131 @@ function renderBatchEvaluationRules(rules, headers) {
         ['EXISTS', '存在'], ['GT', '大于'], ['GTE', '大于等于'], ['LT', '小于'],
         ['LTE', '小于等于'], ['JSON_EQUAL', 'JSON 相等'],
     ];
-    container.innerHTML = rules.map(function (rule, index) {
-        var expected = rule.expected || {source: 'LITERAL', value: '', column: null};
-        var literalText = expected.literal_text !== undefined
-            ? expected.literal_text
-            : typeof expected.value === 'string' ? JSON.stringify(expected.value) : JSON.stringify(expected.value === undefined ? null : expected.value);
+    var types = ['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'];
+    container.innerHTML = '<div class="batch-evaluation-head"><span>#</span><span>结果路径</span><span>运算符</span><span>预期值</span><span>Type</span><span></span></div>' + rules.map(function (rule, index) {
         return '<div class="batch-evaluation-rule" data-rule-index="' + index + '">' +
-            '<label><span>名称</span><input class="input" data-rule-name value="' + esc(rule.name || '') + '" /></label>' +
-            '<label><span>结果路径</span><input class="input" data-rule-actual value="' + esc(rule.actual_path || '') + '" placeholder="例如 answer.text" /></label>' +
+            '<span class="batch-evaluation-index">' + (index + 1) + '</span>' +
+            '<label><span>结果路径</span><input class="input" data-rule-result-path value="' + esc(rule.result_path || '') + '" placeholder="例如 context.final_answer.status" /></label>' +
             '<label><span>运算符</span><select class="input" data-rule-operator>' + operators.map(function (item) { return '<option value="' + item[0] + '" ' + (item[0] === rule.operator ? 'selected' : '') + '>' + item[1] + '</option>'; }).join('') + '</select></label>' +
-            '<label><span>预期来源</span><select class="input" data-rule-source><option value="LITERAL" ' + (expected.source !== 'EXCEL' ? 'selected' : '') + '>固定值</option><option value="EXCEL" ' + (expected.source === 'EXCEL' ? 'selected' : '') + '>Excel 列</option></select></label>' +
-            '<label class="batch-rule-expected-literal"><span>预期 JSON</span><input class="input" data-rule-literal value="' + esc(literalText) + '" /></label>' +
-            '<label class="batch-rule-expected-column"><span>预期列</span><select class="input" data-rule-column>' + (headers || []).map(function (header) { return '<option value="' + esc(header) + '" ' + (header === expected.column ? 'selected' : '') + '>' + esc(header) + '</option>'; }).join('') + '</select></label>' +
+            '<label><span>预期值</span><input class="input" data-rule-expected-value value="' + esc(rule.expected_value || '') + '" placeholder="例如 PASS" /></label>' +
+            '<label><span>Type</span><select class="input" data-rule-type>' + types.map(function (type) { return '<option value="' + type + '" ' + (type === rule.type ? 'selected' : '') + '>' + type + '</option>'; }).join('') + '</select></label>' +
             '<button class="btn-icon" type="button" data-rule-delete title="删除规则" aria-label="删除规则">' + icon('trash') + '</button>' +
         '</div>';
     }).join('');
     container.querySelectorAll('.batch-evaluation-rule').forEach(function (row) {
-        var source = row.querySelector('[data-rule-source]');
-        var sync = function () {
-            row.querySelector('.batch-rule-expected-literal').hidden = source.value === 'EXCEL';
-            row.querySelector('.batch-rule-expected-column').hidden = source.value !== 'EXCEL';
-        };
-        source.addEventListener('change', sync);
         row.querySelector('[data-rule-delete]').addEventListener('click', function () {
             var remaining = batchRuleDrafts().filter(function (_item, index) { return index !== Number(row.dataset.ruleIndex); });
-            renderBatchEvaluationRules(remaining, JSON.parse(container.dataset.headers || '[]'));
+            renderBatchEvaluationRules(remaining);
         });
-        sync();
     });
 }
 
 function addBatchEvaluationRule() {
-    var container = document.getElementById('batch-evaluation-rules');
-    var headers = JSON.parse(container.dataset.headers || '[]');
     var rules = batchRuleDrafts();
-    rules.push({name: '', actual_path: '', operator: 'EQ', expected: {source: 'LITERAL', value: null, literal_text: 'null', column: null}});
-    renderBatchEvaluationRules(rules, headers);
+    rules.push({result_path: '', operator: 'EQ', expected_value: '', type: 'string'});
+    renderBatchEvaluationRules(rules);
 }
 
-async function loadBatchSheets(sourceBatch) {
-    var select = document.getElementById('batch-sheet');
-    var caseId = document.getElementById('batch-case-id');
-    select.disabled = true;
-    caseId.disabled = true;
-    caseId.innerHTML = '<option>正在读取表头...</option>';
-    document.getElementById('execution-modal-save').disabled = true;
-    document.getElementById('batch-preview-meta').textContent = '正在读取 Sheet...';
-    try {
-        var filename = document.getElementById('batch-file').value;
-        var payload = await API.get('/api/excel/sheets?filename=' + encodeURIComponent(filename));
-        var sheets = payload.sheets || [];
-        if (!sheets.length) throw new Error('测试集没有可用 Sheet');
-        select.innerHTML = sheets.map(function (sheet) {
-            return '<option value="' + esc(sheet.name) + '">' + esc(sheet.name) + '</option>';
-        }).join('');
-        if (sourceBatch && sheets.some(function (sheet) { return sheet.name === sourceBatch.input.sheet_name; })) select.value = sourceBatch.input.sheet_name;
-        select.disabled = false;
-        await loadBatchPreview(sourceBatch);
-    } catch (error) {
-        select.innerHTML = '<option>读取失败</option>';
-        caseId.innerHTML = '<option>读取失败</option>';
-        document.getElementById('batch-preview-meta').textContent = '读取失败';
-        document.getElementById('batch-mapping').className = 'batch-mapping-empty';
-        document.getElementById('batch-mapping').textContent = executionErrorMessage(error);
-        showToast(executionErrorMessage(error), 'error');
-    }
-}
 
 async function loadBatchPreview(sourceBatch) {
-    var filename = document.getElementById('batch-file').value;
-    var sheetName = document.getElementById('batch-sheet').value;
-    if (!filename || !sheetName || document.getElementById('batch-sheet').disabled) return;
+    var testSetId = document.getElementById('batch-test-set').value;
+    if (!testSetId) return;
     var requestId = ++executionState.batchPreviewRequestId;
-    var previewButton = document.getElementById('batch-preview');
-    var caseIdSelect = document.getElementById('batch-case-id');
     var saveButton = document.getElementById('execution-modal-save');
-    var evaluationDrafts = sourceBatch ? (sourceBatch.evaluation_rules || []) : batchRuleDrafts();
-    var previousCaseId = sourceBatch ? sourceBatch.input.case_id_column : (caseIdSelect.disabled ? '' : caseIdSelect.value);
-    previewButton.disabled = true;
-    caseIdSelect.disabled = true;
+    var variableContainer = document.getElementById('batch-variables');
+    var variablesReady = variableContainer.dataset.ready === 'true';
+    var evaluationContainer = document.getElementById('batch-evaluation-rules');
+    var evaluationReady = evaluationContainer.dataset.ready === 'true';
+    var variableDrafts = variablesReady ? batchVariableDrafts() : ((sourceBatch && sourceBatch.variables) || []);
+    var evaluationDrafts = evaluationReady ? batchRuleDrafts() : ((sourceBatch && sourceBatch.evaluation_rules) || []);
     saveButton.disabled = true;
-    document.getElementById('batch-preview-meta').textContent = '正在读取表头和样例...';
+    document.getElementById('batch-preview-meta').textContent = '正在读取测试集字段...';
     try {
-        var values = await Promise.all([
-            API.post('/api/batch-runs/preview', {
-                filename: filename,
-                sheet_name: sheetName,
-                header_mode: document.getElementById('batch-header-mode').value,
-            }),
-            API.get('/api/workflows/' + encodeURIComponent(document.getElementById('batch-workflow').value)),
-        ]);
+        var preview = await API.post('/api/batch-runs/preview', {test_set_id: testSetId});
         if (requestId !== executionState.batchPreviewRequestId) return;
-        var preview = values[0];
-        var start = (values[1].workflow.node_models || []).find(function (node) { return node.type === 'START'; });
-        var inputs = (start && start.inputs) || [];
-        var objectRoot = inputs.length === 1 && inputs[0].type === 'object' ? inputs[0].name : '';
-        document.getElementById('batch-preview-meta').textContent = preview.total_rows + ' 行 · ' + preview.headers.length + ' 列 · ' + (preview.header_mode === 'HEADER' ? '首行为表头' : '首行为数据');
-        caseIdSelect.innerHTML = preview.headers.map(function (header) { return '<option value="' + esc(header) + '">' + esc(header) + '</option>'; }).join('');
-        var idIndex = preview.headers.findIndex(function (header) { return ['case_id', 'case id', '用例id', '用例编号', 'id'].includes(header.toLowerCase()); });
-        if (previousCaseId && preview.headers.includes(previousCaseId)) caseIdSelect.value = previousCaseId;
-        else if (idIndex >= 0) caseIdSelect.selectedIndex = idIndex;
-        caseIdSelect.disabled = false;
-        var selectedCaseIdHeader = caseIdSelect.value;
-        var sourceMappings = new Map((sourceBatch && sourceBatch.mappings || []).map(function (item) { return [item.source, item.target]; }));
-        var mapping = document.getElementById('batch-mapping');
-        mapping.className = 'batch-mapping';
-        mapping.innerHTML = '<div class="batch-mapping-head"><span>启用</span><span>Excel 列</span><span>START 变量或对象字段</span></div>' + preview.headers.map(function (header) {
-            var direct = inputs.find(function (input) { return input.name === header; });
-            var target = sourceBatch ? (sourceMappings.get(header) || '') : (header === selectedCaseIdHeader ? '' : (direct ? direct.name : (objectRoot ? objectRoot + '.' + header : '')));
-            return '<label class="batch-mapping-row"><input type="checkbox" data-map-enabled ' + (target ? 'checked' : '') + ' /><span>' + esc(header) + '</span><input class="input" data-map-target value="' + esc(target) + '" placeholder="例如 input.' + esc(header) + '" /></label>';
-        }).join('');
-        var sample = preview.sample_rows || [];
-        document.getElementById('batch-sample').innerHTML = '<div class="batch-sample-wrap"><table class="table"><thead><tr><th>Excel 行</th>' + preview.headers.map(function (header) { return '<th>' + esc(header) + '</th>'; }).join('') + '</tr></thead><tbody>' + sample.slice(0, 5).map(function (row) {
-            return '<tr><td>' + row.row_number + '</td>' + preview.headers.map(function (header) { var value = row.values[header]; return '<td>' + esc(value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value) : String(value)) + '</td>'; }).join('') + '</tr>';
-        }).join('') + '</tbody></table></div>';
-        renderBatchEvaluationRules(evaluationDrafts, preview.headers);
+        variableDrafts = variableDrafts.map(function (variable) {
+            var source = variable.source;
+            var value = source === 'TEST_SET' && !preview.headers.includes(variable.value) ? (preview.headers[0] || '') : variable.value;
+            return {source: source, key: variable.key, value: value, type: variable.type};
+        });
+        document.getElementById('batch-preview-meta').textContent = preview.total_rows + ' 条用例 · ' + preview.headers.length + ' 个字段';
+        renderBatchVariables(variableDrafts, preview.headers);
+        variableContainer.dataset.ready = 'true';
+        renderBatchEvaluationRules(evaluationDrafts);
+        evaluationContainer.dataset.ready = 'true';
         saveButton.disabled = false;
     } catch (error) {
         if (requestId !== executionState.batchPreviewRequestId) return;
-        caseIdSelect.innerHTML = '<option>读取失败</option>';
         document.getElementById('batch-preview-meta').textContent = '读取失败';
-        document.getElementById('batch-mapping').className = 'batch-mapping-empty';
-        document.getElementById('batch-mapping').textContent = executionErrorMessage(error);
+        variableContainer.innerHTML = '<div class="batch-variable-empty">' + esc(executionErrorMessage(error)) + '</div>';
         showToast(executionErrorMessage(error), 'error');
-    } finally {
-        if (requestId === executionState.batchPreviewRequestId) previewButton.disabled = false;
     }
 }
 
 async function createBatchFromModal() {
-    var rows = Array.from(document.querySelectorAll('.batch-mapping-row'));
-    if (!rows.length) throw new Error('请先读取并预览测试集');
-    var mappings = rows.filter(function (row) { return row.querySelector('[data-map-enabled]').checked; }).map(function (row) {
-        return {source: row.querySelector('span').textContent, target: row.querySelector('[data-map-target]').value.trim()};
+    if (executionState.batchCreating) return;
+    executionState.batchCreating = true;
+    try {
+    var variables = batchVariableDrafts().map(function (variable, index) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable.key.trim())) throw new Error('变量 ' + (index + 1) + ' 的 Key 只能包含字母、数字和下划线，且不能以数字开头');
+        if (!variable.value && variable.type !== 'null') throw new Error('变量 ' + (index + 1) + ' 的 Value 不能为空');
+        return {source: variable.source, key: variable.key.trim(), value: variable.value, type: variable.type};
     });
-    if (!mappings.length || mappings.some(function (mapping) { return !mapping.target; })) throw new Error('请至少完成一个有效字段映射');
+    if (!variables.length) throw new Error('请至少配置一个变量注入');
     var evaluationRules = batchRuleDrafts().map(function (rule, index) {
-        if (!rule.name.trim()) throw new Error('校验规则 ' + (index + 1) + ' 的名称不能为空');
-        if (!rule.actual_path.trim()) throw new Error('校验规则 ' + (index + 1) + ' 的结果路径不能为空');
-        var expected;
-        if (rule.expected.source === 'EXCEL') {
-            if (!rule.expected.column) throw new Error('校验规则 ' + (index + 1) + ' 必须选择预期列');
-            expected = {source: 'EXCEL', value: null, column: rule.expected.column};
-        } else {
-            var value;
-            try { value = JSON.parse(rule.expected.literal_text); } catch (_error) { throw new Error('校验规则 ' + (index + 1) + ' 的固定预期值不是合法 JSON'); }
-            expected = {source: 'LITERAL', value: value, column: null};
-        }
-        return {name: rule.name.trim(), actual_path: rule.actual_path.trim(), operator: rule.operator, expected: expected};
+        if (!rule.result_path.trim().startsWith('context.')) throw new Error('校验规则 ' + (index + 1) + ' 的结果路径必须以 context. 开头');
+        if (!rule.expected_value.trim() && rule.type !== 'null') throw new Error('校验规则 ' + (index + 1) + ' 的预期值不能为空');
+        return {
+            result_path: rule.result_path.trim(),
+            operator: rule.operator,
+            expected_value: rule.type === 'null' ? 'null' : rule.expected_value,
+            type: rule.type,
+        };
     });
     var payload = await API.post('/api/batch-runs', {
         name: document.getElementById('batch-name').value,
-        filename: document.getElementById('batch-file').value,
-        sheet_name: document.getElementById('batch-sheet').value,
+        test_set_id: document.getElementById('batch-test-set').value,
         workflow_id: document.getElementById('batch-workflow').value,
-        case_id_column: document.getElementById('batch-case-id').value,
-        mappings: mappings,
+        variables: variables,
         case_concurrency: Number(document.getElementById('batch-concurrency').value),
-        header_mode: document.getElementById('batch-header-mode').value,
         evaluation_rules: evaluationRules,
     });
     closeExecutionModal();
     showToast('Run 已创建，确认后可手工启动', 'success');
     await loadBatchRuns();
     return payload;
+
+    } finally {
+        executionState.batchCreating = false;
+    }
 }
 
-async function viewBatchDetail(batchId, page) {
+async function viewBatchDetail(batchId, page, pageSize) {
     currentView = 'batch-detail';
     scheduleBatchPoll(false);
     page = page || 1;
+    pageSize = normalizeGlobalPageSize(pageSize || executionState.batchDetailPageSize);
+    executionState.batchDetailPageSize = pageSize;
     try {
         var values = await Promise.all([
             API.get('/api/batch-runs/' + encodeURIComponent(batchId)),
-            API.get('/api/batch-runs/' + encodeURIComponent(batchId) + '/cases?page=' + page + '&page_size=50'),
+            API.get('/api/batch-runs/' + encodeURIComponent(batchId) + '/cases?page=' + page + '&page_size=' + pageSize),
         ]);
         var batch = values[0].batch;
         var cases = values[1].cases || [];
-        var summary = batch.summary || {};
         contentArea.innerHTML = '<section class="execution-page batch-detail">' +
-            '<header class="execution-page-header"><div><button class="btn btn-sm" id="batch-back">' + icon('back') + '返回</button><h1>' + esc(batch.name) + '</h1><p>' + esc(batch.input.filename + ' / ' + batch.input.sheet_name + ' · ' + batch.workflow.name) + '</p></div><span class="' + batchStatusClass(batch.status) + '">' + batchStatusLabel(batch.status) + '</span></header>' +
-            '<div class="batch-summary">' + ['pass', 'fail', 'error', 'not_evaluated'].map(function (key) { return '<div><strong>' + (summary[key] || 0) + '</strong><span>' + ({pass: '通过', fail: '不通过', error: '校验错误', not_evaluated: '未校验'}[key]) + '</span></div>'; }).join('') + '</div>' +
-            '<div class="table-wrap execution-table-wrap"><table class="table execution-table batch-case-table"><thead><tr><th>Case ID</th><th>Excel 行</th><th>执行状态</th><th>测试判定</th><th>执行次数</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr></thead><tbody>' + cases.map(function (item) { return '<tr><td>' + esc(item.case_id) + '</td><td>' + item.row_number + '</td><td><span class="' + batchStatusClass(item.execution_status || item.status) + '">' + batchStatusLabel(item.execution_status || item.status) + '</span></td><td><span class="' + batchVerdictClass(item.verdict) + '">' + batchVerdictLabel(item.verdict) + '</span></td><td>' + item.workflow_execution_ids.length + '</td><td>' + esc(formatDateTime(item.started_at)) + '</td><td>' + esc(formatDateTime(item.finished_at)) + '</td><td><button class="btn-icon" data-case-open="' + item.id + '" title="查看 Case" aria-label="查看 Case">' + icon('browse') + '</button></td></tr>'; }).join('') + '</tbody></table></div><div id="batch-case-pagination" class="pagination"></div>' +
+            '<header class="execution-page-header"><div><button class="btn btn-sm" id="batch-back">' + icon('back') + '返回</button><h1>' + esc(batch.name) + '</h1><p>' + esc(batch.input.test_set_name + ' · ' + batch.workflow.name) + '</p></div></header>' +
+            '<div class="table-wrap execution-table-wrap"><table class="table execution-table batch-case-table"><thead><tr><th>用例序号</th><th>执行次数</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr></thead><tbody>' + cases.map(function (item) { return '<tr><td>' + item.row_number + '</td><td>' + item.workflow_execution_ids.length + '</td><td>' + esc(formatDateTime(item.started_at)) + '</td><td>' + esc(formatDateTime(item.finished_at)) + '</td><td><button class="btn-icon" data-case-open="' + item.id + '" title="查看用例" aria-label="查看用例">' + icon('browse') + '</button></td></tr>'; }).join('') + '</tbody></table></div><div id="batch-case-pagination" class="global-list-footer"></div>' +
         '</section>';
         document.getElementById('batch-back').addEventListener('click', viewBatchRuns);
         document.querySelectorAll('[data-case-open]').forEach(function (button) { button.addEventListener('click', function () { openBatchCaseDetail(batch, button.getAttribute('data-case-open')); }); });
-        renderPagination('batch-case-pagination', values[1].total, values[1].page, values[1].page_size, function (nextPage) { viewBatchDetail(batchId, nextPage); });
-        if (batch.status === 'RUNNING') executionState.batchPoll = setTimeout(function () { viewBatchDetail(batchId, page); }, 1000);
+        renderGlobalListPagination('batch-case-pagination', values[1].total, values[1].page, values[1].page_size, function (nextPage) {
+            viewBatchDetail(batchId, nextPage, pageSize);
+        }, function (nextPageSize) {
+            executionState.batchDetailPageSize = nextPageSize;
+            viewBatchDetail(batchId, 1, nextPageSize);
+        }, '条用例');
+        if (batch.status === 'RUNNING') executionState.batchPoll = setTimeout(function () { viewBatchDetail(batchId, page, pageSize); }, 1000);
     } catch (error) {
         showToast(executionErrorMessage(error), 'error');
     }
@@ -906,8 +893,8 @@ async function openBatchCaseDetail(batch, caseRunId) {
         if (caseRun.workflow_execution_ids.length) {
             execution = (await API.get('/api/workflows/' + encodeURIComponent(batch.workflow.id) + '/runs/' + encodeURIComponent(caseRun.workflow_execution_ids[caseRun.workflow_execution_ids.length - 1]))).execution;
         }
-        openExecutionModal('Case ' + caseRun.case_id,
-            '<div class="batch-case-detail"><dl><dt>Excel 行</dt><dd>' + caseRun.row_number + '</dd><dt>执行状态</dt><dd>' + batchStatusLabel(caseRun.execution_status || caseRun.status) + '</dd><dt>测试判定</dt><dd>' + batchVerdictLabel(caseRun.verdict) + '</dd></dl><h3>映射输入</h3><pre>' + esc(JSON.stringify(caseRun.start_inputs, null, 2)) + '</pre><h3>Workflow 结果</h3><pre>' + esc(JSON.stringify(execution ? execution.result : {}, null, 2)) + '</pre><h3>校验明细</h3><pre>' + esc(JSON.stringify(caseRun.evaluation || {verdict: 'NOT_EVALUATED', rules: []}, null, 2)) + '</pre><h3>最终 Context</h3><pre>' + esc(JSON.stringify(execution ? execution.context.final : {}, null, 2)) + '</pre><h3>错误</h3><pre>' + esc(JSON.stringify(caseRun.error || (execution && execution.error) || null, null, 2)) + '</pre></div>',
+        openExecutionModal('用例 ' + caseRun.row_number,
+            '<div class="batch-case-detail"><dl><dt>用例序号</dt><dd>' + caseRun.row_number + '</dd></dl><h3>映射输入</h3><pre>' + esc(JSON.stringify(caseRun.start_inputs, null, 2)) + '</pre><h3>工作流结果</h3><pre>' + esc(JSON.stringify(execution ? execution.result : {}, null, 2)) + '</pre><h3>最终 Context</h3><pre>' + esc(JSON.stringify(execution ? execution.context.final : {}, null, 2)) + '</pre><h3>错误</h3><pre>' + esc(JSON.stringify(caseRun.error || (execution && execution.error) || null, null, 2)) + '</pre></div>',
             async function () { closeExecutionModal(); }, '关闭');
         document.getElementById('execution-modal-cancel').style.display = 'none';
     } catch (error) {

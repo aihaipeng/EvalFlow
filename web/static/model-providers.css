@@ -28,6 +28,7 @@
 .model-provider-url {
     display: block;
     max-width: 300px;
+    margin: 0 auto;
     overflow: hidden;
     color: var(--text-secondary);
     text-overflow: ellipsis;
@@ -60,6 +61,7 @@
     display: flex;
     min-width: 0;
     align-items: center;
+    justify-content: center;
     gap: 5px;
 }
 
@@ -424,3 +426,87 @@
 }
 .model-provider-config-json textarea.input { min-height: 280px; resize: vertical; font-family: Consolas, "Courier New", monospace; line-height: 1.5; }
 .model-provider-config-json textarea::placeholder { color: var(--text-subtle); font-style: italic; opacity: 0.72; }
+
+/* impeccable:provider-polish-start */
+.model-provider-table th,
+.model-provider-table td {
+    padding-inline: 16px;
+}
+
+.model-provider-url {
+    color: var(--text-secondary);
+}
+
+.model-provider-protocol,
+.model-provider-mini-model,
+.model-provider-more {
+    border-radius: 999px;
+    font-weight: 650;
+}
+
+.model-provider-editor {
+    max-width: 1220px;
+}
+
+.model-provider-editor-header {
+    min-height: 68px;
+    margin-bottom: 18px;
+    border-bottom: 0;
+}
+
+.model-provider-editor-heading h1 {
+    font-size: 24px;
+    letter-spacing: -0.025em;
+}
+
+.model-provider-editor-heading > span {
+    margin-bottom: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.model-provider-form {
+    gap: 20px 24px;
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.model-provider-field > span:first-child,
+.model-provider-chooser label > span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.model-provider-field .input {
+    min-height: 40px;
+}
+
+.model-provider-actions {
+    margin-top: 18px;
+    padding-top: 18px;
+}
+
+.model-provider-status {
+    gap: 10px;
+    margin-top: 18px;
+    border: 0;
+    background: transparent;
+}
+
+.model-provider-status > div {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+}
+
+.model-provider-status > div:last-child {
+    border-right: 1px solid var(--border);
+}
+
+/* impeccable:provider-polish-end */

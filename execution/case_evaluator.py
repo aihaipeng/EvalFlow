@@ -1,4 +1,4 @@
-"""Structured evaluation of a Workflow result against literal or Excel expectations."""
+"""Evaluate final Workflow Context against typed, user-authored expectations."""
 
 from __future__ import annotations
 
@@ -9,59 +9,56 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from execution.workflow_values import WorkflowValueError, resolve_path, strict_json_clone
+from execution.workflow_values import (
+    WorkflowOutputTypeError,
+    WorkflowValueError,
+    convert_output,
+    resolve_path,
+    strict_json_clone,
+)
 
 
 class _EvaluationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ExpectedValue(_EvaluationModel):
-    source: Literal["LITERAL", "EXCEL"] = "LITERAL"
-    value: Any = None
-    column: str | None = None
-
-    @model_validator(mode="after")
-    def validate_source(self) -> "ExpectedValue":
-        if self.source == "EXCEL":
-            if not self.column:
-                raise ValueError("Excel 预期值必须选择列")
-            if self.value is not None:
-                raise ValueError("Excel 预期值不能同时配置固定值")
-        else:
-            if self.column is not None:
-                raise ValueError("固定预期值不能配置 Excel 列")
-            strict_json_clone(self.value)
-        return self
-
-
 class EvaluationRule(_EvaluationModel):
-    name: str = Field(min_length=1, max_length=200)
-    actual_path: str = Field(min_length=1, max_length=4000)
+    """One typed assertion over the final Workflow Context."""
+
+    result_path: str = Field(min_length=9, max_length=4000)
     operator: Literal[
         "EQ", "NE", "CONTAINS", "REGEX", "EXISTS", "GT", "GTE", "LT", "LTE", "JSON_EQUAL"
     ]
-    expected: ExpectedValue = Field(default_factory=ExpectedValue)
+    expected_value: str = Field(default="", max_length=20000)
+    type: Literal["string", "number", "integer", "boolean", "object", "array", "null"]
 
     @model_validator(mode="after")
     def validate_rule(self) -> "EvaluationRule":
+        if not self.result_path.startswith("context."):
+            raise ValueError("结果路径必须以 context. 开头")
         try:
-            resolve_path({}, self.actual_path)
+            resolve_path({}, self.result_path[len("context.") :])
         except WorkflowValueError as exc:
             if "对象字段不存在" not in str(exc):
-                raise ValueError(f"实际值路径无效: {self.actual_path}") from exc
-        if self.operator == "REGEX" and self.expected.source == "LITERAL":
-            if not isinstance(self.expected.value, str):
-                raise ValueError("正则预期值必须是字符串")
+                raise ValueError(f"结果路径无效: {self.result_path}") from exc
+        try:
+            expected = convert_output(self.expected_value, self.type)
+        except WorkflowOutputTypeError as exc:
+            raise ValueError(f"预期值与 {self.type} 不匹配: {exc}") from exc
+        if self.operator == "REGEX":
+            if not isinstance(expected, str):
+                raise ValueError("正则预期值必须是 string")
             try:
-                re.compile(self.expected.value)
+                re.compile(expected)
             except re.error as exc:
                 raise ValueError(f"正则表达式无效: {exc}") from exc
-        if self.operator == "EXISTS" and (
-            self.expected.source != "LITERAL" or not isinstance(self.expected.value, bool)
-        ):
-            raise ValueError("存在性规则的固定预期值必须是 boolean")
+        if self.operator == "EXISTS" and not isinstance(expected, bool):
+            raise ValueError("存在性规则的预期值 type 必须是 boolean")
         return self
+
+    @property
+    def context_path(self) -> str:
+        return self.result_path[len("context.") :]
 
 
 def _json_equal(left: Any, right: Any) -> bool:
@@ -86,9 +83,7 @@ def _compare(operator: str, actual: Any, expected: Any) -> bool:
     if operator == "CONTAINS":
         if isinstance(actual, str) and isinstance(expected, str):
             return expected in actual
-        if isinstance(actual, list):
-            return expected in actual
-        if isinstance(actual, dict):
+        if isinstance(actual, (list, dict)):
             return expected in actual
         raise ValueError("包含运算要求实际值是字符串、数组或对象")
     if operator == "REGEX":
@@ -107,28 +102,19 @@ def _compare(operator: str, actual: Any, expected: Any) -> bool:
     raise ValueError(f"不支持的校验运算符: {operator}")
 
 
-def evaluate_case(
-    result: dict[str, Any],
-    source_values: dict[str, Any],
-    rules: list[EvaluationRule],
-) -> dict[str, Any]:
-    """Evaluate all rules with AND semantics and retain per-rule facts."""
+def evaluate_case(context: dict[str, Any], rules: list[EvaluationRule]) -> dict[str, Any]:
+    """Evaluate all rules with AND semantics and retain each rule's facts."""
 
     facts = []
     for rule in rules:
         actual_exists = True
         try:
-            actual = resolve_path(result, rule.actual_path)
+            actual = resolve_path(context, rule.context_path)
         except WorkflowValueError:
             actual_exists = False
             actual = None
         try:
-            if rule.expected.source == "EXCEL":
-                if rule.expected.column not in source_values:
-                    raise ValueError(f"Excel 预期列不存在: {rule.expected.column}")
-                expected = strict_json_clone(source_values[rule.expected.column])
-            else:
-                expected = strict_json_clone(rule.expected.value)
+            expected = convert_output(rule.expected_value, rule.type)
             passed = (
                 actual_exists is expected
                 if rule.operator == "EXISTS"
@@ -138,19 +124,19 @@ def evaluate_case(
             )
             status = "PASS" if passed else "FAIL"
             message = None if passed else (
-                f"结果路径不存在: {rule.actual_path}"
+                f"结果路径不存在: {rule.result_path}"
                 if not actual_exists else "实际值不符合预期"
             )
-        except (TypeError, ValueError, re.error) as exc:
+        except (TypeError, ValueError, re.error, WorkflowOutputTypeError) as exc:
             expected = None
             status = "ERROR"
             message = str(exc)
         facts.append(
             {
-                "name": rule.name,
-                "actual_path": rule.actual_path,
+                "result_path": rule.result_path,
                 "operator": rule.operator,
-                "expected_source": rule.expected.source,
+                "expected_value": rule.expected_value,
+                "type": rule.type,
                 "actual": strict_json_clone(actual),
                 "expected": strict_json_clone(expected),
                 "status": status,

@@ -338,7 +338,7 @@ def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):
     assert snapshot_start["inputs"][0]["value"] == {"question": "batch case"}
 
 
-def test_batch_execution_rejects_unknown_or_wrong_typed_start_inputs(tmp_path):
+def test_batch_execution_materializes_unknown_and_retyped_context_inputs(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node(
         "START", inputs=[{"name": "question", "type": "string", "value": "default"}]
@@ -358,10 +358,22 @@ def test_batch_execution_rejects_unknown_or_wrong_typed_start_inputs(tmp_path):
         "row_number": 2,
     }
 
-    with pytest.raises(WorkflowExecutionError, match="未在 START 中声明"):
-        manager.start_batch(frozen, {"missing": "value"}, trigger)
-    with pytest.raises(WorkflowExecutionError, match="value 与 type 不匹配"):
-        manager.start_batch(frozen, {"question": 123}, trigger)
+    injected = manager.start_batch(frozen, {"missing": "value"}, trigger)
+    injected_finished = wait_for_terminal(_store, workflow_id, injected["id"])
+    injected_start = next(
+        item["node"] for item in injected_finished["structural_snapshot"]["nodes"]
+        if item["node"]["type"] == "START"
+    )
+    assert {item["name"]: item["value"] for item in injected_start["inputs"]}["missing"] == "value"
+
+    retyped = manager.start_batch(frozen, {"question": 123}, trigger)
+    retyped_finished = wait_for_terminal(_store, workflow_id, retyped["id"])
+    retyped_start = next(
+        item["node"] for item in retyped_finished["structural_snapshot"]["nodes"]
+        if item["node"]["type"] == "START"
+    )
+    question = next(item for item in retyped_start["inputs"] if item["name"] == "question")
+    assert question == {"name": "question", "type": "integer", "value": 123}
 
 
 def test_missing_script_output_fails_fast_and_never_creates_end_execution(tmp_path):

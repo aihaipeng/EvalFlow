@@ -1,5 +1,72 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.34 测试集数据库化与可视化维护（实施中，2026-07-29）
+
+### 业务背景与验收目标
+
+- Why：Excel 仅作为浏览器本地导入媒介，测试集保存后以 SQLite 为唯一事实来源，避免系统和用户竞争读写同一文件，并支持产品内维护用例。
+- Who / Where：每位测试人员在自己的电脑独立运行 localhost，从一个或多个本地 `.xlsx`、不同 Sheet 和任意网格累计选择用例，在测试集详情页维护字段和用例，再创建 Batch Run。
+- P0：数据库测试集 CRUD、FortuneSheet + SheetJS CE 本地导入、字段设置即时保存、Batch 数据库快照、旧 Excel 运行链路退役。
+- 验收：首行始终作为用例；字段默认 `col_1...`；跨 Excel/Sheet 切换不丢已选区域；保存后原 Excel 删除或占用不影响测试集和 Run；已创建 Run 不受后续编辑影响；完整测试、构建和 E2E 通过。
+
+### 已确认业务决策
+
+1. 所有测试集共享 `test_sets / test_set_columns / test_cases`，不动态创建“一测试集一张表”。
+2. Excel 不上传、不迁移历史数据，也不再作为 Workflow/Batch 的运行时来源；旧 `inputs/*.xlsx`、`*.xlsm` 和 `.sets_meta.json` 在新链路通过回归后删除。
+3. 测试集名称大小写不敏感且唯一；删除为不可恢复的硬删除。
+4. 不保存 `external_id`、来源文件/Sheet/行列、展示名、数据类型、软删除、单用例时间戳或版本等无业务价值字段。
+5. 测试集和用例不保留版本字段，不使用 `expected_version` 乐观锁；本机直接覆盖保存。
+6. 字段键即用户可编辑的 Workflow 键。表头居中只读展示，右侧“字段设置”弹窗支持批量重命名和勾选删除，确认后立即写入数据库。
+7. 删除默认 `col_x` 后，其余默认字段按当前位置重排为 `col_1...`；用户自定义字段名保留。
+8. Run 创建时只批量读取测试集一次并冻结 `source_values / start_inputs`；Worker 和恢复流程只消费 Run-local 快照。
+9. 使用 FortuneSheet 1.0.4 + SheetJS CE 0.20.3 本地资源，无水印、无 License Key、无网络依赖。
+
+### 最小数据模型
+
+#### `test_sets`
+
+| 字段 | 含义 |
+|---|---|
+| `id` | TEXT UUID PRIMARY KEY |
+| `name` | TEXT NOT NULL COLLATE NOCASE UNIQUE |
+| `description` | TEXT NOT NULL DEFAULT `''` |
+| `created_at / updated_at` | UTC ISO 时间 |
+
+#### `test_set_columns`
+
+| 字段 | 含义 |
+|---|---|
+| `test_set_id` | FOREIGN KEY -> `test_sets.id`，级联硬删除 |
+| `position` | 字段顺序；与 `test_set_id` 组成主键 |
+| `column_key` | 用户可编辑字段键；`UNIQUE(test_set_id, column_key)` |
+
+#### `test_cases`
+
+| 字段 | 含义 |
+|---|---|
+| `id` | TEXT UUID PRIMARY KEY |
+| `test_set_id` | FOREIGN KEY -> `test_sets.id`，级联硬删除 |
+| `position` | 测试集内顺序；`UNIQUE(test_set_id, position)` |
+| `values_json` | 严格 JSON object，键必须与当前字段集合完全一致 |
+
+### 性能与快照约束
+
+- `test_cases(test_set_id, position)` 索引支持一次顺序读取；禁止 Worker 重复查询测试集或按字段执行 N+1 查询。
+- 2026-07-29 本机基准（8 字段）：1k/10k/50k 完整读取约 0.016/0.139/0.732 秒；峰值 Python 内存约 2.3/22.5/112.7 MiB。数据库读取不是当前主要瓶颈，超大测试集的全量 API、内存和逐 Case 文件快照才是风险。
+- 详情页后续拆分元数据与用例分页；普通单条编辑使用增量 CRUD，字段删除/重排和首次导入允许事务内批量替换。
+- Batch 快照应写入数据库 `batch_cases` 或等价批量存储，不为每条用例创建并 fsync 一个独立 JSON 文件。
+
+### 子任务状态
+
+| 子任务 | 验证 | 状态 |
+|---|---|---|
+| 三表 Repository 与无版本迁移 | CRUD、唯一名、级联删除、旧 version 列原地删除且数据保留 | completed |
+| 测试集 API | 列表、详情、创建、直接更新、删除、冗余字段拒绝 | completed |
+| FortuneSheet 管理前端 | 多 Excel/Sheet 累计选区、首行保留、详情维护、字段设置即时保存 | completed |
+| Batch 数据库来源与不可变快照 | 删除原 Excel、修改测试集后新旧 Run 对比、恢复不重读测试集 | in_progress |
+| 旧 Excel/SpreadJS 链路退役 | API/UI/依赖/inputs 清理及历史 Run 可读 | pending |
+| 完整回归 | pytest、compileall、npm build、桌面浏览器 E2E | pending |
+
 ## T13.33 Excel Batch Run 调度（已完成，2026-07-27）
 
 ### 业务背景与目标

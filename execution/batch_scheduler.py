@@ -232,9 +232,11 @@ class BatchScheduler:
             case["error"] = execution.get("error")
             rules = [EvaluationRule.model_validate(item) for item in batch.get("evaluation_rules", [])]
             if status == "SUCCESS" and rules:
-                evaluation = evaluate_case(execution.get("result", {}), case["source_values"], rules)
+                evaluation = evaluate_case(execution.get("context", {}).get("final", {}), rules)
                 case["evaluation"] = evaluation
                 case["verdict"] = evaluation["verdict"]
+                if evaluation["verdict"] != "PASS":
+                    case["status"] = "FAILED"
         except Exception as exc:  # noqa: BLE001 - one Case failure must not stop peers
             case["status"] = "FAILED"
             case["execution_status"] = "FAILED"

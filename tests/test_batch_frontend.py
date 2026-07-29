@@ -1,44 +1,89 @@
 from pathlib import Path
 
 
-def test_batch_frontend_exposes_creation_mapping_progress_and_recovery():
-    static = Path(__file__).resolve().parents[1] / "web" / "static"
-    html = (static / "index.html").read_text(encoding="utf-8")
-    javascript = (static / "execution.js").read_text(encoding="utf-8")
-    styles = (static / "execution.css").read_text(encoding="utf-8")
+STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
+
+
+def test_batch_frontend_uses_database_test_sets_and_saved_workflows():
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    javascript = (STATIC_DIR / "execution.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "execution.css").read_text(encoding="utf-8")
 
     assert 'data-view="batch-runs"' in html
-    assert "function viewBatchRuns()" in javascript
-    assert "/api/batch-runs/preview" in javascript
-    assert "await loadBatchPreview(sourceBatch);" in javascript
-    assert "batchPreviewRequestId" in javascript
-    assert "正在读取表头..." in javascript
-    assert "id=\"batch-header-mode\"" in javascript
-    assert "header_mode: document.getElementById('batch-header-mode').value" in javascript
-    assert "document.getElementById('batch-case-id').addEventListener('change', function () { loadBatchPreview(); })" in javascript
-    assert "case_id_column" in javascript
-    assert "header === selectedCaseIdHeader ? ''" in javascript
-    assert "case_concurrency" in javascript
-    assert "retry_failed" in javascript
-    assert "workflow_execution_ids" in javascript
-    assert 'data-batch-edit="' in javascript
-    assert "openBatchCreate(button.getAttribute('data-batch-edit'))" in javascript
-    assert "sourceBatch ? '编辑 Run 配置' : '创建批量 Run'" in javascript
-    assert "sourceBatch ? '创建新 Run' : '创建'" in javascript
-    assert "sourceBatch.input.case_id_column" in javascript
+    assert "API.get('/api/test-sets?page=1&page_size=200')" in javascript
+    assert "API.get('/api/workflows')" in javascript
+    assert 'id="batch-test-set"' in javascript
+    assert 'id="batch-workflow"' in javascript
+    assert 'id="batch-sheet"' not in javascript
+    assert 'id="batch-header-mode"' not in javascript
+    assert "/api/excel/" not in javascript
+    assert "filename:" not in javascript
+    assert "sheet_name:" not in javascript
+    assert "header_mode:" not in javascript
+    assert "test_set_id: document.getElementById('batch-test-set').value" in javascript
+    assert "source: 'TEST_SET'" in javascript
+    assert '>测试集字段</option>' in javascript
+    assert 'aria-label="测试集字段"' in javascript
+    assert "正在读取测试集字段..." in javascript
+    assert "preview.total_rows + ' 条用例 · ' + preview.headers.length + ' 个字段'" in javascript
+    assert "sourceBatch.input.test_set_id" in javascript
+    assert "sourceBatch.workflow.id" in javascript
     assert "sourceBatch.case_concurrency" in javascript
-    assert "sourceMappings.get(header)" in javascript
-    assert 'id="batch-rule-add"' in javascript
-    assert "function renderBatchEvaluationRules(rules, headers)" in javascript
+    assert "variables: variables" in javascript
     assert "evaluation_rules: evaluationRules" in javascript
-    assert "sourceBatch.evaluation_rules || []" in javascript
-    assert "batchVerdictSummary(batch)" in javascript
-    assert "item.execution_status || item.status" in javascript
-    assert "batchVerdictLabel(caseRun.verdict)" in javascript
-    assert "execution ? execution.result : {}" in javascript
-    assert "document.getElementById('btn-batch-add').addEventListener('click', function () { openBatchCreate(); })" in javascript
+    assert "if (executionState.batchCreating) return;" in javascript
+    assert "executionState.batchCreating = false;" in javascript
     assert "classList.add('is-batch-config')" in javascript
     assert ".execution-modal.is-batch-config {\n    width: min(1180px, calc(100vw - 48px));" in styles
-    assert ".execution-modal.is-batch-config { width: calc(100vw - 16px); }" in styles
-    assert ".batch-evaluation-rule label[hidden] { display: none; }" in styles
-    assert ".batch-evaluation-rule .input { width: 100%; min-width: 0; }" in styles
+
+
+def test_batch_list_and_details_hide_status_and_verdict_columns():
+    javascript = (STATIC_DIR / "execution.js").read_text(encoding="utf-8")
+
+    list_view = javascript[
+        javascript.index("function renderBatchTable()"):
+        javascript.index("async function openBatchCreate")
+    ]
+    detail_view = javascript[
+        javascript.index("async function viewBatchDetail"):
+        javascript.index("async function openBatchCaseDetail")
+    ]
+    case_detail = javascript[javascript.index("async function openBatchCaseDetail"):]
+
+    assert '<th>测试集</th><th>工作流</th><th>进度</th>' in list_view
+    assert '<th>状态</th>' not in list_view
+    assert '<th>测试判定</th>' not in list_view
+    assert "batch.input.test_set_name" in list_view
+    assert "batch.input.filename" not in list_view
+    assert "用例序号" in detail_view
+    assert "执行状态" not in detail_view
+    assert "测试判定" not in detail_view
+    assert "batch-summary" not in detail_view
+    assert "执行状态" not in case_detail
+    assert "测试判定" not in case_detail
+    assert "校验明细" not in case_detail
+    assert "工作流结果" in case_detail
+    assert "batchStatusLabel" not in javascript
+    assert "batchVerdictLabel" not in javascript
+
+
+def test_management_navigation_labels_icons_pagination_and_alignment_are_consistent():
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    javascript = (STATIC_DIR / "execution.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "execution.css").read_text(encoding="utf-8")
+    global_styles = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    for label in ("测试集管理", "供应商管理", "工作流管理", "运行调度"):
+        assert f"<span>{label}</span>" in html
+    assert html.count('class="sidebar-icon"') == 4
+    assert "📋" not in html and "◉" not in html and "◇" not in html and "▶" not in html
+    assert ".sidebar-icon svg" in global_styles
+    assert "stroke-width: 1.8" in global_styles
+    assert "var GLOBAL_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];" in app_js
+    assert 'id="workflow-pagination" class="global-list-footer"' in javascript
+    assert 'id="batch-pagination" class="global-list-footer"' in javascript
+    assert 'id="batch-case-pagination" class="global-list-footer"' in javascript
+    assert ".execution-table th,\n.execution-table td {\n    text-align: center;" in styles
+    assert ".batch-progress {\n    display: grid;\n    width: 150px;\n    margin: 0 auto;" in styles
+    assert ".batch-row-actions {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;" in styles

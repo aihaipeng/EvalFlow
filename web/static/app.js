@@ -90,142 +90,6 @@ function setSortMark(field) {
     return '<span aria-hidden="true">' + (setsSortDir === 'asc' ? '▲' : '▼') + '</span>';
 }
 
-var FAQ_ITEMS = [
-    {
-        category: '安装',
-        question: '代码出现 No module named ... 时应该怎么处理？',
-        keywords: 'ModuleNotFoundError 缺少模块 import 包名',
-        answer:
-            '<p>先从完整 Traceback 中确认缺少的 import 模块名。Script 和 Agent Worker 都不会自动安装依赖，也不要在编辑器代码中调用 pip 或 uv。</p>' +
-            '<ol>' +
-                '<li>确认该模块对应的 PyPI 发行包名称。</li>' +
-                '<li>将发行包和版本范围加入 <code>pyproject.toml</code>。</li>' +
-                '<li>在项目根目录执行 <code>uv sync</code>。</li>' +
-                '<li>同步成功后重新运行原代码。</li>' +
-            '</ol>'
-    },
-    {
-        category: '安装',
-        question: '如何确认 import 名称对应哪个发行包？',
-        keywords: 'Pillow PIL sklearn scikit-learn yaml PyYAML distribution',
-        answer:
-            '<p>import 名称与发行包名称不一定相同，应以包的官方文档或 PyPI 项目页为准。</p>' +
-            '<div class="faq-table-wrap"><table class="faq-table"><thead><tr><th>代码中的 import</th><th>pyproject.toml 中的发行包</th></tr></thead>' +
-            '<tbody><tr><td><code>from PIL import Image</code></td><td><code>Pillow</code></td></tr>' +
-            '<tr><td><code>import sklearn</code></td><td><code>scikit-learn</code></td></tr>' +
-            '<tr><td><code>import yaml</code></td><td><code>PyYAML</code></td></tr></tbody></table></div>' +
-            '<p>不要仅根据 import 名称猜测发行包，避免安装同名恶意包。</p>'
-    },
-    {
-        category: '安装',
-        question: '如何手工编辑 pyproject.toml 添加依赖？',
-        keywords: 'dependencies pendulum TOML 手工添加 版本范围',
-        answer:
-            '<p>打开项目根目录的 <code>pyproject.toml</code>，在 <code>[project]</code> 下的 <code>dependencies</code> 数组中增加一行。保留逗号并使用合理的版本范围。</p>' +
-            '<pre><code>[project]\ndependencies = [\n    # 已有依赖...\n    "pendulum&gt;=3,&lt;4",\n]</code></pre>' +
-            '<p>保存后在项目根目录运行：</p>' +
-            '<pre><code>uv sync</code></pre>' +
-            '<p><code>uv sync</code> 会更新 <code>uv.lock</code> 并让当前虚拟环境与声明的依赖保持一致。</p>'
-    },
-    {
-        category: '安装',
-        question: '可以用 uv add 代替手工编辑文件吗？',
-        keywords: 'uv add 命令 自动更新 lock',
-        answer:
-            '<p>可以。该命令仍属于人工依赖管理，只是由 uv 负责修改 <code>pyproject.toml</code>、更新锁文件并同步环境。</p>' +
-            '<pre><code>uv add "pendulum&gt;=3,&lt;4"</code></pre>' +
-            '<p>执行后应检查 <code>pyproject.toml</code> 和 <code>uv.lock</code> 的变更，确认没有意外升级其他核心依赖。</p>'
-    },
-    {
-        category: '验证',
-        question: '依赖安装完成后如何验证？',
-        keywords: '验证 import version sys executable 编辑器 response',
-        answer:
-            '<p>先在项目根目录验证命令行使用的是同一个环境：</p>' +
-            '<pre><code>uv run python -c "import pendulum; print(pendulum.__version__)"</code></pre>' +
-            '<p>命令成功后，再在对应的 Script 或 Agent Python 编辑器运行最小代码：</p>' +
-            '<pre><code>from pendulum import now\n\nresponse = {\n    "current_time": now("Asia/Shanghai").to_iso8601_string(),\n}\nprint(response)</code></pre>' +
-            '<p>运行日志应打印时间，结构化 response 中应包含 <code>current_time</code>。</p>'
-    },
-    {
-        category: '验证',
-        question: '安装依赖后需要关闭页面或重启服务吗？',
-        keywords: '刷新 页面 重启 服务 Worker 子进程 sys.executable',
-        answer:
-            '<p>通常不需要关闭页面。每次运行 Script 或 Agent 都会启动新的 Python Worker，<code>uv sync</code> 成功后下一次运行即可加载新包。</p>' +
-            '<p>出现以下情况时建议重启 Web 服务：升级了 FastAPI、Pydantic、LangChain 等服务自身正在使用的核心包；Windows 文件锁导致同步不完整；命令行验证成功但 Worker 仍报告旧版本。</p>'
-    },
-    {
-        category: '管理',
-        question: '如何升级或降级一个依赖？',
-        keywords: '升级 降级 pin version constraint uv tree lock',
-        answer:
-            '<p>修改 <code>pyproject.toml</code> 中该依赖的版本范围，然后重新同步。例如固定到兼容的 3.x 版本：</p>' +
-            '<pre><code>"pendulum&gt;=3.0.0,&lt;4",</code></pre>' +
-            '<p>也可以执行：</p>' +
-            '<pre><code>uv add "pendulum&gt;=3.0.0,&lt;4"\nuv sync\nuv tree</code></pre>' +
-            '<p>升级或降级后必须重新运行相关 Agent 用例和完整回归测试。</p>'
-    },
-    {
-        category: '管理',
-        question: '如何卸载不再需要的依赖？',
-        keywords: '卸载 删除 uv remove transitive dependency',
-        answer:
-            '<p>推荐使用 uv 删除依赖声明并同步环境：</p>' +
-            '<pre><code>uv remove pendulum</code></pre>' +
-            '<p>也可以手工删除 <code>pyproject.toml</code> 中对应行，再执行 <code>uv sync</code>。不要直接删除虚拟环境中的包文件；uv 会根据锁文件处理不再需要的传递依赖。</p>'
-    },
-    {
-        category: '故障',
-        question: 'uv sync 失败时应该检查什么？',
-        keywords: '网络 代理 冲突 wheel Python 3.14 build failed sync error',
-        answer:
-            '<ol>' +
-                '<li>检查错误中是网络、版本冲突、Python 版本还是本地编译失败。</li>' +
-                '<li>确认包支持当前 Python 版本；本项目当前运行 Python 3.14。</li>' +
-                '<li>检查版本范围是否与现有 LangChain、Pydantic 等依赖冲突。</li>' +
-                '<li>需要代理时先在终端正确配置网络环境，再重试 <code>uv sync</code>。</li>' +
-                '<li>检查 <code>git diff -- pyproject.toml uv.lock</code>，确认修改范围。</li>' +
-            '</ol>' +
-            '<p>不要为了绕过错误直接删除 <code>.venv</code> 或锁文件；先保留完整日志并定位根因。</p>'
-    },
-    {
-        category: '故障',
-        question: '包已经安装，为什么 Script 或 Agent 仍然无法 import？',
-        keywords: '错误环境 interpreter path uv pip show import cache',
-        answer:
-            '<p>最常见原因是包装在另一个 Python 环境、发行包名与 import 名不一致，或同步后仍在运行旧的服务进程。</p>' +
-            '<pre><code>uv run python -c "import sys; print(sys.executable)"\nuv pip show pendulum\nuv run python -c "import pendulum; print(pendulum.__file__)"</code></pre>' +
-            '<p>以上命令都成功但页面仍失败时，停止 Web 服务并重新执行 <code>uv run python run.py</code>。</p>'
-    },
-    {
-        category: '故障',
-        question: '依赖变更导致项目异常时如何回滚？',
-        keywords: '回滚 restore pyproject uv.lock git diff regression',
-        answer:
-            '<ol>' +
-                '<li>停止新的 Script 和 Agent 运行，保留失败日志。</li>' +
-                '<li>使用 <code>git diff -- pyproject.toml uv.lock</code> 确认本次依赖变更。</li>' +
-                '<li>手工恢复本次修改前的依赖声明和锁文件内容，不要覆盖其他人的改动。</li>' +
-                '<li>重新执行 <code>uv sync</code>。</li>' +
-                '<li>运行 <code>uv run pytest</code> 并验证关键 Agent。</li>' +
-            '</ol>'
-    },
-    {
-        category: '安全',
-        question: '人工安装第三方包有哪些安全要求？',
-        keywords: '安全 supply chain malicious package secret API key review',
-        answer:
-            '<ul>' +
-                '<li>只使用官方文档确认的发行包名称和可信来源。</li>' +
-                '<li>设置合理版本范围并检查锁文件，避免无意升级整个依赖树。</li>' +
-                '<li>安装前检查包的维护状态、许可证和 Python 版本支持。</li>' +
-                '<li>不要把 API Key、令牌或私有源密码写入 <code>pyproject.toml</code>。</li>' +
-                '<li>第三方包的构建和安装过程可能执行代码，只安装业务确实需要的依赖。</li>' +
-            '</ul>'
-    }
-];
-
 var ICON_DATA = {
     add: "data:image/png;base64,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",
     back: "data:image/png;base64,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",
@@ -246,7 +110,6 @@ function icon(name) {
     return data ? '<img class="icon-img" src="' + data + '" alt="" aria-hidden="true" />' : "";
 }
 
-/* ===== Initialize ===== */
 var THEME_STORAGE_KEY = 'agent-bench-theme';
 
 function storedTheme() {
@@ -301,6 +164,15 @@ function initTheme() {
     else if (media.addListener) media.addListener(syncSystemTheme);
 }
 
+function viewSets() {
+    currentView = 'sets';
+    if (window.TestSetManagement && typeof window.TestSetManagement.mount === 'function') {
+        window.TestSetManagement.mount();
+        return;
+    }
+    contentArea.innerHTML = '<div class="loading">正在加载测试集管理…</div>';
+}
+
 function init() {
     initTheme();
     viewSets();
@@ -314,6 +186,7 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     document.querySelectorAll('.sidebar-item').forEach(function (el) { el.classList.remove('active'); });
     item.classList.add('active');
     var view = item.getAttribute('data-view');
+    if (view !== 'sets' && window.TestSetManagement) window.TestSetManagement.unmount();
     if (view === 'sets') {
         setsPage = 1;
         viewSets();
@@ -323,84 +196,13 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
         viewWorkflows();
     } else if (view === 'batch-runs') {
         viewBatchRuns();
-    } else if (view === 'faq') {
-        viewFaq();
     }
 });
 
 /* ========================================================================
-   View: FAQ
-   ======================================================================== */
-function viewFaq() {
-    currentView = 'faq';
-
-    contentArea.innerHTML =
-        '<section class="faq-page" aria-labelledby="faq-title">' +
-            '<header class="faq-header">' +
-                '<div>' +
-                    '<h1 class="faq-title" id="faq-title">Python 第三方依赖 FAQ</h1>' +
-                    '<p class="faq-subtitle">Script / Agent 人工安装与环境维护</p>' +
-                '</div>' +
-                '<span class="faq-result-count" id="faq-result-count"></span>' +
-            '</header>' +
-            '<div class="faq-toolbar">' +
-                '<input type="search" class="input" id="faq-search" aria-label="搜索 FAQ" placeholder="搜索问题、包名或错误..." />' +
-                '<select class="input" id="faq-category" aria-label="筛选 FAQ 类别">' +
-                    '<option value="">全部类别</option>' +
-                    '<option value="安装">安装</option>' +
-                    '<option value="验证">验证</option>' +
-                    '<option value="管理">管理</option>' +
-                    '<option value="故障">故障</option>' +
-                    '<option value="安全">安全</option>' +
-                '</select>' +
-            '</div>' +
-            '<div class="faq-list" id="faq-list"></div>' +
-        '</section>';
-
-    document.getElementById('faq-search').addEventListener('input', renderFaqItems);
-    document.getElementById('faq-category').addEventListener('change', renderFaqItems);
-    renderFaqItems();
-}
-
-function faqSearchText(item) {
-    var answer = document.createElement('div');
-    answer.innerHTML = item.answer;
-    return (item.question + ' ' + item.category + ' ' + item.keywords + ' ' + answer.textContent).toLowerCase();
-}
-
-function renderFaqItems() {
-    var searchInput = document.getElementById('faq-search');
-    var categoryInput = document.getElementById('faq-category');
-    var list = document.getElementById('faq-list');
-    if (!searchInput || !categoryInput || !list) return;
-
-    var query = searchInput.value.trim().toLowerCase();
-    var category = categoryInput.value;
-    var filtered = FAQ_ITEMS.filter(function (item) {
-        return (!category || item.category === category) && (!query || faqSearchText(item).includes(query));
-    });
-
-    document.getElementById('faq-result-count').textContent = filtered.length + ' 个问题';
-    if (filtered.length === 0) {
-        list.innerHTML = '<div class="faq-empty">没有匹配的问题</div>';
-        return;
-    }
-
-    list.innerHTML = filtered.map(function (item) {
-        return '<details class="faq-item">' +
-            '<summary>' +
-                '<span class="faq-question">' + esc(item.question) + '</span>' +
-                '<span class="faq-category">' + esc(item.category) + '</span>' +
-            '</summary>' +
-            '<div class="faq-answer">' + item.answer + '</div>' +
-        '</details>';
-    }).join('');
-}
-
-/* ========================================================================
    View: Test Set List
    ======================================================================== */
-async function viewSets() {
+async function legacyViewSets() {
     currentView = 'sets';
     browseFilename = null;
     browseSheet = null;
@@ -939,52 +741,64 @@ function renderCases(cases) {
 }
 
 /* ========================================================================
-   Pagination Component
+   Shared Management List Pagination
    ======================================================================== */
-function renderPagination(containerId, total, page, pageSize, onChange) {
+var GLOBAL_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+function normalizeGlobalPageSize(pageSize) {
+    var parsed = parseInt(pageSize, 10);
+    return GLOBAL_PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : GLOBAL_PAGE_SIZE_OPTIONS[0];
+}
+
+function globalPageSlice(items, page, pageSize) {
+    var normalizedSize = normalizeGlobalPageSize(pageSize);
+    var total = items.length;
+    var totalPages = Math.max(1, Math.ceil(total / normalizedSize));
+    var normalizedPage = Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPages);
+    var start = (normalizedPage - 1) * normalizedSize;
+    return {
+        items: items.slice(start, start + normalizedSize),
+        page: normalizedPage,
+        pageSize: normalizedSize,
+        total: total,
+        totalPages: totalPages,
+    };
+}
+
+function renderGlobalListPagination(containerId, total, page, pageSize, onPageChange, onPageSizeChange, unitLabel) {
     var container = document.getElementById(containerId);
     if (!container) return;
-    var totalPages = Math.ceil(total / pageSize);
-    if (totalPages <= 1) {
-        container.innerHTML = '<span class="pagination-info">共 ' + total + ' 条</span>';
-        return;
-    }
-
-    var pages = [];
-    if (totalPages <= 7) {
-        for (var i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-        pages.push(1);
-        if (page > 3) pages.push('...');
-        var start = Math.max(2, page - 1);
-        var end = Math.min(totalPages - 1, page + 1);
-        for (var p = start; p <= end; p++) pages.push(p);
-        if (page < totalPages - 2) pages.push('...');
-        pages.push(totalPages);
-    }
-
-    var html = '';
-    html += '<button class="btn btn-sm' + (page <= 1 ? ' btn-disabled' : '') + '" data-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>◀</button>';
-    pages.forEach(function (p) {
-        if (p === '...') {
-            html += '<span class="page-ellipsis">...</span>';
-        } else if (p === page) {
-            html += '<button class="btn btn-sm page-current" disabled>' + p + '</button>';
-        } else {
-            html += '<button class="btn btn-sm" data-page="' + p + '">' + p + '</button>';
-        }
-    });
-    html += '<button class="btn btn-sm' + (page >= totalPages ? ' btn-disabled' : '') + '" data-page="' + (page + 1) + '"' + (page >= totalPages ? ' disabled' : '') + '>▶</button>';
-    html += '<span class="pagination-info">共 ' + total + ' 条</span>';
-
-    container.innerHTML = html;
-
-    container.querySelectorAll('button[data-page]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var p = parseInt(btn.getAttribute('data-page'));
-            if (p && p !== page) onChange(p);
+    var normalizedSize = normalizeGlobalPageSize(pageSize);
+    var totalPages = Math.max(1, Math.ceil(total / normalizedSize));
+    var normalizedPage = Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPages);
+    var options = GLOBAL_PAGE_SIZE_OPTIONS.map(function (size) {
+        return '<option value="' + size + '"' + (size === normalizedSize ? ' selected' : '') + '>' + size + '</option>';
+    }).join('');
+    container.innerHTML =
+        '<div class="global-page-summary"><span>共 ' + total + ' ' + esc(unitLabel || '条') + '</span>' +
+            '<label>每页 <select class="input global-page-size" aria-label="每页展示数量">' + options + '</select></label></div>' +
+        '<div class="global-pagination">' +
+            '<button type="button" aria-label="上一页" title="上一页" data-global-page="' + (normalizedPage - 1) + '"' + (normalizedPage <= 1 ? ' disabled' : '') + '>←</button>' +
+            '<span>' + normalizedPage + ' / ' + totalPages + '</span>' +
+            '<button type="button" aria-label="下一页" title="下一页" data-global-page="' + (normalizedPage + 1) + '"' + (normalizedPage >= totalPages ? ' disabled' : '') + '>→</button>' +
+        '</div>';
+    container.querySelectorAll('[data-global-page]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var nextPage = parseInt(button.getAttribute('data-global-page'), 10);
+            if (nextPage >= 1 && nextPage <= totalPages && nextPage !== normalizedPage) onPageChange(nextPage);
         });
     });
+    container.querySelector('.global-page-size').addEventListener('change', function () {
+        onPageSizeChange(normalizeGlobalPageSize(this.value));
+    });
+}
+
+function renderPagination(containerId, total, page, pageSize, onChange) {
+    renderGlobalListPagination(containerId, total, page, pageSize, onChange, function (nextPageSize) {
+        if (containerId === 'sets-pagination') setsPageSize = nextPageSize;
+        if (containerId === 'cases-pagination') casesPageSize = nextPageSize;
+        onChange(1);
+    }, '条');
 }
 
 /* ========================================================================

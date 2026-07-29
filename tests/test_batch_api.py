@@ -3,63 +3,18 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
 
-from web import files as web_files
 from web.app import create_app
 
 
-def _excel(path: Path) -> None:
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Cases"
-    sheet.append(["id", "question"])
-    sheet.append(["C-1", "hello"])
-    sheet.append(["C-2", "world"])
-    workbook.save(path)
-    workbook.close()
-
-
-def _workflow_body() -> dict:
+def _workflow_body(name: str = "Batch API Workflow") -> dict:
     start_id, script_id, end_id = (str(uuid4()) for _ in range(3))
     return {
-        "name": "Batch API Workflow",
-        "description": "",
+        "name": name, "description": "",
         "nodes": [
-            {
-                "node": {
-                    "id": start_id,
-                    "type": "START",
-                    "name": "START",
-                    "description": "",
-                    "inputs": [{"name": "input", "type": "object", "value": {}}],
-                },
-                "position_x": 0,
-                "position_y": 0,
-            },
-            {
-                "node": {
-                    "id": script_id,
-                    "type": "SCRIPT",
-                    "name": "SCRIPT",
-                    "description": "",
-                    "script": 'result = context["input"]["question"].upper()',
-                    "outputs": [{"name": "answer", "type": "string", "source": "result"}],
-                },
-                "position_x": 200,
-                "position_y": 0,
-            },
-            {
-                "node": {
-                    "id": end_id,
-                    "type": "END",
-                    "name": "END",
-                    "description": "",
-                    "outputs": [{"name": "answer", "type": "string", "source": "answer"}],
-                },
-                "position_x": 400,
-                "position_y": 0,
-            },
+            {"node": {"id": start_id, "type": "START", "name": "START", "description": "", "inputs": [{"name": "input", "type": "object", "value": {}}]}, "position_x": 0, "position_y": 0},
+            {"node": {"id": script_id, "type": "SCRIPT", "name": "SCRIPT", "description": "", "script": 'result = context["question"].upper()', "outputs": [{"name": "answer", "type": "string", "source": "result"}]}, "position_x": 200, "position_y": 0},
+            {"node": {"id": end_id, "type": "END", "name": "END", "description": "", "outputs": [{"name": "answer", "type": "string", "source": "answer"}]}, "position_x": 400, "position_y": 0},
         ],
         "edges": [
             {"id": str(uuid4()), "source_node_id": start_id, "target_node_id": script_id},
@@ -68,56 +23,55 @@ def _workflow_body() -> dict:
     }
 
 
-def test_batch_api_previews_creates_starts_and_traces_cases(tmp_path, monkeypatch):
-    inputs = tmp_path / "inputs"
-    inputs.mkdir()
-    _excel(inputs / "cases.xlsx")
-    monkeypatch.setattr(web_files, "INPUTS_DIR", inputs)
-    application = create_app(
-        database_path=tmp_path / "database.sqlite3",
-        execution_root=tmp_path / "workflow-executions",
-    )
+def _create_workflow(client: TestClient, body: dict | None = None) -> str:
+    response = client.post("/api/workflows", json=body or _workflow_body())
+    assert response.status_code == 201, response.text
+    return response.json()["workflow"]["workflow"]["id"]
+
+
+def _create_test_set(client: TestClient, name: str = "数据库测试集") -> str:
+    response = client.post("/api/test-sets", json={
+        "name": name, "description": "", "columns": ["question", "expected"],
+        "cases": [
+            {"id": "case-1", "values": {"question": "hello", "expected": "HELLO"}},
+            {"id": "case-2", "values": {"question": "world", "expected": "WORLD"}},
+        ],
+    })
+    assert response.status_code == 201, response.text
+    return response.json()["test_set"]["id"]
+
+
+def _batch_body(test_set_id: str, workflow_id: str, name: str = "API Run") -> dict:
+    return {
+        "name": name, "test_set_id": test_set_id, "workflow_id": workflow_id,
+        "variables": [{"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}],
+        "case_concurrency": 2,
+        "evaluation_rules": [],
+    }
+
+
+def test_batch_api_previews_database_set_creates_starts_and_traces_cases(tmp_path: Path):
+    application = create_app(database_path=tmp_path / "database.sqlite3", execution_root=tmp_path / "workflow-executions")
     with TestClient(application) as client:
-        workflow_response = client.post("/api/workflows", json=_workflow_body())
-        assert workflow_response.status_code == 201, workflow_response.text
-        workflow_id = workflow_response.json()["workflow"]["workflow"]["id"]
+        workflow_id = _create_workflow(client)
+        test_set_id = _create_test_set(client)
 
-        preview = client.post(
-            "/api/batch-runs/preview",
-            json={"filename": "cases.xlsx", "sheet_name": "Cases"},
-        )
+        preview = client.post("/api/batch-runs/preview", json={"test_set_id": test_set_id})
         assert preview.status_code == 200, preview.text
-        assert preview.json()["headers"] == ["id", "question"]
-        assert preview.json()["header_mode"] == "HEADER"
+        assert preview.json()["test_set_id"] == test_set_id
+        assert preview.json()["headers"] == ["question", "expected"]
         assert preview.json()["total_rows"] == 2
+        assert "sheet_name" not in preview.json()
+        assert "header_mode" not in preview.json()
 
-        created = client.post(
-            "/api/batch-runs",
-            json={
-                "name": "API Batch",
-                "filename": "cases.xlsx",
-                "sheet_name": "Cases",
-                "workflow_id": workflow_id,
-                "case_id_column": "id",
-                "mappings": [{"source": "question", "target": "input.question"}],
-                "case_concurrency": 2,
-                "evaluation_rules": [
-                    {
-                        "name": "answer differs from source",
-                        "actual_path": "answer",
-                        "operator": "NE",
-                        "expected": {"source": "EXCEL", "value": None, "column": "question"},
-                    }
-                ],
-            },
-        )
+        created = client.post("/api/batch-runs", json=_batch_body(test_set_id, workflow_id))
         assert created.status_code == 201, created.text
-        batch_id = created.json()["batch"]["id"]
-        assert created.json()["batch"]["status"] == "QUEUED"
-        assert client.get("/api/batch-runs").json()["batches"][0]["workflow"] == {
-            "id": workflow_id,
-            "name": "Batch API Workflow",
-        }
+        batch = created.json()["batch"]
+        batch_id = batch["id"]
+        assert batch["input"]["test_set_id"] == test_set_id
+        assert batch["input"]["test_set_name"] == "数据库测试集"
+        assert "filename" not in batch["input"]
+        assert "sheet_name" not in batch["input"]
 
         started = client.post(f"/api/batch-runs/{batch_id}/start")
         assert started.status_code == 202, started.text
@@ -128,103 +82,62 @@ def test_batch_api_previews_creates_starts_and_traces_cases(tmp_path, monkeypatc
                 break
             time.sleep(0.03)
         assert batch["summary"]["success"] == 2
-        assert batch["summary"]["pass"] == 2
-
-        case_response = client.get(f"/api/batch-runs/{batch_id}/cases")
-        assert case_response.status_code == 200
-        cases = case_response.json()["cases"]
-        assert [case["case_id"] for case in cases] == ["C-1", "C-2"]
-        assert {case["status"] for case in cases} == {"SUCCESS"}
-        assert {case["execution_status"] for case in cases} == {"SUCCESS"}
-        assert {case["verdict"] for case in cases} == {"PASS"}
-        assert all(case["evaluation"]["rules"][0]["expected_source"] == "EXCEL" for case in cases)
+        cases = client.get(f"/api/batch-runs/{batch_id}/cases").json()["cases"]
+        assert [case["case_id"] for case in cases] == ["case-1", "case-2"]
+        assert [case["row_number"] for case in cases] == [1, 2]
         assert all(len(case["workflow_execution_ids"]) == 1 for case in cases)
 
-        blocked_delete = client.delete(f"/api/workflows/{workflow_id}")
-        assert blocked_delete.status_code == 409
-        deleted_batch = client.delete(f"/api/batch-runs/{batch_id}")
-        assert deleted_batch.status_code == 200
-        assert client.get(f"/api/batch-runs/{batch_id}").status_code == 404
+        assert client.delete(f"/api/batch-runs/{batch_id}").status_code == 200
         assert client.delete(f"/api/workflows/{workflow_id}").status_code == 200
 
 
-def test_batch_api_rejects_path_traversal_and_unknown_mapping(tmp_path, monkeypatch):
-    inputs = tmp_path / "inputs"
-    inputs.mkdir()
-    _excel(inputs / "cases.xlsx")
-    monkeypatch.setattr(web_files, "INPUTS_DIR", inputs)
-    application = create_app(
-        database_path=tmp_path / "database.sqlite3",
-        execution_root=tmp_path / "workflow-executions",
-    )
+def test_batch_api_rejects_legacy_excel_fields_and_unknown_test_set_mapping(tmp_path: Path):
+    application = create_app(database_path=tmp_path / "database.sqlite3", execution_root=tmp_path / "workflow-executions")
     with TestClient(application) as client:
-        traversal = client.post(
-            "/api/batch-runs/preview",
-            json={"filename": "../cases.xlsx", "sheet_name": "Cases"},
-        )
-        assert traversal.status_code == 400
+        workflow_id = _create_workflow(client)
+        test_set_id = _create_test_set(client)
+        legacy = client.post("/api/batch-runs/preview", json={"filename": "cases.xlsx", "sheet_name": "Cases"})
+        assert legacy.status_code == 422
+        invalid = client.post("/api/batch-runs", json={
+            **_batch_body(test_set_id, workflow_id),
+            "variables": [{"source": "TEST_SET", "key": "question", "value": "missing", "type": "string"}],
+        })
+        assert invalid.status_code == 400
+        assert "测试集字段不存在" in invalid.text
 
 
-def test_batch_edit_creates_new_run_with_latest_workflow_and_preserves_original(
-    tmp_path, monkeypatch
-):
-    inputs = tmp_path / "inputs"
-    inputs.mkdir()
-    _excel(inputs / "cases.xlsx")
-    monkeypatch.setattr(web_files, "INPUTS_DIR", inputs)
-    application = create_app(
-        database_path=tmp_path / "database.sqlite3",
-        execution_root=tmp_path / "workflow-executions",
-    )
+def test_edit_run_uses_latest_test_set_and_workflow_but_preserves_original_snapshot(tmp_path: Path):
+    application = create_app(database_path=tmp_path / "database.sqlite3", execution_root=tmp_path / "workflow-executions")
     with TestClient(application) as client:
         workflow_body = _workflow_body()
-        created_workflow = client.post("/api/workflows", json=workflow_body)
-        assert created_workflow.status_code == 201
-        workflow_id = created_workflow.json()["workflow"]["workflow"]["id"]
-        batch_body = {
-            "name": "Original Run",
-            "filename": "cases.xlsx",
-            "sheet_name": "Cases",
-            "workflow_id": workflow_id,
-            "case_id_column": "id",
-            "mappings": [{"source": "question", "target": "input.question"}],
-            "case_concurrency": 1,
-        }
-        original = client.post("/api/batch-runs", json=batch_body)
-        assert original.status_code == 201
+        workflow_id = _create_workflow(client, workflow_body)
+        test_set_id = _create_test_set(client)
+        original = client.post("/api/batch-runs", json=_batch_body(test_set_id, workflow_id, "Original Run"))
+        assert original.status_code == 201, original.text
         original_id = original.json()["batch"]["id"]
 
-        workflow_body["name"] = "Batch API Workflow v2"
-        script = next(
-            item["node"] for item in workflow_body["nodes"]
-            if item["node"]["type"] == "SCRIPT"
-        )
-        script["script"] = 'result = "v2:" + context["input"]["question"]'
-        updated_workflow = client.put(
-            f"/api/workflows/{workflow_id}", json=workflow_body
-        )
-        assert updated_workflow.status_code == 200, updated_workflow.text
+        test_set = client.get(f"/api/test-sets/{test_set_id}").json()["test_set"]
+        test_set["cases"][0]["values"]["question"] = "changed"
+        updated_set = client.put(f"/api/test-sets/{test_set_id}", json={
+            "name": "数据库测试集 v2", "description": "", "columns": test_set["columns"],
+            "cases": [{"id": case["id"], "values": case["values"]} for case in test_set["cases"]],
+        })
+        assert updated_set.status_code == 200
 
-        edited = client.post(
-            "/api/batch-runs",
-            json={**batch_body, "name": "Edited Run", "case_concurrency": 2},
-        )
+        workflow_body["name"] = "Batch API Workflow v2"
+        script = next(item["node"] for item in workflow_body["nodes"] if item["node"]["type"] == "SCRIPT")
+        script["script"] = 'result = "v2:" + context["question"]'
+        assert client.put(f"/api/workflows/{workflow_id}", json=workflow_body).status_code == 200
+
+        edited = client.post("/api/batch-runs", json=_batch_body(test_set_id, workflow_id, "Edited Run"))
         assert edited.status_code == 201, edited.text
         edited_batch = edited.json()["batch"]
         original_batch = client.get(f"/api/batch-runs/{original_id}").json()["batch"]
-
-        assert edited_batch["id"] != original_id
-        assert edited_batch["status"] == "QUEUED"
-        assert edited_batch["case_concurrency"] == 2
         assert edited_batch["workflow"]["name"] == "Batch API Workflow v2"
+        assert edited_batch["input"]["test_set_name"] == "数据库测试集 v2"
         assert original_batch["workflow"]["name"] == "Batch API Workflow"
-        original_script = next(
-            item["node"] for item in original_batch["workflow"]["structural_snapshot"]["nodes"]
-            if item["node"]["type"] == "SCRIPT"
-        )
-        edited_script = next(
-            item["node"] for item in edited_batch["workflow"]["structural_snapshot"]["nodes"]
-            if item["node"]["type"] == "SCRIPT"
-        )
-        assert original_script["script"].endswith(".upper()")
-        assert edited_script["script"].startswith('result = "v2:"')
+        assert original_batch["input"]["test_set_name"] == "数据库测试集"
+        original_case = client.get(f"/api/batch-runs/{original_id}/cases").json()["cases"][0]
+        edited_case = client.get(f"/api/batch-runs/{edited_batch['id']}/cases").json()["cases"][0]
+        assert original_case["source_values"]["question"] == "hello"
+        assert edited_case["source_values"]["question"] == "changed"

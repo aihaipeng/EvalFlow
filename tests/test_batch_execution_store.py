@@ -1,7 +1,9 @@
 from pathlib import Path
 from uuid import uuid4
 
-from execution.batch_execution_store import BatchExecutionStore
+import pytest
+
+from execution.batch_execution_store import BatchExecutionError, BatchExecutionStore
 
 
 def _documents():
@@ -18,7 +20,7 @@ def _documents():
         "id": case_id,
         "batch_execution_id": batch_id,
         "case_id": "C-1",
-        "row_number": 2,
+        "row_number": 1,
         "status": "QUEUED",
         "finished_at": None,
         "error": None,
@@ -26,34 +28,29 @@ def _documents():
     return batch, case
 
 
-def test_batch_store_atomically_persists_input_and_case_facts(tmp_path: Path) -> None:
-    source = tmp_path / "source.xlsx"
-    source.write_bytes(b"original excel bytes")
+def test_batch_store_atomically_persists_database_snapshot_and_case_facts(tmp_path: Path) -> None:
     batch, case = _documents()
     store = BatchExecutionStore(tmp_path / "batch")
+    snapshot = {"id": "set-1", "columns": ["question"], "cases": [{"id": "C-1", "values": {"question": "hello"}}]}
 
-    store.create(batch, [case], source, {"headers": ["case_id"]})
-    source.write_bytes(b"changed")
+    store.create(batch, [case], snapshot)
+    snapshot["cases"][0]["values"]["question"] = "changed"
 
     assert store.get(batch["id"]) == batch
     assert store.get_case(batch["id"], case["id"]) == case
     assert store.list_cases(batch["id"]) == [case]
     root = store.batch_root(batch["id"])
-    assert (root / "input" / "source.xlsx").read_bytes() == b"original excel bytes"
-    assert BatchExecutionStore._read(root / "input" / "snapshot.json") == {
-        "headers": ["case_id"]
-    }
+    assert not list((root / "input").glob("source.*"))
+    assert BatchExecutionStore._read(root / "input" / "snapshot.json")["cases"][0]["values"]["question"] == "hello"
 
 
 def test_batch_store_recovers_running_batch_without_starting_queued_cases(tmp_path: Path) -> None:
-    source = tmp_path / "source.xlsx"
-    source.write_bytes(b"excel")
     batch, running = _documents()
-    queued = {**running, "id": str(uuid4()), "case_id": "C-2", "row_number": 3}
+    queued = {**running, "id": str(uuid4()), "case_id": "C-2", "row_number": 2}
     batch["status"] = "RUNNING"
     running["status"] = "RUNNING"
     store = BatchExecutionStore(tmp_path / "batch")
-    store.create(batch, [running, queued], source, {"headers": ["case_id"]})
+    store.create(batch, [running, queued], {"columns": ["question"]})
 
     assert store.recover_incomplete() == 1
 
@@ -66,16 +63,11 @@ def test_batch_store_recovers_running_batch_without_starting_queued_cases(tmp_pa
 
 
 def test_batch_store_deletes_terminal_batch_but_rejects_running_batch(tmp_path: Path) -> None:
-    source = tmp_path / "source.xlsx"
-    source.write_bytes(b"excel")
     batch, case = _documents()
     store = BatchExecutionStore(tmp_path / "batch")
-    store.create(batch, [case], source, {"headers": ["case_id"]})
+    store.create(batch, [case], {"columns": ["question"]})
     batch["status"] = "RUNNING"
     store.write_batch(batch)
-
-    import pytest
-    from execution.batch_execution_store import BatchExecutionError
 
     with pytest.raises(BatchExecutionError, match="运行中的 Batch"):
         store.delete(batch["id"])

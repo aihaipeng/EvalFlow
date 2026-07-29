@@ -64,9 +64,11 @@ uv run python run.py
 
 1. 在“测试集”页面上传 `.xlsx` 或 `.xlsm` 文件。
 2. Excel 可以有表头，也可以从第一行直接保存数据；无表头的旧格式默认把前两列识别为 `case_id / question`。
-3. 在“Workflow 管理”页面创建 START、业务节点和 END，START 声明批量输入变量。
-4. 在“运行调度”页面选择测试集、Sheet、首行模式和 Workflow，把 Excel 列映射到 START 变量或 object 字段。
-5. 设置 Case 并发数，创建并手工启动 Run；在详情页查看、取消或恢复 Case。
+3. 在“Workflow 管理”页面创建 START、业务节点和 END。业务节点可以使用 `context["变量名"]` 读取 Run 注入的变量。
+4. 在“运行调度”页面选择测试集、Sheet、首行模式和 Workflow；在“变量注入”中添加 `source / key / value / type`。`source=Excel` 的 value 手填 `col_x` 列路径，其中 `col_1` 是第一列，也可写 `col_4.checks.intent.status` 读取 JSON 单元格的局部字段；`source=自定义` 的 value 填写值或 object/array 的 JSON。
+5. 设置 Case 并发数，创建并手工启动 Run；每个 Case 都使用冻结的 Excel 行和变量配置创建独立 Context。Case 使用 Excel 原始行号作为 Run 内追溯标识，可在详情页查看、取消或恢复。
+
+结果校验的每个校验点只填写四项：`结果路径 / 运算符 / 预期值 / Type`。结果路径必须以 `context.` 开头，例如 `context.final_answer.status`；预期值由用户填写并按 Type 转换。所有校验点都通过时 Case 才通过，任一校验点失败或配置错误都会将该 Case 标记为失败。
 
 仓库不附带真实测试集、API Key、Workflow 或运行记录。新用户需要在页面中创建自己的本地数据。
 

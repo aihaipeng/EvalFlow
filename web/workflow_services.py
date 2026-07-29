@@ -16,6 +16,7 @@ from execution import (
     WorkflowExecutionManager,
     WorkflowExecutionStore,
     WorkflowStructuralRepository,
+    TestSetRepository,
 )
 from execution.workflow_application import WorkflowApplicationService
 from execution.batch_execution_store import BatchExecutionStore
@@ -35,8 +36,10 @@ class WorkflowServices:
         self.execution_root = Path(execution_root).resolve()
         self.repository = WorkflowStructuralRepository(self.database_path)
         self.model_repository = ModelProviderRepository(self.database_path)
+        self.test_sets = TestSetRepository(self.database_path)
         self.repository.initialize()
         self.model_repository.initialize()
+        self.test_sets.initialize()
         self.store = WorkflowExecutionStore(self.execution_root)
         self.manager = WorkflowExecutionManager(
             self.repository,
@@ -46,7 +49,7 @@ class WorkflowServices:
         self.batch_store = BatchExecutionStore(
             self.execution_root.parent / "batch_executions"
         )
-        self.batch_inputs = BatchInputService(self.repository, self.batch_store)
+        self.batch_inputs = BatchInputService(self.repository, self.test_sets, self.batch_store)
         self.batch_scheduler = BatchScheduler(self.batch_store, self.manager)
         self.node_test_manager = NodeTestManager(
             self.model_repository,

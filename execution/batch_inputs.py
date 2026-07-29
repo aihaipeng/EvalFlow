@@ -1,172 +1,169 @@
-"""Excel-to-START mapping and immutable Batch document creation."""
+"""Database test-set mapping and immutable Batch document creation."""
 
 from __future__ import annotations
 
-import hashlib
 import re
-from copy import deepcopy
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from execution.batch_execution_store import BatchExecutionError, BatchExecutionStore
+from execution.test_sets import TestSetRecord, TestSetRepository
 from execution.workflow_execution_snapshot import record_from_snapshot, snapshot_record
 from execution.workflow_execution_store import utc_execution_time
 from execution.workflow_structural_models import WorkflowStructuralRepository
-from execution.workflow_values import strict_json_clone
-from storage.excel import ExcelSheetRepository, ExcelSheetSnapshot
+from execution.workflow_values import (
+    WorkflowOutputTypeError,
+    convert_output,
+    strict_json_clone,
+)
 
 
-_TARGET_PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_CONTEXT_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_VARIABLE_TYPES = {"string", "number", "integer", "boolean", "object", "array", "null"}
 
 
-def _case_id(value: Any, *, row_number: int) -> str:
-    if value is None or isinstance(value, (dict, list, bool)):
-        raise BatchExecutionError(f"Excel 第 {row_number} 行 case_id 必须是非空文本或数值")
-    result = str(value).strip()
-    if not result:
-        raise BatchExecutionError(f"Excel 第 {row_number} 行 case_id 不能为空")
-    return result
+def _normalize_variables(
+    columns: tuple[str, ...], variables: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Validate Run-owned variable mappings before freezing the Batch."""
 
-
-def _mapping_targets(
-    snapshot: dict[str, Any], headers: tuple[str, ...], mappings: list[dict[str, str]]
-) -> tuple[list[dict[str, str]], dict[str, Any]]:
-    starts = [item["node"] for item in snapshot["nodes"] if item["node"]["type"] == "START"]
-    if len(starts) != 1:
-        raise BatchExecutionError("批量 Workflow 必须恰好包含一个 START")
-    defaults = {item["name"]: item["value"] for item in starts[0].get("inputs", [])}
-    normalized = []
-    sources: set[str] = set()
-    targets: set[str] = set()
-    for mapping in mappings:
-        source = str(mapping.get("source", ""))
-        target = str(mapping.get("target", ""))
-        if source not in headers:
-            raise BatchExecutionError(f"映射源列不存在: {source}")
-        if not _TARGET_PATH.fullmatch(target):
-            raise BatchExecutionError(f"映射目标路径无效: {target}")
-        root = target.split(".", 1)[0]
-        if root not in defaults:
-            raise BatchExecutionError(f"映射目标未在 START 中声明: {root}")
-        if source in sources:
-            raise BatchExecutionError(f"Excel 列不能重复映射: {source}")
-        if target in targets or any(
-            target.startswith(existing + ".") or existing.startswith(target + ".")
-            for existing in targets
-        ):
-            raise BatchExecutionError(f"映射目标冲突: {target}")
-        sources.add(source)
-        targets.add(target)
-        normalized.append({"source": source, "target": target})
-    if not normalized:
-        raise BatchExecutionError("至少需要配置一个 Excel 字段映射")
-    return normalized, strict_json_clone(defaults)
+    if not variables:
+        raise BatchExecutionError("至少需要配置一个变量注入")
+    normalized: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    for index, variable in enumerate(variables, start=1):
+        source = str(variable.get("source", "")).upper()
+        key = str(variable.get("key", "")).strip()
+        value = variable.get("value")
+        value_type = str(variable.get("type", ""))
+        if source not in {"CUSTOM", "TEST_SET"}:
+            raise BatchExecutionError(
+                f"变量 {index} 的 source 必须是 CUSTOM 或 TEST_SET"
+            )
+        if not _CONTEXT_KEY.fullmatch(key):
+            raise BatchExecutionError(f"变量 {index} 的 key 格式无效")
+        if key in keys:
+            raise BatchExecutionError(f"变量 key 不能重复: {key}")
+        if value_type not in _VARIABLE_TYPES:
+            raise BatchExecutionError(f"变量 {index} 的 type 无效")
+        if source == "TEST_SET":
+            if not isinstance(value, str) or value not in columns:
+                raise BatchExecutionError(f"变量 {index} 的测试集字段不存在: {value}")
+        else:
+            if value_type == "null":
+                value = "null"
+            if not isinstance(value, str):
+                raise BatchExecutionError(f"变量 {index} 的自定义 value 必须是文本")
+            try:
+                convert_output(value, value_type)
+            except WorkflowOutputTypeError as exc:
+                raise BatchExecutionError(
+                    f"变量 {index} 的自定义 value 与 {value_type} 不匹配: {exc}"
+                ) from exc
+        keys.add(key)
+        normalized.append(
+            {"source": source, "key": key, "value": value, "type": value_type}
+        )
+    return normalized
 
 
 def _start_inputs(
-    values: dict[str, Any], mappings: list[dict[str, str]], defaults: dict[str, Any]
+    values: dict[str, Any], variables: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    roots = {mapping["target"].split(".", 1)[0] for mapping in mappings}
-    result = {root: deepcopy(defaults[root]) for root in roots}
-    for mapping in mappings:
-        parts = mapping["target"].split(".")
-        if len(parts) == 1:
-            result[parts[0]] = strict_json_clone(values[mapping["source"]])
-            continue
-        current = result[parts[0]]
-        if not isinstance(current, dict):
-            raise BatchExecutionError(f"嵌套映射要求 START 变量为 object: {parts[0]}")
-        for part in parts[1:-1]:
-            child = current.get(part)
-            if child is None:
-                child = {}
-                current[part] = child
-            if not isinstance(child, dict):
-                raise BatchExecutionError(f"映射路径经过的值不是 object: {mapping['target']}")
-            current = child
-        current[parts[-1]] = strict_json_clone(values[mapping["source"]])
-    return result
+    result: dict[str, Any] = {}
+    for variable in variables:
+        raw_value = (
+            values[variable["value"]]
+            if variable["source"] == "TEST_SET"
+            else variable["value"]
+        )
+        try:
+            result[variable["key"]] = convert_output(raw_value, variable["type"])
+        except WorkflowOutputTypeError as exc:
+            label = "测试集字段" if variable["source"] == "TEST_SET" else "自定义 value"
+            raise BatchExecutionError(
+                f"变量 {variable['key']} 的{label}无法转换为 {variable['type']}: {exc}"
+            ) from exc
+    return strict_json_clone(result)
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _test_set_snapshot(record: TestSetRecord) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "name": record.name,
+        "description": record.description,
+        "columns": [column.key for column in record.columns],
+        "cases": [
+            {
+                "id": case.id,
+                "position": case.position,
+                "values": strict_json_clone(case.values),
+            }
+            for case in record.cases
+        ],
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
 
 
 class BatchInputService:
-    """Freeze one Excel Sheet, its mapping, and the current Workflow structure."""
+    """Freeze one database test set, its mappings, and the Workflow structure."""
 
     def __init__(
         self,
         workflow_repository: WorkflowStructuralRepository,
+        test_set_repository: TestSetRepository,
         store: BatchExecutionStore,
     ):
         self.workflow_repository = workflow_repository
+        self.test_set_repository = test_set_repository
         self.store = store
 
-    def preview(
-        self,
-        source_path: str | Path,
-        sheet_name: str,
-        header_mode: str = "AUTO",
-    ) -> ExcelSheetSnapshot:
-        return ExcelSheetRepository(source_path, sheet_name, header_mode).read_snapshot()
+    def preview(self, test_set_id: str) -> TestSetRecord:
+        record = self.test_set_repository.get(test_set_id)
+        if record is None:
+            raise BatchExecutionError(f"测试集不存在: {test_set_id}")
+        return record
 
     def create(
         self,
         *,
         name: str,
-        source_path: str | Path,
-        sheet_name: str,
+        test_set_id: str,
         workflow_id: str,
-        case_id_column: str,
-        mappings: list[dict[str, str]],
+        variables: list[dict[str, Any]],
         case_concurrency: int,
-        header_mode: str = "AUTO",
         evaluation_rules: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        source = Path(source_path).resolve()
-        sheet = self.preview(source, sheet_name, header_mode)
-        if case_id_column not in sheet.headers:
-            raise BatchExecutionError(f"case_id 列不存在: {case_id_column}")
-        if not sheet.rows:
-            raise BatchExecutionError("Sheet 没有可执行数据行")
+        test_set = self.preview(test_set_id)
+        if not test_set.cases:
+            raise BatchExecutionError("测试集没有可执行用例")
         if not 1 <= case_concurrency <= 32:
             raise BatchExecutionError("Case 并发数必须在 1 到 32 之间")
-        record = self.workflow_repository.get(workflow_id)
-        if record is None:
-            raise BatchExecutionError(f"Workflow 不存在: {workflow_id}")
-        workflow_snapshot = snapshot_record(record)
-        normalized_mappings, defaults = _mapping_targets(
-            workflow_snapshot, sheet.headers, mappings
-        )
+        workflow_record = self.workflow_repository.get(workflow_id)
+        if workflow_record is None:
+            raise BatchExecutionError(f"工作流不存在: {workflow_id}")
+        columns = tuple(column.key for column in test_set.columns)
+        workflow_snapshot = snapshot_record(workflow_record)
+        normalized_variables = _normalize_variables(columns, variables)
         batch_id = str(uuid4())
         created_at = utc_execution_time()
         cases = []
         rules = strict_json_clone(evaluation_rules or [])
-        seen: set[str] = set()
-        for row in sheet.rows:
-            external_id = _case_id(row.values[case_id_column], row_number=row.row_number)
-            if external_id in seen:
-                raise BatchExecutionError(f"case_id 重复: {external_id}")
-            seen.add(external_id)
-            start_inputs = _start_inputs(row.values, normalized_mappings, defaults)
+        for test_case in test_set.cases:
+            start_inputs = _start_inputs(test_case.values, normalized_variables)
             record_from_snapshot(workflow_snapshot, start_inputs)
             cases.append(
                 {
                     "id": str(uuid4()),
                     "batch_execution_id": batch_id,
-                    "case_id": external_id,
-                    "row_number": row.row_number,
+                    "case_id": test_case.id,
+                    "row_number": test_case.position + 1,
                     "status": "QUEUED",
                     "execution_status": "NOT_STARTED",
                     "verdict": "NOT_EVALUATED",
                     "evaluation": {"verdict": "NOT_EVALUATED", "rules": []},
-                    "source_values": strict_json_clone(row.values),
+                    "source_values": strict_json_clone(test_case.values),
                     "start_inputs": start_inputs,
                     "workflow_execution_ids": [],
                     "created_at": created_at,
@@ -177,28 +174,32 @@ class BatchInputService:
             )
         batch = {
             "id": batch_id,
-            "name": name.strip() or f"{source.stem} / {record.workflow.name}",
+            "name": name.strip() or f"{test_set.name} / {workflow_record.workflow.name}",
             "status": "QUEUED",
             "input": {
-                "filename": source.name,
-                "sheet_name": sheet_name,
-                "sha256": _sha256(source),
-                "headers": list(sheet.headers),
-                "case_id_column": case_id_column,
-                "header_mode": sheet.header_mode,
+                "test_set_id": test_set.id,
+                "test_set_name": test_set.name,
+                "columns": list(columns),
+                "updated_at": test_set.updated_at,
             },
             "workflow": {
                 "id": workflow_id,
-                "name": record.workflow.name,
+                "name": workflow_record.workflow.name,
                 "structural_snapshot": workflow_snapshot,
             },
-            "mappings": normalized_mappings,
+            "variables": normalized_variables,
             "evaluation_rules": rules,
             "case_concurrency": case_concurrency,
             "total_cases": len(cases),
             "summary": {
-                "queued": len(cases), "running": 0, "success": 0, "failed": 0,
-                "interrupted": 0, "pass": 0, "fail": 0, "error": 0,
+                "queued": len(cases),
+                "running": 0,
+                "success": 0,
+                "failed": 0,
+                "interrupted": 0,
+                "pass": 0,
+                "fail": 0,
+                "error": 0,
                 "not_evaluated": len(cases),
             },
             "created_at": created_at,
@@ -206,15 +207,5 @@ class BatchInputService:
             "finished_at": None,
             "error": None,
         }
-        self.store.create(
-            batch,
-            cases,
-            source,
-            {
-                "headers": list(sheet.headers),
-                "rows": [
-                    {"row_number": row.row_number, "values": row.values} for row in sheet.rows
-                ],
-            },
-        )
+        self.store.create(batch, cases, _test_set_snapshot(test_set))
         return batch

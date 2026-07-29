@@ -56,6 +56,15 @@ from execution.workflow_structural_models import (
     WorkflowStructuralSummary,
     validate_workflow_graph,
 )
+from execution.test_sets import (
+    TestCaseRecord,
+    TestSetColumn,
+    TestSetNameConflictError,
+    TestSetRecord,
+    TestSetRepository,
+    TestSetRepositoryError,
+    TestSetSummary,
+)
 from execution.workflow_execution import (
     DEFAULT_EXECUTION_ROOT,
     NodeTestManager,
@@ -118,6 +127,13 @@ __all__ = [
     "WorkflowStructuralRepositoryError",
     "WorkflowStructuralSummary",
     "validate_workflow_graph",
+    "TestCaseRecord",
+    "TestSetColumn",
+    "TestSetNameConflictError",
+    "TestSetRecord",
+    "TestSetRepository",
+    "TestSetRepositoryError",
+    "TestSetSummary",
     "DEFAULT_EXECUTION_ROOT",
     "NodeTestManager",
     "WorkflowExecutionError",

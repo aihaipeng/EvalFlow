@@ -12,7 +12,8 @@ def test_model_provider_navigation_and_assets_are_registered():
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert 'data-view="models">◉ 模型管理' in index_html
+    assert 'data-view="models"><span class="sidebar-icon"' in index_html
+    assert '<span>供应商管理</span>' in index_html
     assert '<link rel="stylesheet" href="/model-providers.css" />' in index_html
     assert '<script src="/model-providers.js"></script>' in index_html
     assert "viewModelProviders();" in app_js
@@ -112,3 +113,24 @@ def test_model_provider_styles_use_existing_theme_contract_and_desktop_layout():
     ]
     assert "font-style: italic" in placeholder_rule
     assert "@media" not in source
+
+
+def test_model_provider_list_uses_shared_pagination():
+    source = (STATIC_DIR / "model-providers.js").read_text(encoding="utf-8")
+
+    assert "page: 1" in source
+    assert "pageSize: 10" in source
+    assert "globalPageSlice(filteredProviders" in source
+    assert 'id="model-provider-pagination" class="global-list-footer"' in source
+    assert "modelProviderState.page = 1" in source
+
+
+def test_model_provider_rows_hide_internal_ids_and_center_value_containers():
+    source = (STATIC_DIR / "model-providers.js").read_text(encoding="utf-8")
+    provider_styles = (STATIC_DIR / "model-providers.css").read_text(encoding="utf-8")
+    execution_styles = (STATIC_DIR / "execution.css").read_text(encoding="utf-8")
+
+    assert '<div class="execution-id">' not in source
+    assert ".execution-id" not in execution_styles
+    assert "margin: 0 auto;" in provider_styles
+    assert "justify-content: center;" in provider_styles

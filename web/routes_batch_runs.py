@@ -1,4 +1,4 @@
-"""Batch Run API for Excel-backed Workflow scheduling."""
+"""Batch Run API for database-backed test-set scheduling."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from execution.batch_execution_store import BatchExecutionError
 from execution.case_evaluator import EvaluationRule
-from web.files import get_existing_input_path
 from web.workflow_services import WorkflowServicesDependency
 
 
@@ -21,25 +20,22 @@ class _BatchApiModel(BaseModel):
 
 
 class BatchPreviewRequest(_BatchApiModel):
-    filename: str = Field(min_length=1)
-    sheet_name: str = Field(min_length=1)
-    header_mode: Literal["AUTO", "HEADER", "DATA"] = "AUTO"
+    test_set_id: str = Field(min_length=1)
 
 
-class BatchMapping(_BatchApiModel):
-    source: str = Field(min_length=1)
-    target: str = Field(min_length=1)
+class BatchVariable(_BatchApiModel):
+    source: Literal["CUSTOM", "TEST_SET"]
+    key: str = Field(min_length=1, max_length=200)
+    value: str = Field(default="", max_length=20000)
+    type: Literal["string", "number", "integer", "boolean", "object", "array", "null"]
 
 
 class BatchCreateRequest(_BatchApiModel):
     name: str = Field(default="", max_length=200)
-    filename: str = Field(min_length=1)
-    sheet_name: str = Field(min_length=1)
+    test_set_id: str = Field(min_length=1)
     workflow_id: str = Field(min_length=1)
-    case_id_column: str = Field(min_length=1)
-    mappings: list[BatchMapping] = Field(min_length=1)
+    variables: list[BatchVariable] = Field(min_length=1, max_length=100)
     case_concurrency: int = Field(default=1, ge=1, le=32)
-    header_mode: Literal["AUTO", "HEADER", "DATA"] = "AUTO"
     evaluation_rules: list[EvaluationRule] = Field(default_factory=list, max_length=50)
 
 
@@ -71,20 +67,21 @@ def preview_batch_input(
     body: BatchPreviewRequest, services: WorkflowServicesDependency
 ) -> dict[str, Any]:
     try:
-        snapshot = services.batch_inputs.preview(
-            get_existing_input_path(body.filename), body.sheet_name, body.header_mode
-        )
-    except (BatchExecutionError, FileNotFoundError, ValueError) as exc:
+        test_set = services.batch_inputs.preview(body.test_set_id)
+    except (BatchExecutionError, ValueError) as exc:
         _error(exc)
     return {
-        "filename": body.filename,
-        "sheet_name": body.sheet_name,
-        "headers": list(snapshot.headers),
-        "header_mode": snapshot.header_mode,
-        "total_rows": len(snapshot.rows),
+        "test_set_id": test_set.id,
+        "test_set_name": test_set.name,
+        "headers": [column.key for column in test_set.columns],
+        "total_rows": len(test_set.cases),
         "sample_rows": [
-            {"row_number": row.row_number, "values": row.values}
-            for row in snapshot.rows[:20]
+            {
+                "case_id": case.id,
+                "row_number": case.position + 1,
+                "values": case.values,
+            }
+            for case in test_set.cases[:20]
         ],
     }
 
@@ -96,16 +93,13 @@ def create_batch(
     try:
         batch = services.batch_inputs.create(
             name=body.name,
-            source_path=get_existing_input_path(body.filename),
-            sheet_name=body.sheet_name,
+            test_set_id=body.test_set_id,
             workflow_id=body.workflow_id,
-            case_id_column=body.case_id_column,
-            mappings=[mapping.model_dump() for mapping in body.mappings],
+            variables=[variable.model_dump() for variable in body.variables],
             case_concurrency=body.case_concurrency,
-            header_mode=body.header_mode,
             evaluation_rules=[rule.model_dump(mode="json") for rule in body.evaluation_rules],
         )
-    except (BatchExecutionError, FileNotFoundError, ValueError) as exc:
+    except (BatchExecutionError, ValueError) as exc:
         _error(exc)
     return BatchEnvelope(batch=batch)
 

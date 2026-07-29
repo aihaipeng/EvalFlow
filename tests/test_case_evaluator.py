@@ -6,66 +6,70 @@ from execution.case_evaluator import EvaluationRule, evaluate_case
 
 def rule(**overrides):
     payload = {
-        "name": "answer matches",
-        "actual_path": "answer.text",
+        "result_path": "context.final_answer.status",
         "operator": "EQ",
-        "expected": {"source": "LITERAL", "value": "OK", "column": None},
+        "expected_value": "PASS",
+        "type": "string",
     }
     payload.update(overrides)
     return EvaluationRule.model_validate(payload)
 
 
-def test_evaluator_supports_literal_excel_regex_contains_and_numeric_rules():
-    result = {"answer": {"text": "CI SWITCH_1 is healthy", "score": 0.95}, "tags": ["cmdb"]}
-    source = {"expected_text": "CI SWITCH_1 is healthy", "minimum": 0.9}
+def test_evaluator_reads_final_context_and_supports_typed_rules():
+    context = {
+        "final_answer": {"status": "PASS", "score": 0.95},
+        "tags": ["cmdb"],
+    }
     rules = [
-        rule(expected={"source": "EXCEL", "column": "expected_text", "value": None}),
-        rule(name="regex", operator="REGEX", expected={"source": "LITERAL", "value": r"SWITCH_\d", "column": None}),
-        rule(name="contains", actual_path="tags", operator="CONTAINS", expected={"source": "LITERAL", "value": "cmdb", "column": None}),
-        rule(name="score", actual_path="answer.score", operator="GTE", expected={"source": "EXCEL", "column": "minimum", "value": None}),
-        rule(name="exists", actual_path="answer.text", operator="EXISTS", expected={"source": "LITERAL", "value": True, "column": None}),
+        rule(),
+        rule(
+            result_path="context.final_answer.status",
+            operator="REGEX",
+            expected_value=r"PA.*",
+            type="string",
+        ),
+        rule(
+            result_path="context.tags",
+            operator="CONTAINS",
+            expected_value="cmdb",
+            type="string",
+        ),
+        rule(
+            result_path="context.final_answer.score",
+            operator="GTE",
+            expected_value="0.9",
+            type="number",
+        ),
+        rule(
+            result_path="context.final_answer.status",
+            operator="EXISTS",
+            expected_value="true",
+            type="boolean",
+        ),
     ]
 
-    evaluation = evaluate_case(result, source, rules)
+    evaluation = evaluate_case(context, rules)
 
     assert evaluation["verdict"] == "PASS"
     assert {item["status"] for item in evaluation["rules"]} == {"PASS"}
+    assert evaluation["rules"][0]["actual"] == "PASS"
 
 
-def test_evaluator_distinguishes_failed_expectation_from_configuration_error():
-    failed = evaluate_case(
-        {"answer": {"text": "actual"}},
-        {},
-        [rule(expected={"source": "LITERAL", "value": "expected", "column": None})],
-    )
-    errored = evaluate_case(
-        {"answer": {"text": "actual"}},
-        {},
-        [rule(operator="GT", expected={"source": "LITERAL", "value": 3, "column": None})],
+def test_evaluator_marks_any_failed_rule_and_missing_context_path():
+    evaluation = evaluate_case(
+        {"final_answer": {"status": "FAIL"}},
+        [rule(), rule(result_path="context.final_answer.missing")],
     )
 
-    assert failed["verdict"] == "FAIL"
-    assert failed["rules"][0]["actual"] == "actual"
-    assert errored["verdict"] == "ERROR"
-    assert "有限数字" in errored["rules"][0]["message"]
+    assert evaluation["verdict"] == "FAIL"
+    assert [item["status"] for item in evaluation["rules"]] == ["FAIL", "FAIL"]
+    assert "结果路径不存在" in evaluation["rules"][1]["message"]
 
 
-def test_evaluator_reports_missing_result_and_excel_paths():
-    missing_result = evaluate_case({}, {}, [rule()])
-    missing_excel = evaluate_case(
-        {"answer": {"text": "OK"}},
-        {},
-        [rule(expected={"source": "EXCEL", "column": "expected", "value": None})],
-    )
-
-    assert missing_result["verdict"] == "FAIL"
-    assert "结果路径不存在" in missing_result["rules"][0]["message"]
-    assert missing_excel["verdict"] == "ERROR"
-    assert "Excel 预期列不存在" in missing_excel["rules"][0]["message"]
-
-
-def test_rule_validation_rejects_invalid_regex_and_exists_expectation():
+def test_rule_validation_rejects_invalid_path_regex_and_exists_type():
+    with pytest.raises(ValidationError, match="context"):
+        rule(result_path="final_answer.status")
     with pytest.raises(ValidationError, match="正则表达式无效"):
-        rule(operator="REGEX", expected={"source": "LITERAL", "value": "[", "column": None})
+        rule(operator="REGEX", expected_value="[", type="string")
     with pytest.raises(ValidationError, match="boolean"):
-        rule(operator="EXISTS", expected={"source": "LITERAL", "value": "true", "column": None})
+        rule(operator="EXISTS", expected_value="true", type="string")

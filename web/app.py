@@ -12,6 +12,7 @@ from web.routes_files import router as files_router
 from web.routes_local_clipboard import router as local_clipboard_router
 from web.routes_model_providers import router as model_providers_router
 from web.routes_testcases import router as testcases_router
+from web.routes_test_sets import router as test_sets_router
 from web.routes_workflows import router as workflows_router
 from web.routes_batch_runs import router as batch_runs_router
 from web.workflow_services import WorkflowServices
@@ -50,6 +51,7 @@ def create_app(
     app.include_router(local_clipboard_router)
     app.include_router(model_providers_router)
     app.include_router(testcases_router)
+    app.include_router(test_sets_router)
     app.include_router(workflows_router)
     app.include_router(batch_runs_router)
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")

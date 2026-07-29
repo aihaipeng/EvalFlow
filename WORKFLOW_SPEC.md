@@ -545,11 +545,12 @@ run_storage/batch_executions/{batch_execution_id}/
     └── {case_run_id}.json
 ```
 
-- 创建时冻结源 Excel 字节、SHA-256、Sheet 表头和数据行、Workflow Structural Snapshot、字段映射及并发数；后续修改源文件或 Workflow 不影响既有 Batch。
-- 首行模式支持 `AUTO / HEADER / DATA`。AUTO 在首两列命中既有 Case ID/Question 表头别名时按表头读取，否则按数据读取；HEADER 要求有效表头区间非空且不重复，并裁掉末尾空表头列；DATA 从第一行开始读取并生成 `case_id / question / column_3...`。完全空白数据行忽略，`case_id_column` 的每行值必须非空且在当前 Sheet 内唯一。
-- 映射源是任意 Excel 表头，目标是 START 已声明的根变量或 object 字段路径。目标根必须存在、路径不得冲突；未映射 START 输入保留结构默认值。
-- `case_id` 只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context；只有用户显式配置映射时才成为 START 输入。
-- 创建阶段对每行映射结果执行完整 START 类型和 Workflow 快照校验，失败时不创建部分 Batch 目录。
+- 创建时冻结源 Excel 字节、SHA-256、Sheet 表头和数据行、Workflow Structural Snapshot、变量注入配置及并发数；后续修改源文件或 Workflow 不影响既有 Batch。
+- 首行模式支持 `AUTO / HEADER / DATA`。AUTO 在首两列命中既有 Case ID/Question 表头别名时按表头读取，否则按数据读取；HEADER 要求有效表头区间非空且不重复，并裁掉末尾空表头列；DATA 从第一行开始读取并生成 `case_id / question / column_3...`。完全空白数据行忽略；每条有效数据行以其原始 Excel 行号作为当前 Batch 内的 Case 追溯标识。
+- 变量注入配置为 `source / key / value / type`。`source=EXCEL` 时 value 必须是手填的 `col_x` 列路径，`col_1` 固定表示当前 Sheet 第一列；可追加 `.field` 与 `[index]` 从 JSON object/array 单元格中读取局部值，例如 `col_4.checks.intent.status`。`source=CUSTOM` 时 value 是用户填写的文本。type 支持 `string / number / integer / boolean / object / array / null`，object 与 array 使用严格 JSON 文本。key 必须是 Context 根变量名且在一个 Run 内唯一。
+- 每个 Case 在创建阶段从其 Excel 行解析 Excel 来源变量，并将自定义值与 Excel 值转换为配置的 type；转换失败时不创建部分 Batch 目录。注入变量写入该 Case 的 START 快照，允许覆盖同名 START 默认值，节点可直接使用 `context["key"]` 读取。
+- 结果校验由可选的多个校验点组成。每个校验点只保存 `result_path / operator / expected_value / type`：result_path 必须以 `context.` 开头，并从该 Case 最终 Context 读取，例如 `context.final_answer.status`；expected_value 为用户填写的文本，按 type 严格转换。所有校验点使用 AND 语义，任一校验点为 FAIL 或 ERROR 时，该 Case 状态为 FAILED，同时保留原始 Workflow execution_status 用于追溯。
+- `case_id` 由 Excel 原始行号生成，只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context。业务字段是否注入由变量注入配置决定。
 - Batch 状态为 `QUEUED / RUNNING / SUCCESS / COMPLETED_WITH_ERRORS / INTERRUPTED`；Case 状态为 `QUEUED / RUNNING / SUCCESS / FAILED / INTERRUPTED`。
 - Case 失败不阻断同 Batch 的其他 Case。Batch 全部成功时为 SUCCESS；存在失败且未被取消时为 COMPLETED_WITH_ERRORS。
 - 取消后停止新派发、全局中断活动 Workflow，未启动 Case 转为 INTERRUPTED。恢复默认只继续 QUEUED/INTERRUPTED Case；启用 `retry_failed` 后额外重跑 FAILED，SUCCESS 永不重复执行。

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/execution.css" />
     <link rel="stylesheet" href="/model-providers.css" />
     <link rel="stylesheet" href="/assets/workflow-canvas.css" />
+    <link rel="stylesheet" href="/assets/test-sets.css?v=a6686aaf4593" />
 </head>
 <body>
     <div class="app-layout">
@@ -15,11 +16,10 @@
         <nav class="sidebar">
             <div class="sidebar-brand">Agent Bench</div>
             <ul class="sidebar-nav">
-                <li class="sidebar-item active" data-view="sets">📋 测试集管理</li>
-                <li class="sidebar-item" data-view="models">◉ 模型管理</li>
-                <li class="sidebar-item" data-view="workflows">◇ Workflow 管理</li>
-                <li class="sidebar-item" data-view="batch-runs">▶ 运行调度</li>
-                <li class="sidebar-item" data-view="faq">❓ FAQ</li>
+                <li class="sidebar-item active" data-view="sets"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/></svg></span><span>测试集管理</span></li>
+                <li class="sidebar-item" data-view="models"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0M4 4h3M17 4h3"/></svg></span><span>供应商管理</span></li>
+                <li class="sidebar-item" data-view="workflows"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8M7 8l4 8M17 8l-4 8"/></svg></span><span>工作流管理</span></li>
+                <li class="sidebar-item" data-view="batch-runs"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m10 8 6 4-6 4V8Z"/></svg></span><span>运行调度</span></li>
             </ul>
             <div class="sidebar-footer">
                 <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到黑夜模式" aria-pressed="false" title="切换到黑夜模式">
@@ -35,57 +35,26 @@
         </main>
     </div>
 
-    <!-- 隐藏的上传 input -->
-    <input type="file" id="file-input" accept=".xlsx,.xlsm" hidden />
-
-    <!-- 导入测试集弹窗 -->
-    <div id="import-overlay" class="overlay hidden">
-        <div class="modal modal-wide">
-            <div class="modal-header">导入测试集</div>
-            <div class="modal-body">
-                <div class="form-row">
-                    <label class="form-label" for="import-file-input">导入框</label>
-                    <label class="btn btn-sm import-picker">
-                        <input type="file" id="import-file-input" accept=".xlsx,.xlsm" multiple hidden />
-                        选择测试集
-                    </label>
-                    <div id="import-file-list" class="import-file-list">
-                        <div class="import-empty">尚未选择测试集</div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <label class="form-label" for="import-desc-input">说明</label>
-                    <textarea id="import-desc-input" class="input import-desc-input" placeholder="填写本批测试集的统一说明..."></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="btn-import-cancel" class="btn btn-secondary">取消</button>
-                <button id="btn-import-save" class="btn btn-primary">确定</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 删除确认弹窗 -->
-    <div id="delete-overlay" class="overlay hidden">
-        <div class="modal modal-sm">
-            <div class="modal-header">确认删除</div>
-            <div class="modal-body">
-                <p>确定要删除选中的 <strong id="delete-count">0</strong> 个测试集吗？</p>
-                <p class="info-text" style="margin-top:8px">此操作不可恢复。</p>
-            </div>
-            <div class="modal-footer">
-                <button id="btn-delete-cancel" class="btn btn-secondary">取消</button>
-                <button id="btn-delete-confirm" class="btn btn-danger">确定删除</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Toast -->
     <div id="toast" class="toast hidden"></div>
 
+    <div hidden aria-hidden="true">
+        <input id="import-file-input" type="file" />
+        <div id="import-file-list"></div>
+        <textarea id="import-desc-input"></textarea>
+        <button id="btn-import-save"></button>
+        <button id="btn-import-cancel"></button>
+        <div id="import-overlay"></div>
+        <button id="btn-delete-confirm"></button>
+        <button id="btn-delete-cancel"></button>
+        <div id="delete-overlay"></div>
+        <strong id="delete-count"></strong>
+    </div>
+
     <script src="/model-providers.js"></script>
     <script src="/app.js"></script>
+    <script src="/assets/test-sets.js?v=da20f55373b2"></script>
     <script src="/assets/workflow-canvas.js?v=65af643b2298"></script>
-    <script src="/execution.js?v=dae6995a00e1"></script>
+    <script src="/execution.js?v=49faae00e0e9"></script>
 </body>
 </html>
