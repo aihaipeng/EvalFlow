@@ -1033,7 +1033,7 @@ function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
                 <footer>
                     <button type="button" className="wf-node-test-add" onClick={addRow}><Plus size={14} />添加变量</button>
                     <span />
-                    <button type="button" onClick={onCancel}>取消</button>
+                    <button type="button" onClick={onCancel}><X size={14} />取消</button>
                     <button type="button" className="is-primary" onClick={onSubmit}><Play size={14} />运行</button>
                 </footer>
             </section>
@@ -1752,8 +1752,8 @@ function Inspector({
                                             <textarea aria-label="cURL 命令" value={curlText} onChange={(event) => {setCurlText(event.target.value); setCurlError('');}} spellCheck="false" placeholder="curl https://api.example.com" />
                                             <div className="wf-curl-import-actions">
                                                 {curlError && <span role="alert">{curlError}</span>}
-                                                <button type="button" onClick={() => setCurlPanelOpen(false)}>取消</button>
-                                                <button type="button" className="is-primary" onClick={applyCurlImport}>应用</button>
+                                                <button type="button" onClick={() => setCurlPanelOpen(false)}><X size={14} />取消</button>
+                                                <button type="button" className="is-primary" onClick={applyCurlImport}><Check size={14} />应用</button>
                                             </div>
                                         </div>
                                     )}

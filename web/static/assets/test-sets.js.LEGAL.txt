@@ -52,6 +52,34 @@ numeral/numeral.js:
    * http://adamwdraper.github.com/Numeral-js/
    */
 
+lucide-react/dist/esm/shared/src/utils.js:
+lucide-react/dist/esm/defaultAttributes.js:
+lucide-react/dist/esm/Icon.js:
+lucide-react/dist/esm/createLucideIcon.js:
+lucide-react/dist/esm/icons/arrow-left.js:
+lucide-react/dist/esm/icons/chevron-left.js:
+lucide-react/dist/esm/icons/chevron-right.js:
+lucide-react/dist/esm/icons/circle-check.js:
+lucide-react/dist/esm/icons/eraser.js:
+lucide-react/dist/esm/icons/eye.js:
+lucide-react/dist/esm/icons/file-up.js:
+lucide-react/dist/esm/icons/info.js:
+lucide-react/dist/esm/icons/layout-grid.js:
+lucide-react/dist/esm/icons/plus.js:
+lucide-react/dist/esm/icons/refresh-cw.js:
+lucide-react/dist/esm/icons/save.js:
+lucide-react/dist/esm/icons/search.js:
+lucide-react/dist/esm/icons/settings-2.js:
+lucide-react/dist/esm/icons/trash-2.js:
+lucide-react/dist/esm/icons/x.js:
+lucide-react/dist/esm/lucide-react.js:
+  /**
+   * @license lucide-react v0.468.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
 @fortune-sheet/react/dist/index.esm.js:
   /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */
 

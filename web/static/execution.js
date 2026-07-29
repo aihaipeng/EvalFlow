@@ -34,8 +34,8 @@ function ensureExecutionModal() {
         '<div class="modal-header" id="execution-modal-title"></div>' +
         '<div class="modal-body" id="execution-modal-body"></div>' +
         '<div class="modal-footer">' +
-            '<button class="btn btn-secondary" id="execution-modal-cancel" type="button">取消</button>' +
-            '<button class="btn btn-primary" id="execution-modal-save" type="button">保存</button>' +
+            '<button class="btn btn-secondary" id="execution-modal-cancel" type="button">' + icon('close') + '取消</button>' +
+            '<button class="btn btn-primary" id="execution-modal-save" type="button">' + icon('save') + '保存</button>' +
         '</div>' +
     '</div>';
     document.body.appendChild(overlay);
@@ -57,7 +57,8 @@ function openExecutionModal(title, bodyHtml, onSave, saveLabel) {
     overlay.querySelector('#execution-modal-body').innerHTML = bodyHtml;
     var save = overlay.querySelector('#execution-modal-save');
     overlay.querySelector('#execution-modal-cancel').style.display = '';
-    save.textContent = saveLabel || '保存';
+    var resolvedSaveLabel = saveLabel || '保存';
+    save.innerHTML = icon(resolvedSaveLabel.includes('创建') ? 'add' : 'save') + esc(resolvedSaveLabel);
     save.disabled = false;
     save.onclick = async function () {
         save.disabled = true;
@@ -529,13 +530,13 @@ function renderBatchTable() {
     }
     body.innerHTML = pagination.items.map(function (batch) {
         var action = batch.status === 'QUEUED'
-            ? '<button class="btn btn-sm btn-primary" data-batch-start="' + batch.id + '">启动</button>'
+            ? '<button class="btn btn-sm btn-primary" data-batch-start="' + batch.id + '">' + icon('play') + '启动</button>'
             : batch.status === 'RUNNING'
-                ? '<button class="btn btn-sm btn-danger" data-batch-cancel="' + batch.id + '">取消</button>'
+                ? '<button class="btn btn-sm btn-danger" data-batch-cancel="' + batch.id + '">' + icon('stop') + '取消</button>'
                 : batch.status === 'INTERRUPTED'
-                    ? '<button class="btn btn-sm" data-batch-resume="' + batch.id + '">恢复</button>'
+                    ? '<button class="btn btn-sm" data-batch-resume="' + batch.id + '">' + icon('play') + '恢复</button>'
                     : batch.status === 'COMPLETED_WITH_ERRORS'
-                        ? '<button class="btn btn-sm" data-batch-retry="' + batch.id + '">重试失败</button>' : '';
+                        ? '<button class="btn btn-sm" data-batch-retry="' + batch.id + '">' + icon('retry') + '重试失败</button>' : '';
         var edit = '<button class="btn-icon" data-batch-edit="' + batch.id + '" title="编辑并创建新 Run" aria-label="编辑并创建新 Run">' + icon('edit') + '</button>';
         var remove = batch.status === 'RUNNING' ? '' : '<button class="btn-icon" data-batch-delete="' + batch.id + '" title="删除 Run" aria-label="删除 Run">' + icon('trash') + '</button>';
         return '<tr>' +

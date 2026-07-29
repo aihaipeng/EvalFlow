@@ -338,3 +338,28 @@
     .ts-page { min-width: 0; }
 }
 /* impeccable:test-set-polish-end */
+
+
+/* impeccable:test-set-icons-start */
+.ts-btn {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+}
+.ts-btn .ui-icon,.ts-search .ui-icon,.ts-field-settings-header .ui-icon{width:16px;height:16px}
+.ts-search>.ui-icon{flex:0 0 auto;color:var(--ts-muted)}
+.ts-icon-button{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;padding:0!important;border:0;border-radius:8px;background:transparent;color:var(--ts-primary);cursor:pointer}
+.ts-icon-button:hover{background:var(--ts-primary-soft)}
+.ts-icon-button.danger,.ts-delete-case.ts-icon-button{color:#dc3545}
+.ts-icon-button.danger:hover,.ts-delete-case.ts-icon-button:hover{background:#fff1f2}
+.ts-modal-close{color:var(--ts-muted)}
+.ts-clear-button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:#dc3545;cursor:pointer}
+.ts-tab-remove{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--ts-muted)}
+.ts-tab-remove:hover{background:var(--ts-primary-soft);color:var(--ts-primary)}
+.ts-selection-empty b .ui-icon{width:36px;height:36px}
+.ts-tip b .ui-icon{width:13px;height:13px}
+.ts-pagination button{display:inline-flex;align-items:center;justify-content:center}
+.ts-pagination button .ui-icon{width:17px;height:17px}
+:root[data-theme="dark"] .ts-icon-button.danger:hover,:root[data-theme="dark"] .ts-delete-case.ts-icon-button:hover{background:#3b1f28}
+/* impeccable:test-set-icons-end */

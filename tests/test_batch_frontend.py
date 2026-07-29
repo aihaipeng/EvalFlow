@@ -78,7 +78,7 @@ def test_management_navigation_labels_icons_pagination_and_alignment_are_consist
         assert f"<span>{label}</span>" in html
     assert html.count('class="sidebar-icon"') == 4
     assert "📋" not in html and "◉" not in html and "◇" not in html and "▶" not in html
-    assert ".sidebar-icon svg" in global_styles
+    assert ".sidebar-icon .ui-icon" in global_styles
     assert "stroke-width: 1.8" in global_styles
     assert "var GLOBAL_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];" in app_js
     assert 'id="workflow-pagination" class="global-list-footer"' in javascript

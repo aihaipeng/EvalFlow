@@ -510,3 +510,16 @@
 }
 
 /* impeccable:provider-polish-end */
+
+
+/* impeccable:provider-icons-start */
+.model-provider-key-wrap .input{padding-right:46px}
+#model-provider-key-toggle{width:36px;display:inline-flex;align-items:center;justify-content:center}
+#model-provider-key-toggle .ui-icon{width:17px;height:17px}
+.model-provider-selected-row button .ui-icon{width:16px;height:16px}
+.model-provider-remove-button .ui-icon{width:16px;height:16px}
+.model-provider-json-beautify{gap:6px}
+.model-provider-json-beautify .ui-icon{width:14px;height:14px}
+.model-provider-actions .btn.is-busy .ui-icon,.model-provider-test-button.is-busy .ui-icon{animation:ui-icon-spin .8s linear infinite}
+@keyframes ui-icon-spin{to{transform:rotate(360deg)}}
+/* impeccable:provider-icons-end */

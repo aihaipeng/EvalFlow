@@ -77,18 +77,18 @@
     gap: 5px;
 }
 
-#workflows-toolbar .btn-primary:not(:has(.icon-img)) {
+#workflows-toolbar .btn-primary:not(:has(.ui-icon)) {
     border-color: #0f766e;
     background: #0f766e;
     color: #fff;
 }
 
-#workflows-toolbar .btn-primary:not(:has(.icon-img)):hover {
+#workflows-toolbar .btn-primary:not(:has(.ui-icon)):hover {
     border-color: #0d9488;
     background: #0d9488;
 }
 
-#btn-workflow-refresh:not(:has(.icon-img)) {
+#btn-workflow-refresh:not(:has(.ui-icon)) {
     border-color: #bfdbfe;
     background: #eff6ff;
     color: var(--color-accent);

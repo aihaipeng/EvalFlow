@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/execution.css" />
     <link rel="stylesheet" href="/model-providers.css" />
     <link rel="stylesheet" href="/assets/workflow-canvas.css" />
-    <link rel="stylesheet" href="/assets/test-sets.css?v=a6686aaf4593" />
+    <link rel="stylesheet" href="/assets/test-sets.css?v=0bb45cbb7bad" />
 </head>
 <body>
     <div class="app-layout">
@@ -16,14 +16,14 @@
         <nav class="sidebar">
             <div class="sidebar-brand">Agent Bench</div>
             <ul class="sidebar-nav">
-                <li class="sidebar-item active" data-view="sets"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/></svg></span><span>测试集管理</span></li>
-                <li class="sidebar-item" data-view="models"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0M4 4h3M17 4h3"/></svg></span><span>供应商管理</span></li>
-                <li class="sidebar-item" data-view="workflows"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8M7 8l4 8M17 8l-4 8"/></svg></span><span>工作流管理</span></li>
-                <li class="sidebar-item" data-view="batch-runs"><span class="sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m10 8 6 4-6 4V8Z"/></svg></span><span>运行调度</span></li>
+                <li class="sidebar-item active" data-view="sets"><span class="sidebar-icon" data-icon="database" aria-hidden="true"></span><span>测试集管理</span></li>
+                <li class="sidebar-item" data-view="models"><span class="sidebar-icon" data-icon="providers" aria-hidden="true"></span><span>供应商管理</span></li>
+                <li class="sidebar-item" data-view="workflows"><span class="sidebar-icon" data-icon="workflow" aria-hidden="true"></span><span>工作流管理</span></li>
+                <li class="sidebar-item" data-view="batch-runs"><span class="sidebar-icon" data-icon="runs" aria-hidden="true"></span><span>运行调度</span></li>
             </ul>
             <div class="sidebar-footer">
                 <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到黑夜模式" aria-pressed="false" title="切换到黑夜模式">
-                    <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+                    <span class="theme-toggle-icon" data-icon="moon" aria-hidden="true"></span>
                     <span class="theme-toggle-label">黑夜模式</span>
                 </button>
             </div>
@@ -51,10 +51,11 @@
         <strong id="delete-count"></strong>
     </div>
 
+    <script src="/assets/icons.js"></script>
     <script src="/model-providers.js"></script>
     <script src="/app.js"></script>
-    <script src="/assets/test-sets.js?v=da20f55373b2"></script>
-    <script src="/assets/workflow-canvas.js?v=65af643b2298"></script>
-    <script src="/execution.js?v=49faae00e0e9"></script>
+    <script src="/assets/test-sets.js?v=fa86667d92ca"></script>
+    <script src="/assets/workflow-canvas.js?v=98f63b3d01eb"></script>
+    <script src="/execution.js?v=cd0ed1e136c4"></script>
 </body>
 </html>

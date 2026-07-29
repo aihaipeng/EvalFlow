@@ -145,12 +145,12 @@ function modelProviderEditorMarkup(provider) {
         '<header class="model-provider-editor-header">' +
             '<button class="btn btn-sm" id="model-provider-back" type="button">' + icon('back') + '返回</button>' +
             '<div class="model-provider-editor-heading"><span>MODEL PROVIDER</span><h1 id="model-provider-editor-title">' + (isEditing ? '编辑模型供应商' : '新增模型供应商') + '</h1></div>' +
-            '<button id="model-provider-save" type="button" class="btn btn-primary model-provider-header-save">保存</button>' +
+            '<button id="model-provider-save" type="button" class="btn btn-primary model-provider-header-save">' + icon('save') + '保存</button>' +
         '</header>' +
         '<form id="model-provider-form" class="model-provider-form">' +
             '<label class="model-provider-field"><span>供应商名称 <small>选填</small></span><input class="input" id="model-provider-name" maxlength="120" placeholder="例如：企业模型网关" value="' + escAttr(provider && provider.name || '') + '" /></label>' +
             '<label class="model-provider-field"><span>官网链接 <small>选填</small></span><input class="input" id="model-provider-website" type="url" maxlength="2048" placeholder="https://example.com" value="' + escAttr(provider && provider.website_url || '') + '" /></label>' +
-            '<label class="model-provider-field"><span>API Key <b>*</b></span><span class="model-provider-key-wrap"><input class="input" id="model-provider-api-key" type="password" maxlength="4096" autocomplete="off" required placeholder="输入 API Key" value="' + escAttr(provider && provider.api_key || '') + '" /><button id="model-provider-key-toggle" type="button" aria-label="显示 API Key" title="显示 API Key">显示</button></span></label>' +
+            '<label class="model-provider-field"><span>API Key <b>*</b></span><span class="model-provider-key-wrap"><input class="input" id="model-provider-api-key" type="password" maxlength="4096" autocomplete="off" required placeholder="输入 API Key" value="' + escAttr(provider && provider.api_key || '') + '" /><button id="model-provider-key-toggle" class="model-provider-key-toggle" type="button" aria-label="显示 API Key" title="显示 API Key">' + icon('eye') + '</button></span></label>' +
             '<label class="model-provider-field"><span>BASE_URL <b>*</b></span><input class="input" id="model-provider-base-url" type="url" maxlength="2048" required placeholder="https://api.example.com" value="' + escAttr(provider && provider.base_url || '') + '" /></label>' +
             '<label class="model-provider-field"><span>协议 <b>*</b></span><select class="input" id="model-provider-protocol"><option value="OPENAI_COMPATIBLE"' + ((provider && provider.protocol) === 'ANTHROPIC' ? '' : ' selected') + '>OpenAI</option><option value="ANTHROPIC"' + ((provider && provider.protocol) === 'ANTHROPIC' ? ' selected' : '') + '>Anthropic</option></select></label>' +
             '<div class="model-provider-field model-provider-proxy-setting"><span>代理模式 <b>*</b><details class="model-provider-proxy-help"><summary aria-label="查看代理模式配置帮助" title="代理模式配置帮助">?</summary>' +
@@ -170,8 +170,8 @@ function modelProviderEditorMarkup(provider) {
             '</section>' +
         '</form>' +
         '<div class="model-provider-actions">' +
-            '<button id="model-provider-latency" type="button" class="btn" data-default-label="测速">测速</button>' +
-            '<button id="model-provider-fetch" type="button" class="btn btn-primary" data-default-label="获取模型">获取模型</button>' +
+            '<button id="model-provider-latency" type="button" class="btn" data-default-label="测速" data-button-icon="gauge">' + icon('gauge') + '测速</button>' +
+            '<button id="model-provider-fetch" type="button" class="btn btn-primary" data-default-label="获取模型" data-button-icon="refresh">' + icon('refresh') + '获取模型</button>' +
             '<button id="model-provider-add-model" type="button" class="btn"' + (isEditing ? '' : ' disabled') + '>' + icon('add') + '添加模型</button>' +
         '</div>' +
         '<section class="model-provider-status" aria-label="连接状态">' +
@@ -184,7 +184,7 @@ function modelProviderEditorMarkup(provider) {
             '<label><span>已发现模型</span><select class="input" id="model-provider-discovered" disabled><option value="">暂无可选模型</option></select></label>' +
             '<span class="model-provider-chooser-or">或</span>' +
             '<label><span>手工模型名称</span><input class="input" id="model-provider-manual" maxlength="200" placeholder="例如：deepseek-chat" /></label>' +
-            '<button id="model-provider-confirm-model" type="button" class="btn btn-primary">确认添加</button>' +
+            '<button id="model-provider-confirm-model" type="button" class="btn btn-primary">' + icon('add') + '确认添加</button>' +
         '</section>' +
         '<section class="model-provider-selected" aria-labelledby="model-provider-selected-title">' +
             '<header><h2 id="model-provider-selected-title">已添加模型</h2><span id="model-provider-selected-count">0 个</span></header>' +
@@ -253,7 +253,7 @@ function toggleModelProviderKey() {
     var button = document.getElementById('model-provider-key-toggle');
     var visible = input.type === 'text';
     input.type = visible ? 'password' : 'text';
-    button.textContent = visible ? '显示' : '隐藏';
+    button.innerHTML = icon(visible ? 'eye' : 'eye-off');
     button.setAttribute('aria-label', visible ? '显示 API Key' : '隐藏 API Key');
     button.title = button.getAttribute('aria-label');
 }
@@ -275,7 +275,8 @@ function readModelProviderConnection() {
 
 function setModelProviderButtonBusy(button, busy, busyLabel) {
     button.disabled = busy;
-    button.textContent = busy ? busyLabel : button.dataset.defaultLabel;
+    var label = busy ? busyLabel : button.dataset.defaultLabel;
+    button.innerHTML = icon(busy ? 'refresh' : button.dataset.buttonIcon) + esc(label);
     button.classList.toggle('is-busy', busy);
 }
 
@@ -384,13 +385,13 @@ function renderSelectedProviderModels() {
         if (config.context_window) metadata.push('上下文 ' + config.context_window);
         if (config.max_output_tokens) metadata.push('最大输出 ' + config.max_output_tokens);
         var testState = test ? (test.available ? ' is-success' : ' is-error') : '';
-        var testIcon = test ? (test.available ? '✓' : '!') : '▶';
+        var testIcon = icon('play');
         var testTitle = test ? (test.available ? '模型可用' : '模型不可用') : '测试 ' + model;
         return '<div class="model-provider-selected-row"><span class="model-provider-model-mark">M</span><strong>' + esc(model) + '</strong>' +
             '<span>' + esc(metadata.join(' · ') || modelProviderProtocolLabel(modelProviderState.protocol)) + '</span>' +
             '<button class="model-provider-test-button' + testState + '" type="button" data-test-provider-model="' + escAttr(model) + '" title="' + escAttr(testTitle) + '" aria-label="测试 ' + escAttr(model) + '">' + testIcon + '</button>' +
-            '<button class="model-provider-config-button" type="button" data-configure-provider-model="' + escAttr(model) + '" title="配置 ' + escAttr(model) + '" aria-label="配置 ' + escAttr(model) + '">⚙</button>' +
-            '<button class="model-provider-remove-button" type="button" data-remove-provider-model="' + escAttr(model) + '" title="移除 ' + escAttr(model) + '" aria-label="移除 ' + escAttr(model) + '">×</button></div>';
+            '<button class="model-provider-config-button" type="button" data-configure-provider-model="' + escAttr(model) + '" title="配置 ' + escAttr(model) + '" aria-label="配置 ' + escAttr(model) + '">' + icon('settings') + '</button>' +
+            '<button class="model-provider-remove-button" type="button" data-remove-provider-model="' + escAttr(model) + '" title="移除 ' + escAttr(model) + '" aria-label="移除 ' + escAttr(model) + '">' + icon('trash') + '</button></div>';
     }).join('');
     list.querySelectorAll('[data-test-provider-model]').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -419,7 +420,7 @@ async function testProviderModel(model, button) {
     var config = modelProviderState.modelConfigs[model] || {};
     button.disabled = true;
     button.classList.add('is-busy');
-    button.textContent = '…';
+    button.innerHTML = icon('refresh');
     try {
         var result = await API.post('/api/model-providers/test-model', {
             api_key: connection.api_key,
@@ -461,9 +462,9 @@ function openProviderModelConfig(model) {
         '<div class="modal-body model-provider-config-body">' +
             '<label class="model-provider-field"><span>上下文窗口 <small>仅元数据</small></span><input class="input" id="model-config-context-window" type="number" min="1" step="1" placeholder="例如 128000" value="' + escAttr(current.context_window || '') + '" /></label>' +
             '<label class="model-provider-field"><span>最大输出 Token <small>仅元数据</small></span><input class="input" id="model-config-max-output" type="number" min="1" step="1" placeholder="例如 8192" value="' + escAttr(current.max_output_tokens || '') + '" /></label>' +
-            '<div class="model-provider-field model-provider-config-json"><div class="model-provider-config-json-header"><span>默认 Body JSON <small>运行时可被节点高级参数覆盖</small></span><button class="model-provider-json-beautify" id="model-config-default-body-beautify" type="button" title="格式化默认 Body JSON" aria-label="格式化默认 Body JSON">Beautify</button></div><textarea class="input" id="model-config-default-body" aria-label="默认 Body JSON" spellcheck="false" placeholder="' + escAttr(MODEL_DEFAULT_BODY_REFERENCE) + '">' + esc(defaultBodyText) + '</textarea></div>' +
+            '<div class="model-provider-field model-provider-config-json"><div class="model-provider-config-json-header"><span>默认 Body JSON <small>运行时可被节点高级参数覆盖</small></span><button class="model-provider-json-beautify" id="model-config-default-body-beautify" type="button" title="格式化默认 Body JSON" aria-label="格式化默认 Body JSON">' + icon('braces') + 'Beautify</button></div><textarea class="input" id="model-config-default-body" aria-label="默认 Body JSON" spellcheck="false" placeholder="' + escAttr(MODEL_DEFAULT_BODY_REFERENCE) + '">' + esc(defaultBodyText) + '</textarea></div>' +
         '</div>' +
-        '<div class="modal-footer"><button class="btn btn-secondary" id="model-config-cancel" type="button">取消</button><button class="btn btn-primary" id="model-config-save" type="button">保存</button></div>' +
+        '<div class="modal-footer"><button class="btn btn-secondary" id="model-config-cancel" type="button">' + icon('close') + '取消</button><button class="btn btn-primary" id="model-config-save" type="button">' + icon('save') + '保存</button></div>' +
     '</div>';
     document.body.appendChild(overlay);
     document.getElementById('model-config-default-body-beautify').addEventListener('click', beautifyProviderDefaultBody);

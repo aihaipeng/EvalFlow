@@ -49,12 +49,12 @@ def test_image_icon_buttons_use_transparent_theme_aware_interaction_states():
     assert "--icon-button-text: #ffffff" in style_css
     assert "--icon-button-hover-bg: rgba(15, 23, 42, 0.08)" in style_css
     assert "--icon-button-hover-bg: rgba(255, 255, 255, 0.10)" in style_css
-    assert ".btn:has(.icon-img),\n.btn-icon:has(.icon-img) {" in style_css
+    assert ".btn:has(.ui-icon),\n.btn-icon:has(.ui-icon) {" in style_css
     assert "background: transparent;\n    color: var(--icon-button-text);" in style_css
     assert "background: var(--icon-button-hover-bg);" in style_css
     assert "transform: translateY(-1px);" in style_css
     assert "background: var(--icon-button-active-bg);" in style_css
     assert "transform: scale(0.96);" in style_css
-    assert ".btn:has(.icon-img):disabled:hover" in style_css
-    assert ".btn-icon:has(.icon-img):disabled:hover" in style_css
+    assert ".btn:has(.ui-icon):disabled:hover" in style_css
+    assert ".btn-icon:has(.ui-icon):disabled:hover" in style_css
     assert "@media (hover: none)" not in style_css

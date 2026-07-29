@@ -69,7 +69,7 @@ def test_model_provider_frontend_implements_management_and_connection_flow():
     assert 'data-test-provider-model=' in source
     assert "API.post('/api/model-providers/test-model'" in source
     assert "modelProviderState.modelTests[model] = result" in source
-    assert "test.available ? '✓' : '!'" in source
+    assert "var testIcon = icon('play')" in source
     assert "model-provider-test-overlay" not in source
     assert 'id="model-config-context-window"' in source
     assert 'id="model-config-max-output"' in source
