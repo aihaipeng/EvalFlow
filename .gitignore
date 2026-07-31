@@ -1,5 +1,4 @@
-# Local configuration and credentials
-config.yaml
+# Local credentials
 .env
 .env.*
 !.env.example
@@ -9,8 +8,6 @@ config.yaml
 *.pfx
 
 # Local application data
-inputs/*
-!inputs/.gitkeep
 run_storage/
 outputs/
 logs/
@@ -50,7 +47,7 @@ dist/
 .agents/
 .idea/
 .vscode/
-.proto-shots/ud-*/
+.proto-shots/
 .codex_server_*.log
 .codex_server_*.err
 .codex_server_*.out.log

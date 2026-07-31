@@ -32,10 +32,12 @@ class BatchVariable(_BatchApiModel):
 
 class BatchCreateRequest(_BatchApiModel):
     name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=4000)
     test_set_id: str = Field(min_length=1)
     workflow_id: str = Field(min_length=1)
     variables: list[BatchVariable] = Field(min_length=1, max_length=100)
     case_concurrency: int = Field(default=1, ge=1, le=32)
+    call_order: Literal["SEQUENTIAL", "REVERSE", "RANDOM"] = "SEQUENTIAL"
     evaluation_rules: list[EvaluationRule] = Field(default_factory=list, max_length=50)
 
 
@@ -93,10 +95,12 @@ def create_batch(
     try:
         batch = services.batch_inputs.create(
             name=body.name,
+            description=body.description,
             test_set_id=body.test_set_id,
             workflow_id=body.workflow_id,
             variables=[variable.model_dump() for variable in body.variables],
             case_concurrency=body.case_concurrency,
+            call_order=body.call_order,
             evaluation_rules=[rule.model_dump(mode="json") for rule in body.evaluation_rules],
         )
     except (BatchExecutionError, ValueError) as exc:

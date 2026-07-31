@@ -119,7 +119,17 @@
 }
 
 .batch-table {
-    min-width: 1180px;
+    min-width: 1320px;
+}
+
+.batch-description {
+    display: block;
+    max-width: 220px;
+    margin: 0 auto;
+    overflow: hidden;
+    color: var(--text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .batch-row-actions {
@@ -156,95 +166,136 @@
 .batch-create-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 16px;
+    gap: 14px 24px;
 }
 
 .batch-create-grid label {
     display: grid;
-    gap: 5px;
+    grid-template-columns: 72px minmax(220px, 360px);
+    align-items: center;
+    justify-content: start;
+    gap: 10px;
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 650;
 }
 
-.batch-dataset-meta {
-    min-height: 24px;
-    display: flex;
-    align-items: center;
-    margin-top: 10px;
-    padding: 0;
-    color: var(--text-subtle);
-    font-size: 11px;
+.batch-create-grid label > span {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.batch-config-card {
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-muted);
 }
 
 .batch-variable-injection,
 .batch-evaluation {
-    margin-top: 16px;
-    border-top: 1px solid var(--border);
+    margin-top: 22px;
 }
 
 .batch-variable-injection > header,
 .batch-evaluation > header {
     display: flex;
-    min-height: 58px;
+    min-height: 52px;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 9px 0;
+    gap: 16px;
+    padding: 0 0 10px;
 }
 
-.batch-variable-injection > header > div,
-.batch-evaluation > header > div { display: grid; gap: 2px; }
-.batch-variable-injection > header strong,
-.batch-evaluation > header strong { color: var(--text-main); font-size: 13px; }
-.batch-variable-injection > header span,
-.batch-evaluation > header span { color: var(--text-subtle); font-size: 11px; }
+.batch-section-heading {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.batch-section-heading strong {
+    flex: 0 0 auto;
+    color: var(--text-main);
+    font-size: 16px;
+    font-weight: 750;
+}
+
+.batch-section-heading span {
+    overflow: hidden;
+    color: var(--text-subtle);
+    font-size: 11px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .batch-variable-table,
-.batch-evaluation-table { border-top: 1px solid var(--border); }
+.batch-evaluation-table {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+}
+
 .batch-variable-head,
 .batch-variable-row,
 .batch-evaluation-head,
 .batch-evaluation-rule {
     display: grid;
-    align-items: start;
+    min-width: 940px;
+    align-items: center;
     gap: 10px;
 }
 
 .batch-variable-head,
 .batch-evaluation-head {
-    min-height: 40px;
-    align-items: center;
-    padding: 0 8px;
+    min-height: 42px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
     background: var(--surface-muted);
-    color: var(--text-subtle);
-    font-size: 10px;
+    color: var(--text-secondary);
+    font-size: 11px;
     font-weight: 700;
+    text-align: center;
 }
 
-.batch-variable-row { min-height: 58px; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+.batch-variable-row,
+.batch-evaluation-rule {
+    min-height: 56px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.batch-variable-row:last-child,
+.batch-evaluation-rule:last-child { border-bottom: 0; }
+.batch-variable-row:hover,
+.batch-evaluation-rule:hover { background: var(--surface-muted); }
 .batch-variable-head,
 .batch-variable-row { grid-template-columns: 40px 130px minmax(150px, .8fr) minmax(240px, 1.35fr) 126px 34px; }
 .batch-variable-row label,
-.batch-evaluation-rule label { display: grid; gap: 4px; min-width: 0; }
+.batch-evaluation-rule label { display: block; min-width: 0; }
 .batch-variable-row .input,
-.batch-evaluation-rule .input { width: 100%; min-width: 0; min-height: 30px; }
+.batch-evaluation-rule .input { width: 100%; min-width: 0; min-height: 34px; }
 .batch-variable-row textarea.input { min-height: 56px; padding-top: 6px; resize: vertical; }
-.batch-variable-index { align-self: center; color: var(--text-subtle); font-size: 11px; text-align: center; }
-.batch-variable-row .btn-icon { align-self: start; }
-.batch-variable-empty { padding: 18px 8px; color: var(--text-subtle); font-size: 11px; }
-.batch-mobile-label { display: none; color: var(--text-subtle); font-size: 10px; }
-.batch-evaluation-empty { padding: 18px 8px; color: var(--text-subtle); font-size: 11px; }
+.batch-variable-index,
+.batch-evaluation-index { color: var(--text-subtle); font-size: 11px; text-align: center; }
+.batch-variable-row .btn-icon,
+.batch-evaluation-rule .btn-icon { align-self: center; }
+.batch-variable-empty,
+.batch-evaluation-empty { padding: 20px 12px; color: var(--text-subtle); font-size: 11px; text-align: center; }
+.batch-mobile-label { display: none; margin-bottom: 4px; color: var(--text-subtle); font-size: 10px; }
 .batch-evaluation-head,
 .batch-evaluation-rule { grid-template-columns: 40px minmax(220px, 1.3fr) 120px minmax(180px, 1fr) 118px 34px; }
-.batch-evaluation-rule { min-height: 58px; padding: 9px 8px; border-bottom: 1px solid var(--border); }
-.batch-evaluation-index { align-self: center; color: var(--text-subtle); font-size: 11px; text-align: center; }
-.batch-evaluation-rule .btn-icon { align-self: start; }
 @media (max-width: 900px) {
     .execution-modal.is-batch-config { width: calc(100vw - 16px); }
     .batch-create-grid { grid-template-columns: 1fr; }
+    .batch-create-grid label { grid-template-columns: 72px minmax(0, 360px); }
     .batch-variable-head,
     .batch-evaluation-head { display: none; }
     .batch-variable-row,
-    .batch-evaluation-rule { grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr); gap: 9px; padding: 12px 0; }
+    .batch-evaluation-rule { min-width: 0; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr); gap: 9px; padding: 12px; }
     .batch-variable-index,
     .batch-evaluation-index { grid-row: 1 / 3; }
     .batch-variable-row label:nth-child(4),
@@ -254,6 +305,11 @@
     .batch-variable-row .btn-icon,
     .batch-evaluation-rule .btn-icon { grid-column: 3; justify-self: end; }
     .batch-mobile-label { display: block; }
+}
+
+@media (max-width: 560px) {
+    .batch-create-grid label { grid-template-columns: 64px minmax(0, 1fr); }
+    .batch-section-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
 
 .workflow-error-summary {

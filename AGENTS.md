@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-Agent Bench v2 当前是本机使用的企业 Agent 测试编排工具，用于管理 `inputs/` 目录下的 Excel 测试集、维护测试工具和 Target、配置受限可视化 Workflow，并创建、启动、恢复和追溯 Run。
+Agent Bench v2 当前是本机使用的企业 Agent 测试编排工具。Excel 只在浏览器中作为测试集导入媒介，保存后的测试集、字段和用例以 SQLite 为唯一事实来源；系统同时维护模型供应商、可视化 Workflow，并创建、启动、恢复和追溯 Run。
 
 ## 执行任务的强制流程
 

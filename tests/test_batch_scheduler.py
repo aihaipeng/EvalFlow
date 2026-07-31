@@ -1,3 +1,4 @@
+import random
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -73,7 +74,8 @@ def test_batch_input_injects_test_set_fields_and_freezes_snapshot(tmp_path: Path
     service = BatchInputService(repository, test_sets, store)
 
     batch = service.create(
-        name="退款测试", test_set_id=test_set.id, workflow_id=workflow_id,
+        name="退款测试", description="退款场景回归",
+        test_set_id=test_set.id, workflow_id=workflow_id,
         variables=[
             {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"},
             {"source": "CUSTOM", "key": "body", "value": '{"kind":"case"}', "type": "object"},
@@ -87,6 +89,7 @@ def test_batch_input_injects_test_set_fields_and_freezes_snapshot(tmp_path: Path
     assert case["row_number"] == 1
     assert case["start_inputs"] == {"question": "退款", "body": {"kind": "case"}}
     assert batch["input"]["test_set_id"] == test_set.id
+    assert batch["description"] == "退款场景回归"
     snapshot = BatchExecutionStore._read(store.batch_root(batch["id"]) / "input" / "snapshot.json")
     assert snapshot["cases"][0]["values"]["question"] == "退款"
     assert not list((store.batch_root(batch["id"]) / "input").glob("source.*"))
@@ -176,3 +179,67 @@ def test_scheduler_cancel_stops_new_case_dispatch_and_marks_batch_interrupted(tm
     assert finished["status"] == "INTERRUPTED"
     assert {case["status"] for case in cases} == {"INTERRUPTED"}
     assert sum(len(case["workflow_execution_ids"]) for case in cases) == 1
+
+
+def test_batch_input_freezes_reverse_and_random_call_order(tmp_path: Path):
+    workflow_id, repository, test_sets, _manager, store = _services(tmp_path, "result = 'ok'")
+    test_set = _test_set(
+        test_sets,
+        [("C-1", "a"), ("C-2", "b"), ("C-3", "c"), ("C-4", "d")],
+    )
+    service = BatchInputService(repository, test_sets, store)
+    variables = [
+        {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}
+    ]
+
+    reverse = service.create(
+        name="reverse",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=variables,
+        case_concurrency=2,
+        call_order="REVERSE",
+    )
+    reverse_cases = store.list_cases(reverse["id"])
+    reverse_snapshot = BatchExecutionStore._read(
+        store.batch_root(reverse["id"]) / "input" / "snapshot.json"
+    )
+
+    assert reverse["input"]["call_order"] == {"mode": "REVERSE", "random_seed": None}
+    assert [case["case_id"] for case in reverse_cases] == ["C-4", "C-3", "C-2", "C-1"]
+    assert [case["row_number"] for case in reverse_cases] == [4, 3, 2, 1]
+    assert [case["call_number"] for case in reverse_cases] == [1, 2, 3, 4]
+    assert [case["id"] for case in reverse_snapshot["cases"]] == ["C-4", "C-3", "C-2", "C-1"]
+
+    randomized = service.create(
+        name="random",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=variables,
+        case_concurrency=2,
+        call_order="RANDOM",
+    )
+    random_seed = randomized["input"]["call_order"]["random_seed"]
+    expected_ids = ["C-1", "C-2", "C-3", "C-4"]
+    random.Random(random_seed).shuffle(expected_ids)
+    randomized_cases = store.list_cases(randomized["id"])
+    randomized_snapshot = BatchExecutionStore._read(
+        store.batch_root(randomized["id"]) / "input" / "snapshot.json"
+    )
+
+    assert randomized["input"]["call_order"]["mode"] == "RANDOM"
+    assert isinstance(random_seed, int)
+    assert [case["case_id"] for case in randomized_cases] == expected_ids
+    assert [case["call_number"] for case in randomized_cases] == [1, 2, 3, 4]
+    assert randomized_snapshot["call_order"] == randomized["input"]["call_order"]
+    assert [case["id"] for case in randomized_snapshot["cases"]] == expected_ids
+
+    with pytest.raises(BatchExecutionError, match="调用顺序"):
+        service.create(
+            name="invalid",
+            test_set_id=test_set.id,
+            workflow_id=workflow_id,
+            variables=variables,
+            case_concurrency=2,
+            call_order="SIDEWAYS",
+        )

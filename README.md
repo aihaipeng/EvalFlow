@@ -46,27 +46,27 @@ uv run python run.py
 
 浏览器打开 [http://127.0.0.1:8010](http://127.0.0.1:8010)。停止服务时在 PowerShell 中按 `Ctrl+C`。
 
-首次启动不需要创建配置文件。系统在缺少 `config.yaml` 时使用安全默认值，并在首次上传测试集后自动创建本机配置。
+首次启动不需要创建配置文件。测试集、供应商和 Workflow 数据均由应用初始化并保存在本机 SQLite 中。
 
 ### 数据库初始化
 
-不需要手动创建数据库或执行建表 SQL。系统在首次访问模型或 Workflow 等相关页面/API 时自动完成以下操作：
+不需要手动创建数据库或执行建表 SQL。系统启动时自动完成以下操作：
 
 - 创建 `run_storage/` 本地数据目录；
 - 创建 `run_storage/agent_bench.sqlite3` SQLite 数据库；
-- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的模型、Node、Workflow、节点绑定和 Edge 表及索引。
+- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的测试集、用例、模型、Node、Workflow、节点绑定和 Edge 表及索引。
 
 数据库初始化由 Repository 统一管理，请勿手工创建同名表或使用旧版本 Workflow 表结构。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的模型和 Workflow 列表是正常行为。
 
-如果需要把另一台机器的已有数据迁移过来，应在服务停止后整体备份和迁移 `run_storage/`；测试集还需要同步 `inputs/` 和 `config.yaml`。这些目录和文件可能包含 API Key、请求响应与执行日志，不应提交到 GitHub。
+如果需要把另一台机器的已有数据迁移过来，应在服务停止后整体备份和迁移 `run_storage/`。该目录可能包含测试集、API Key、请求响应与执行日志，不应提交到 GitHub。
 
 ## 首次使用
 
-1. 在“测试集”页面上传 `.xlsx` 或 `.xlsm` 文件。
-2. Excel 可以有表头，也可以从第一行直接保存数据；无表头的旧格式默认把前两列识别为 `case_id / question`。
-3. 在“Workflow 管理”页面创建 START、业务节点和 END。业务节点可以使用 `context["变量名"]` 读取 Run 注入的变量。
-4. 在“运行调度”页面选择测试集、Sheet、首行模式和 Workflow；在“变量注入”中添加 `source / key / value / type`。`source=Excel` 的 value 手填 `col_x` 列路径，其中 `col_1` 是第一列，也可写 `col_4.checks.intent.status` 读取 JSON 单元格的局部字段；`source=自定义` 的 value 填写值或 object/array 的 JSON。
-5. 设置 Case 并发数，创建并手工启动 Run；每个 Case 都使用冻结的 Excel 行和变量配置创建独立 Context。Case 使用 Excel 原始行号作为 Run 内追溯标识，可在详情页查看、取消或恢复。
+1. 在“测试集管理”页面选择一个或多个 `.xlsx` 文件。文件只在当前浏览器中解析，不会上传到服务器。
+2. 从任意 Sheet 累计选择所需网格区域，确认用例后填写测试集名称和说明并保存。字段默认命名为 `col_1...`，可在详情页修改字段、用例或继续从 `.xlsx` 添加用例。
+3. 在“工作流管理”页面创建 START、业务节点和 END。业务节点可以使用 `context["变量名"]` 读取 Run 注入的变量。
+4. 在“运行调度”页面选择已保存的测试集和工作流；变量注入可引用测试集字段（例如 `col_1`）或填写自定义值。
+5. 设置顺序、逆序或随机调用顺序及 Case 并发数，创建并启动 Run。每个 Run 冻结测试集用例、变量和 Workflow，后续修改测试集不会改变已创建 Run。
 
 结果校验的每个校验点只填写四项：`结果路径 / 运算符 / 预期值 / Type`。结果路径必须以 `context.` 开头，例如 `context.final_answer.status`；预期值由用户填写并按 Type 转换。所有校验点都通过时 Case 才通过，任一校验点失败或配置错误都会将该 Case 标记为失败。
 
@@ -104,13 +104,11 @@ uv run pytest tests/test_agent_live_integration.py -m live -q
 
 以下内容只保存在本机，并已被 `.gitignore` 排除：
 
-- `config.yaml`：当前选择的测试集和 Sheet
-- `inputs/`：Excel 测试集及本地元数据
-- `run_storage/`：SQLite、请求响应、日志和运行 Artifact
-- `outputs/`、`logs/`：导出结果和本地日志
+- `run_storage/`：测试集 SQLite、请求响应、日志和运行 Artifact
+- `logs/`：本地服务日志
 - `.env*`、证书私钥、虚拟环境、依赖目录和测试缓存
 
-公开仓库只保留 [config.example.yaml](config.example.yaml) 和 `inputs/.gitkeep` 作为安全模板或空目录占位。不要强制添加被忽略的运行数据。
+用户选择的 Excel 文件不会上传或复制到项目目录；公开仓库不包含测试集或运行数据。
 
 ## 项目结构
 
@@ -121,10 +119,10 @@ package.json / package-lock.json    # Workflow 前端构建依赖与 npm 脚本
 
 web/
 ├─ app.py                           # FastAPI 应用、路由注册和静态站点挂载
-├─ routes_*.py                      # 测试集、配置、模型和 Workflow API
-├─ local_config_service.py          # 本地配置应用服务
+├─ routes_*.py                      # 测试集、模型、Workflow 和 Run API
 ├─ workflow_services.py             # lifespan 管理的 Workflow 应用级资源
-├─ frontend/                        # Workflow Studio React Flow 源码与样式
+├─ frontend/                        # 测试集管理与 Workflow Studio 前端源码
+│  ├─ test-sets.jsx / test-sets.css
 │  ├─ workflow-canvas.jsx
 │  ├─ workflow-canvas.css
 │  └─ workflow-alignment.mjs
@@ -146,31 +144,22 @@ execution/
 ├─ workflow_*_runner.py             # 公共生命周期及 SCRIPT/LLM/HTTP Runner
 ├─ tool_runtime.py / tool_worker.py # 可取消子进程 Runtime 与 Worker
 ├─ workflow_node_tests.py           # 单节点临时测试会话与 SSE
-├─ batch_inputs.py                  # Excel 行到 START 输入映射与冻结快照
+├─ test_sets.py                     # 测试集、字段和用例 SQLite Repository
+├─ batch_inputs.py                  # 数据库用例到 START 输入映射与冻结快照
 ├─ batch_execution_store.py         # Batch/Case 原子 JSON 存储与恢复
 ├─ batch_scheduler.py               # Case 并发、取消和手工恢复
 └─ workflow_values.py               # Context 引用、类型转换与输出提取
 
-storage/
-├─ excel.py                         # Excel 测试集读取
-├─ atomic_files.py                  # 同路径锁和原子文本替换
-├─ local_config.py                  # config.yaml Repository
-└─ excel_set_meta.py                # 测试集元数据 Repository
 scripts/build-workflow.mjs          # Workflow 前端生产构建脚本
 tests/                              # Python 单元/集成测试及 Node 几何测试
 docs/                               # 产品需求与企业编排业务基线
-prototypes/                         # HTTP、LLM 等高保真交互原型，不参与生产运行
-
 WORKFLOW_SPEC.md                    # 当前 Workflow Structural/Execution 契约
 PLAN.md                             # 分阶段实现决策、验收记录与回归结果
-config.example.yaml                 # 可公开提交的本地配置模板
-
-inputs/                             # 本机 Excel 测试集，内容不提交
 run_storage/
-├─ agent_bench.sqlite3              # Structural Model SQLite 数据库，不提交
+├─ agent_bench.sqlite3              # 测试集与 Structural Model SQLite 数据库，不提交
 ├─ workflow_executions/             # Workflow/Node Execution JSON，不提交
 └─ batch_executions/                # Batch/Case/Input Snapshot JSON，不提交
-outputs/ / logs/                    # 本地导出结果与日志，不提交
+logs/                               # 本地服务日志，不提交
 ```
 
 更完整的业务边界和执行语义见 [企业 Agent 测试编排需求基线](docs/enterprise-agent-test-orchestration.md)。

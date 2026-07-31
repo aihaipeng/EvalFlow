@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import random
 import re
+from secrets import randbits
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +22,7 @@ from execution.workflow_values import (
 
 _CONTEXT_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _VARIABLE_TYPES = {"string", "number", "integer", "boolean", "object", "array", "null"}
+_CALL_ORDERS = {"SEQUENTIAL", "REVERSE", "RANDOM"}
 
 
 def _normalize_variables(
@@ -87,19 +90,42 @@ def _start_inputs(
     return strict_json_clone(result)
 
 
-def _test_set_snapshot(record: TestSetRecord) -> dict[str, Any]:
+def _ordered_cases(
+    record: TestSetRecord, call_order: str
+) -> tuple[str, int | None, list[Any]]:
+    normalized_order = str(call_order).upper()
+    if normalized_order not in _CALL_ORDERS:
+        raise BatchExecutionError("调用顺序必须是 SEQUENTIAL、REVERSE 或 RANDOM")
+    cases = list(record.cases)
+    random_seed = None
+    if normalized_order == "REVERSE":
+        cases.reverse()
+    elif normalized_order == "RANDOM":
+        random_seed = randbits(63)
+        random.Random(random_seed).shuffle(cases)
+    return normalized_order, random_seed, cases
+
+
+def _test_set_snapshot(
+    record: TestSetRecord,
+    ordered_cases: list[Any],
+    call_order: str,
+    random_seed: int | None,
+) -> dict[str, Any]:
     return {
         "id": record.id,
         "name": record.name,
         "description": record.description,
         "columns": [column.key for column in record.columns],
+        "call_order": {"mode": call_order, "random_seed": random_seed},
         "cases": [
             {
                 "id": case.id,
                 "position": case.position,
+                "call_number": call_number,
                 "values": strict_json_clone(case.values),
             }
-            for case in record.cases
+            for call_number, case in enumerate(ordered_cases, start=1)
         ],
         "created_at": record.created_at,
         "updated_at": record.updated_at,
@@ -133,6 +159,8 @@ class BatchInputService:
         workflow_id: str,
         variables: list[dict[str, Any]],
         case_concurrency: int,
+        description: str = "",
+        call_order: str = "SEQUENTIAL",
         evaluation_rules: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         test_set = self.preview(test_set_id)
@@ -146,11 +174,14 @@ class BatchInputService:
         columns = tuple(column.key for column in test_set.columns)
         workflow_snapshot = snapshot_record(workflow_record)
         normalized_variables = _normalize_variables(columns, variables)
+        normalized_call_order, random_seed, ordered_cases = _ordered_cases(
+            test_set, call_order
+        )
         batch_id = str(uuid4())
         created_at = utc_execution_time()
         cases = []
         rules = strict_json_clone(evaluation_rules or [])
-        for test_case in test_set.cases:
+        for call_number, test_case in enumerate(ordered_cases, start=1):
             start_inputs = _start_inputs(test_case.values, normalized_variables)
             record_from_snapshot(workflow_snapshot, start_inputs)
             cases.append(
@@ -159,6 +190,7 @@ class BatchInputService:
                     "batch_execution_id": batch_id,
                     "case_id": test_case.id,
                     "row_number": test_case.position + 1,
+                    "call_number": call_number,
                     "status": "QUEUED",
                     "execution_status": "NOT_STARTED",
                     "verdict": "NOT_EVALUATED",
@@ -175,12 +207,17 @@ class BatchInputService:
         batch = {
             "id": batch_id,
             "name": name.strip() or f"{test_set.name} / {workflow_record.workflow.name}",
+            "description": description.strip(),
             "status": "QUEUED",
             "input": {
                 "test_set_id": test_set.id,
                 "test_set_name": test_set.name,
                 "columns": list(columns),
                 "updated_at": test_set.updated_at,
+                "call_order": {
+                    "mode": normalized_call_order,
+                    "random_seed": random_seed,
+                },
             },
             "workflow": {
                 "id": workflow_id,
@@ -207,5 +244,11 @@ class BatchInputService:
             "finished_at": None,
             "error": None,
         }
-        self.store.create(batch, cases, _test_set_snapshot(test_set))
+        self.store.create(
+            batch,
+            cases,
+            _test_set_snapshot(
+                test_set, ordered_cases, normalized_call_order, random_seed
+            ),
+        )
         return batch

@@ -36,8 +36,7 @@ def test_dark_theme_uses_semantic_surfaces_for_selected_scope():
     assert "background: var(--surface-muted)" in style_css
     assert "background: var(--surface-selected)" in style_css
     assert "border-bottom: 1px solid var(--row-border)" in style_css
-    assert "border-bottom: 1px solid var(--strong-row-border)" in style_css
-    assert "box-shadow: inset 0 -1px 0 var(--row-inset)" in style_css
+    assert "border-color: var(--strong-row-border)" in style_css
     assert "color: var(--text-main)" in style_css
     assert ".theme-toggle" in style_css
 

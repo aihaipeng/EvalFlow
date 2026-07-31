@@ -88,13 +88,27 @@ def test_new_workflow_structural_route_is_registered_and_legacy_drafts_are_not(
         assert client.get("/api/workflow-drafts").status_code == 404
 
 
-def test_testcases_rejects_path_traversal_filename():
-    response = TestClient(app).get(
-        "/api/testcases",
-        params={"filename": "../config", "sheet": "Sheet1"},
+def test_legacy_server_excel_routes_are_not_registered(tmp_path):
+    application = create_app(
+        database_path=tmp_path / "agent-bench.sqlite3",
+        execution_root=tmp_path / "workflow-executions",
     )
+    legacy_paths = {
+        "/api/config/current",
+        "/api/excel/refresh",
+        "/api/excel/sets",
+        "/api/excel/sets/{filename}",
+        "/api/excel/sets/{filename}/meta",
+        "/api/excel/sets/{filename}/open-dir",
+        "/api/excel/sheets",
+        "/api/excel/upload",
+        "/api/testcases",
+    }
 
-    assert response.status_code == 400
+    with TestClient(application) as client:
+        paths = set(client.get("/openapi.json").json()["paths"])
+
+    assert paths.isdisjoint(legacy_paths)
 
 
 def test_workflow_services_follow_fastapi_lifespan(tmp_path):

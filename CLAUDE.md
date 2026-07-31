@@ -46,7 +46,7 @@ npm ci && npm run build             # 修改 web/frontend 后重建 Workflow bun
 ### 路由与本地文件约束
 
 - FastAPI 处理器按实际 I/O 模型声明：直接调用同步 sqlite3 / openpyxl / 文件系统的用普通 `def`（线程池执行）；只有真正 `await` 异步客户端（如模型供应商连接测试的 httpx）才用 `async def`。
-- 本地文件写入（`config.yaml`、测试集元数据）必须走 `storage/` 下基于 `atomic_files.py` 的 Repository：同路径共享锁 + 锁内 read-modify-write + temp+fsync+replace；路由不得直接覆盖写文件。
+- 测试集、供应商和 Workflow 等结构化数据必须通过对应 SQLite Repository 在事务中写入；路由不得直接操作数据库文件或维护第二份事实来源。
 
 ### 前端
 
@@ -67,4 +67,4 @@ npm ci && npm run build             # 修改 web/frontend 后重建 Workflow bun
 
 ## 本地数据与安全
 
-`config.yaml`、`inputs/`、`run_storage/`、`outputs/`、`logs/` 均为本机数据且已被 `.gitignore` 排除，不得强制提交。API Key 不得写入代码、测试、文档、模板包或提交内容；live 测试只通过环境变量注入。
+`run_storage/` 和 `logs/` 均为本机数据且已被 `.gitignore` 排除，不得强制提交。测试集保存在 `run_storage/agent_bench.sqlite3`；Excel 仅在浏览器本地解析，不上传、不写入服务器目录。API Key 不得写入代码、测试、文档、模板包或提交内容；live 测试只通过环境变量注入。

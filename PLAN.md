@@ -1,6 +1,8 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
-## T13.34 测试集数据库化与可视化维护（实施中，2026-07-29）
+> 2026-07-31 清理说明：已被正式测试集、供应商、HTTP/LLM 节点和 Run 配置页面替代的独立 prototype、预览截图及 prototype 静态页面均已删除。下文中的 prototype 路径仅保留为历史实施记录，不再代表当前仓库中存在的交付物；生产事实来源以 `web/frontend/`、`web/static/` 当前入口和对应 API 为准。
+
+## T13.34 测试集数据库化与可视化维护（已完成，2026-07-31）
 
 ### 业务背景与验收目标
 
@@ -12,14 +14,22 @@
 ### 已确认业务决策
 
 1. 所有测试集共享 `test_sets / test_set_columns / test_cases`，不动态创建“一测试集一张表”。
-2. Excel 不上传、不迁移历史数据，也不再作为 Workflow/Batch 的运行时来源；旧 `inputs/*.xlsx`、`*.xlsm` 和 `.sets_meta.json` 在新链路通过回归后删除。
+2. Excel 不上传、不迁移历史数据，也不再作为 Workflow/Batch 的运行时来源；旧 `inputs/*.xlsx`、`*.xlsm` 和 `.sets_meta.json` 在旧 Excel/SpreadJS 链路退役时统一删除。
 3. 测试集名称大小写不敏感且唯一；删除为不可恢复的硬删除。
 4. 不保存 `external_id`、来源文件/Sheet/行列、展示名、数据类型、软删除、单用例时间戳或版本等无业务价值字段。
 5. 测试集和用例不保留版本字段，不使用 `expected_version` 乐观锁；本机直接覆盖保存。
 6. 字段键即用户可编辑的 Workflow 键。表头居中只读展示，右侧“字段设置”弹窗支持批量重命名和勾选删除，确认后立即写入数据库。
 7. 删除默认 `col_x` 后，其余默认字段按当前位置重排为 `col_1...`；用户自定义字段名保留。
-8. Run 创建时只批量读取测试集一次并冻结 `source_values / start_inputs`；Worker 和恢复流程只消费 Run-local 快照。
+8. Run 创建时只批量读取测试集一次并冻结 `source_values / start_inputs`；原始 `row_number` 与实际调用序号 `call_number` 分开保存。随机模式在新建 Run 时生成并冻结随机种子和最终顺序，Worker 与恢复流程只消费 Run-local 顺序，不重新洗牌。
 9. 使用 FortuneSheet 1.0.4 + SheetJS CE 0.20.3 本地资源，无水印、无 License Key、无网络依赖。
+
+### 2026-07-30 Run 配置与调用顺序增量
+
+- Run 配置字段收敛为名称、说明、测试集、工作流、执行顺序和并发数；说明持久化并在运行调度列表展示。
+- 执行顺序支持 `SEQUENTIAL`（顺序）、`REVERSE`（逆序）和 `RANDOM`（随机）。随机模式为每个新 Run 生成独立种子并冻结最终调用顺序，恢复执行不重新随机。
+- 并发数继续控制同时执行的用例数量；执行顺序只约束任务提交顺序，并发场景不承诺完成顺序与提交顺序一致。
+- 变量注入中来自测试集字段的 `Value` 使用可编辑文本框（例如 `col_1`），后端在创建或更新 Run 时校验字段是否存在；自定义布尔值继续使用 `true / false` 下拉框。
+- 变量注入和结果校验采用与供应商管理、工作流管理、运行调度一致的管理表格布局；`Type` 统一改为“类型”。结果校验能力保留，仅删除重复的行内字段标签和冗余说明。
 
 ### 最小数据模型
 
@@ -63,9 +73,25 @@
 | 三表 Repository 与无版本迁移 | CRUD、唯一名、级联删除、旧 version 列原地删除且数据保留 | completed |
 | 测试集 API | 列表、详情、创建、直接更新、删除、冗余字段拒绝 | completed |
 | FortuneSheet 管理前端 | 多 Excel/Sheet 累计选区、首行保留、详情维护、字段设置即时保存 | completed |
-| Batch 数据库来源与不可变快照 | 删除原 Excel、修改测试集后新旧 Run 对比、恢复不重读测试集 | in_progress |
-| 旧 Excel/SpreadJS 链路退役 | API/UI/依赖/inputs 清理及历史 Run 可读 | pending |
-| 完整回归 | pytest、compileall、npm build、桌面浏览器 E2E | pending |
+| Batch 数据库来源与不可变快照 | 运行时不读取原 Excel、修改测试集后新旧 Run 对比、恢复不重读测试集 | completed |
+| 旧 Excel/SpreadJS 链路退役 | API/UI/依赖/inputs 清理及历史 Run 可读 | completed |
+| 完整回归 | pytest、compileall、npm build、桌面浏览器 E2E | completed |
+
+### 2026-07-30 验证与目录审计记录
+
+- 全量回归 `323 passed, 4 skipped, 1 warning`；4 项 skip 为未配置 live 模型环境，warning 为既有 Starlette/httpx 弃用提示。
+- `python -m compileall -q execution web`、`npm run build`、Impeccable layout 扫描和 `git diff --check` 均通过。
+- 桌面浏览器 E2E 已覆盖 Run 创建/编辑、说明持久化与列表展示、逆序/随机顺序、随机种子冻结、变量 `Value` 编辑、动态增删行及明暗主题；临时 E2E Run 已清理。
+- `outputs/` 仅包含未跟踪的旧界面截图，无运行时代码引用，已删除。
+- 2026-07-31 完成旧链路退役：删除 `/api/excel/*`、`/api/testcases`、`/api/config/current`，移除服务端 Excel/YAML Repository、上传前端、隐藏兼容 DOM、专用样式、`inputs/`、`config.yaml` 和示例配置。
+- 服务端直接依赖已移除 `openpyxl` 和 `python-multipart`；浏览器继续使用 SheetJS CE 读取用户本地 `.xlsx`，只向 `/api/test-sets` 提交结构化字段和用例。
+
+### 2026-07-31 旧 Excel 链路退役验证
+
+- OpenAPI 不再包含旧 Excel、当前 Sheet 配置或 Excel 用例读取端点；`GET /api/excel/sets`、`POST /api/excel/upload`、`GET /api/testcases` 和 `GET /api/config/current` 均返回 `404`。
+- 最终全量回归 `290 passed, 4 skipped, 1 warning`；4 项 skip 为未配置 live 模型环境，warning 为既有 Starlette/httpx 弃用提示。Python compileall、`npm run build`、`app.js` 语法和 `git diff --check` 均通过。
+- Chrome E2E 已验证数据库测试集在列表和详情页展示，并在整页刷新后保持用例数、字段和数据；临时测试集已删除，控制台无错误。
+- 浏览器自动化环境拒绝设置本地文件输入，因此未自动执行桌面 `.xlsx` 的系统文件选择动作；浏览器 `file.arrayBuffer() + XLSX.read()`、仅调用 `/api/test-sets` 及不含旧 API 的约束由前端专项测试和生产构建验证。
 
 ## T13.33 Excel Batch Run 调度（已完成，2026-07-27）
 

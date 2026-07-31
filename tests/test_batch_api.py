@@ -41,11 +41,15 @@ def _create_test_set(client: TestClient, name: str = "数据库测试集") -> st
     return response.json()["test_set"]["id"]
 
 
-def _batch_body(test_set_id: str, workflow_id: str, name: str = "API Run") -> dict:
+def _batch_body(
+    test_set_id: str, workflow_id: str, name: str = "API Run", call_order: str = "SEQUENTIAL"
+) -> dict:
     return {
-        "name": name, "test_set_id": test_set_id, "workflow_id": workflow_id,
+        "name": name, "description": "用于回归裁判模型",
+        "test_set_id": test_set_id, "workflow_id": workflow_id,
         "variables": [{"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}],
         "case_concurrency": 2,
+        "call_order": call_order,
         "evaluation_rules": [],
     }
 
@@ -70,6 +74,7 @@ def test_batch_api_previews_database_set_creates_starts_and_traces_cases(tmp_pat
         batch_id = batch["id"]
         assert batch["input"]["test_set_id"] == test_set_id
         assert batch["input"]["test_set_name"] == "数据库测试集"
+        assert batch["description"] == "用于回归裁判模型"
         assert "filename" not in batch["input"]
         assert "sheet_name" not in batch["input"]
 
@@ -141,3 +146,25 @@ def test_edit_run_uses_latest_test_set_and_workflow_but_preserves_original_snaps
         edited_case = client.get(f"/api/batch-runs/{edited_batch['id']}/cases").json()["cases"][0]
         assert original_case["source_values"]["question"] == "hello"
         assert edited_case["source_values"]["question"] == "changed"
+
+
+def test_batch_api_applies_reverse_call_order(tmp_path: Path):
+    application = create_app(
+        database_path=tmp_path / "database.sqlite3",
+        execution_root=tmp_path / "workflow-executions",
+    )
+    with TestClient(application) as client:
+        workflow_id = _create_workflow(client)
+        test_set_id = _create_test_set(client)
+        created = client.post(
+            "/api/batch-runs",
+            json=_batch_body(test_set_id, workflow_id, "Reverse Run", "REVERSE"),
+        )
+
+        assert created.status_code == 201, created.text
+        batch = created.json()["batch"]
+        cases = client.get(f"/api/batch-runs/{batch['id']}/cases").json()["cases"]
+        assert batch["input"]["call_order"] == {"mode": "REVERSE", "random_seed": None}
+        assert [case["case_id"] for case in cases] == ["case-2", "case-1"]
+        assert [case["row_number"] for case in cases] == [2, 1]
+        assert [case["call_number"] for case in cases] == [1, 2]

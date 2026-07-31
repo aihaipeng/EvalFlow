@@ -75,3 +75,19 @@ def test_batch_store_deletes_terminal_batch_but_rejects_running_batch(tmp_path: 
     store.write_batch(batch)
     assert store.delete(batch["id"])["id"] == batch["id"]
     assert store.get(batch["id"]) is None
+
+
+def test_batch_store_sorts_cases_by_frozen_call_number(tmp_path: Path) -> None:
+    batch, first = _documents()
+    first["call_number"] = 2
+    second = {
+        **first,
+        "id": str(uuid4()),
+        "case_id": "C-2",
+        "row_number": 2,
+        "call_number": 1,
+    }
+    store = BatchExecutionStore(tmp_path / "batch")
+    store.create(batch, [first, second], {"columns": ["question"]})
+
+    assert [case["case_id"] for case in store.list_cases(batch["id"])] == ["C-2", "C-1"]

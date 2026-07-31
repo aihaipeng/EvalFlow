@@ -126,7 +126,13 @@ class BatchExecutionStore:
         if not directory.is_dir():
             return []
         cases = [self._read(path) for path in directory.glob("*.json")]
-        return sorted(cases, key=lambda item: (item["row_number"], item["id"]))
+        return sorted(
+            cases,
+            key=lambda item: (
+                item.get("call_number", item["row_number"]),
+                item["id"],
+            ),
+        )
 
     def delete(self, batch_id: str) -> dict[str, Any]:
         batch = self.get(batch_id)
