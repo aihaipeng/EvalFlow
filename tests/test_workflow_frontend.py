@@ -74,7 +74,7 @@ def test_workflow_canvas_follows_application_theme():
     assert "background: #181e26;" in styles
     assert "--wf-button-bg: #ffffff;" in styles
     assert "--wf-button-bg: #20262e;" in styles
-    assert "--wf-variable-name: #86efac;" in styles
+    assert "--wf-variable-name: var(--color-success);" in styles
     assert "--wf-variable-value: #ffffff;" in styles
     assert "color: var(--wf-variable-name);" in styles
     assert "color: var(--wf-variable-value);" in styles
@@ -93,7 +93,7 @@ def test_workflow_canvas_follows_application_theme():
     assert ".wf-execution-history-summary:hover {\n    background: var(--wf-soft);" in styles
     assert ".wf-execution-history-empty {" in styles
     assert ':root[data-theme="dark"] .wf-node-test-badge {' in styles
-    assert "background: #173d31;" in styles
+    assert "background: color-mix(in srgb, var(--color-success) 14%, var(--surface));" in styles
     history_panel = styles[styles.index(".wf-execution-history-panel {"):styles.index("}", styles.index(".wf-execution-history-panel {"))]
     node_picker = styles[styles.index(".wf-node-picker {"):styles.index("}", styles.index(".wf-node-picker {"))]
     context_menu = styles[styles.index(".wf-context-menu {"):styles.index("}", styles.index(".wf-context-menu {"))]

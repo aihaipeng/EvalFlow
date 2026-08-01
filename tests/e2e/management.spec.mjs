@@ -226,6 +226,13 @@ test("Radix 弹窗支持 Escape、焦点返回且通过 WCAG A/AA", async ({ pag
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "新建任务" });
   await expect(dialog).toBeVisible();
+  // 层级防火墙：弹窗中心必须命中弹窗自身，防止被高层容器（如画布 z-index 2000）遮挡
+  const hitSelf = await dialog.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementsFromPoint(r.x + r.width / 2, r.y + r.height / 2)[0];
+    return el === hit || el.contains(hit);
+  });
+  expect(hitSelf).toBe(true);
   await expectNoAxeViolations(page, ".radix-dialog-content");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

@@ -612,8 +612,8 @@ body.workflow-studio-open .radix-dialog-content {
 .wf-selection-marquee {
     position: absolute;
     z-index: 40;
-    border: 1px solid #4f7ee8;
-    background: rgba(79, 126, 232, 0.13);
+    border: 1px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 13%, transparent);
     pointer-events: none;
 }
 
@@ -716,11 +716,11 @@ body.workflow-studio-open .radix-dialog-content {
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    border: 1px solid #bddfc8;
+    border: 1px solid color-mix(in srgb, var(--color-success) 24%, transparent);
     border-radius: 6px;
-    background: #f1faf4;
+    background: color-mix(in srgb, var(--color-success) 10%, var(--wf-surface));
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-    color: #166534;
+    color: var(--color-success);
     font-size: 11px;
     pointer-events: none;
     transform: translateX(-50%);
@@ -795,11 +795,11 @@ body.workflow-studio-open .radix-dialog-content {
 }
 
 .wf-node-status.is-interrupted {
-    color: #a15c16;
+    color: var(--color-warning);
 }
 
 .wf-node-status.is-interrupted i {
-    background: #d97706;
+    background: var(--color-warning);
 }
 
 .wf-node-meta,
@@ -850,7 +850,7 @@ body.workflow-studio-open .radix-dialog-content {
 
 .wf-node-execution.is-interrupted,
 .wf-node-execution.is-interrupted .wf-execution-spinner {
-    color: #a15c16;
+    color: var(--color-warning);
 }
 
 @keyframes wf-execution-spin {
@@ -3103,9 +3103,9 @@ body.workflow-studio-open .radix-dialog-content {
 }
 
 :root[data-theme="dark"] .wf-node-test-badge {
-    border-color: #2f8f68;
-    background: #173d31;
-    color: #86efac;
+    border-color: color-mix(in srgb, var(--color-success) 55%, transparent);
+    background: color-mix(in srgb, var(--color-success) 14%, var(--surface));
+    color: var(--color-success);
 }
 
 .wf-llm-run-summary:hover {
@@ -3145,7 +3145,7 @@ body.workflow-studio-open .radix-dialog-content {
 }
 
 .wf-llm-run.is-interrupted .wf-llm-run-summary strong {
-    color: #a15c16;
+    color: var(--color-warning);
 }
 
 .wf-llm-run-result {
@@ -3745,7 +3745,7 @@ textarea.wf-script-console {
     --wf-button-danger-bg: #3a2229;
     --wf-button-danger-border: #8f4a58;
     --wf-button-danger-text: #ff9caf;
-    --wf-variable-name: #86efac;
+    --wf-variable-name: var(--color-success);
     --wf-variable-value: #ffffff;
 }
 
@@ -3829,8 +3829,8 @@ textarea.wf-script-console {
 
 :root[data-theme="dark"] .wf-inspector-body input:focus,
 :root[data-theme="dark"] .wf-inspector-body textarea:focus {
-    border-color: #78a0ff;
-    box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.18);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 :root[data-theme="dark"] .wf-readonly-field,

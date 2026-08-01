@@ -129,9 +129,9 @@
 }
 
 .workflow-valid {
-    border: 1px solid #86efac;
-    background: #eff6ff;
-    color: #166534;
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 8%, var(--surface));
+    color: var(--color-success);
 }
 
 .workflow-invalid {
@@ -949,7 +949,7 @@
 .batch-evaluation-rule.is-new,
 .batch-variable-row.is-new:hover,
 .batch-evaluation-rule.is-new:hover {
-    background: #dcfce7;
+    background: color-mix(in srgb, var(--color-success) 8%, var(--surface));
 }
 :root[data-theme="dark"] .batch-variable-row.is-new,
 :root[data-theme="dark"] .batch-evaluation-rule.is-new,
@@ -1195,9 +1195,9 @@
 }
 
 .tool-script-badge {
-    border: 1px solid #86efac;
-    background: #dcfce7;
-    color: #166534;
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 8%, var(--surface));
+    color: var(--color-success);
 }
 
 .workflow-tool-empty {
@@ -1687,9 +1687,9 @@
 .run-status-succeeded,
 .run-business-pass,
 .run-business-skip {
-    border: 1px solid #86efac;
-    background: #dcfce7;
-    color: #166534;
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 8%, var(--surface));
+    color: var(--color-success);
 }
 
 .run-status-error,
@@ -1801,7 +1801,7 @@
 }
 
 .run-template-status.is-valid {
-    color: #166534;
+    color: var(--color-success);
 }
 
 .run-template-status.is-invalid {
@@ -2140,7 +2140,7 @@
     min-height: 44px;
     align-items: center;
     gap: 12px;
-    color: #166534;
+    color: var(--color-success);
     font-size: 11px;
 }
 

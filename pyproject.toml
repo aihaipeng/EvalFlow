@@ -26,6 +26,10 @@ dev = [
 addopts = "--basetemp=.pytest_tmp"
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    # starlette.testclient 的 httpx→httpx2 迁移提示，升级前压制噪音
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 markers = [
     "live: runs real DeepSeek and DashScope model gateway calls when provider API key environment variables are set",
 ]

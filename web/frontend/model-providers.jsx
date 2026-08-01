@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   QueryClient,
@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-query";
 
 import { ConfirmDialog, ModalDialog } from "./components/dialog";
+import { Pagination } from "./components/pagination";
 import {
   deleteModelProvider,
   fetchProviderModels,
@@ -77,58 +78,6 @@ function endpoint(protocol, baseUrl) {
 }
 function providerName(provider) {
   return provider.name || "未命名供应商";
-}
-
-function Pagination({ total, page, pageSize, onPage, onSize }) {
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, pages);
-  useEffect(() => {
-    if (safePage !== page) onPage(safePage);
-  }, [safePage, page, onPage]);
-  return (
-    <div
-      className="global-list-footer management-list-footer"
-      id="model-provider-pagination"
-    >
-      <div className="global-page-summary">
-        <span>共 {total} 个供应商</span>
-        <label>
-          每页{" "}
-          <select
-            className="input global-page-size"
-            aria-label="每页展示数量"
-            value={pageSize}
-            onChange={(e) => onSize(Number(e.target.value))}
-          >
-            {[10, 20, 50, 100].map((n) => (
-              <option key={n}>{n}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="global-pagination">
-        <button
-          type="button"
-          aria-label="上一页"
-          disabled={safePage <= 1}
-          onClick={() => onPage(safePage - 1)}
-        >
-          <Icon name="previous" />
-        </button>
-        <span>
-          {safePage} / {pages}
-        </span>
-        <button
-          type="button"
-          aria-label="下一页"
-          disabled={safePage >= pages}
-          onClick={() => onPage(safePage + 1)}
-        >
-          <Icon name="next" />
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function ProviderList({ onEdit }) {
@@ -339,6 +288,8 @@ function ProviderList({ onEdit }) {
           setPageSize(n);
           setPage(1);
         }}
+        id="model-provider-pagination"
+        countLabel="个供应商"
       />
       <ConfirmDialog
         open={Boolean(deleting)}
@@ -532,6 +483,9 @@ function ModelConfigModal({ model, protocol, value, onSave, onClose }) {
 
 function ProviderEditor({ providerId, onBack }) {
   const client = useQueryClient();
+  const persistedFormRef = useRef(null);
+  const persistedModelsRef = useRef(null);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const detail = useQuery({
     queryKey: ["model-provider", providerId],
     queryFn: () => getModelProvider(providerId),
@@ -562,7 +516,7 @@ function ProviderEditor({ providerId, onBack }) {
     }
     if (detail.data) {
       const p = detail.data;
-      setForm({
+      const formValue = {
         ...emptyForm,
         ...p,
         name: p.name || "",
@@ -570,7 +524,10 @@ function ProviderEditor({ providerId, onBack }) {
         proxy_url: p.proxy_url || "",
         proxy_username: p.proxy_username || "",
         proxy_password: p.proxy_password || "",
-      });
+      };
+      setForm(formValue);
+      persistedFormRef.current = formValue;
+      persistedModelsRef.current = [...(p.models || [])];
       setPersistedProtocol(p.protocol);
       setSelected([...(p.models || [])]);
       setConfigs(structuredClone(p.model_configs || {}));
@@ -690,7 +647,24 @@ function ProviderEditor({ providerId, onBack }) {
           className="btn btn-sm"
           id="model-provider-back"
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            const formDirty = providerId
+              ? Boolean(persistedFormRef.current) &&
+                JSON.stringify(form) !== JSON.stringify(persistedFormRef.current)
+              : Boolean(
+                  form.name || form.api_key || form.base_url || form.website_url ||
+                  selected.length,
+                );
+            const modelsDirty = providerId
+              ? Boolean(persistedModelsRef.current) &&
+                JSON.stringify(selected) !== JSON.stringify(persistedModelsRef.current)
+              : false;
+            if (formDirty || modelsDirty) {
+              setLeaveConfirmOpen(true);
+              return;
+            }
+            onBack();
+          }}
         >
           <Icon name="back" />
           返回
@@ -1109,6 +1083,20 @@ function ProviderEditor({ providerId, onBack }) {
         <p className="execution-confirm-note">
           供应商名称、地址和鉴权信息会保留。
         </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        title="离开供应商编辑？"
+        confirmLabel="放弃修改"
+        danger
+        onClose={() => setLeaveConfirmOpen(false)}
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          onBack();
+          return true;
+        }}
+      >
+        <p>当前填写的内容尚未保存，离开后将丢失这些改动。</p>
       </ConfirmDialog>
     </section>
   );

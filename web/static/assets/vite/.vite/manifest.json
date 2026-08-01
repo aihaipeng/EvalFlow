@@ -1,6 +1,6 @@
 {
-  "_api-result-B0OgqITb.js": {
-    "file": "chunks/api-result-B0OgqITb.js",
+  "_api-result-BiDJlMBy.js": {
+    "file": "chunks/api-result-BiDJlMBy.js",
     "name": "api-result",
     "imports": [
       "_dist-BPOBA6G3.js"
@@ -25,24 +25,24 @@
     ]
   },
   "web/frontend/batch-runs.jsx": {
-    "file": "batch-runs-DKeK1CyZ.js",
+    "file": "batch-runs-BP0eclAU.js",
     "name": "batch-runs",
     "src": "web/frontend/batch-runs.jsx",
     "isEntry": true,
     "imports": [
       "_dist-BPOBA6G3.js",
-      "_api-result-B0OgqITb.js",
+      "_api-result-BiDJlMBy.js",
       "_dialog-AMDdXRc0.js"
     ]
   },
   "web/frontend/model-providers.jsx": {
-    "file": "model-providers-CD4VqAe0.js",
+    "file": "model-providers-DInAq1fC.js",
     "name": "model-providers",
     "src": "web/frontend/model-providers.jsx",
     "isEntry": true,
     "imports": [
       "_dist-BPOBA6G3.js",
-      "_api-result-B0OgqITb.js",
+      "_api-result-BiDJlMBy.js",
       "_dialog-AMDdXRc0.js"
     ]
   },
@@ -60,7 +60,7 @@
     ]
   },
   "web/frontend/workflow-canvas.jsx": {
-    "file": "workflow-canvas-CE4VXXF7.js",
+    "file": "workflow-canvas-0PhnBZ4r.js",
     "name": "workflow-canvas",
     "src": "web/frontend/workflow-canvas.jsx",
     "isEntry": true,
@@ -70,7 +70,7 @@
       "_dialog-AMDdXRc0.js"
     ],
     "css": [
-      "workflow-canvas-RiCmzoRc.css"
+      "workflow-canvas-BlpXlT4h.css"
     ]
   }
 }

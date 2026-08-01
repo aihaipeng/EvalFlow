@@ -57,7 +57,7 @@ def test_batch_list_preserves_management_and_execution_contracts():
         assert f"<th>{heading}</th>" in source or heading == "操作"
     assert 'className="table execution-table management-list-table batch-table"' in source
     assert 'id="batch-pagination"' in source
-    assert "[10, 20, 50, 100]" in source
+    assert 'from "./components/pagination"' in source
     assert 'aria-label="启动任务"' in source
     assert 'aria-label="停止任务"' in source
     assert 'aria-label="查看执行历史"' in source

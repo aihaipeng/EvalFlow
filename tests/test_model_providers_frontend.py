@@ -110,5 +110,5 @@ def test_model_provider_list_uses_shared_management_visual_contract():
     assert 'className="management-list-actions-head"' in source
     assert 'className="management-list-time"' in source
     assert 'id="model-provider-pagination"' in source
-    assert "[10, 20, 50, 100]" in source
+    assert 'from "./components/pagination"' in source
     assert "window.ModelProviderManagement = { mount, unmount }" in source

@@ -6,6 +6,7 @@
     --gray-bg: #D9E1F2;
     --color-success: #047857;
     --color-danger: #dc2626;
+    --color-warning: #d97706;
     --color-purple: #7c3aed;
     --color-teal: #0f766e;
     --color-orange: #ea580c;
@@ -71,6 +72,7 @@
     --color-accent-hover: #2457d6;
     --color-success: #34d399;
     --color-danger: #f87171;
+    --color-warning: #fbbf24;
     --color-teal: #2dd4bf;
     --focus-ring: rgba(47, 95, 208, 0.28);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.18);

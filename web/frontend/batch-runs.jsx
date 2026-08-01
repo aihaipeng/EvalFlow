@@ -25,6 +25,7 @@ import {
   startBatch,
 } from "./batch-api";
 import { ConfirmDialog, ModalDialog } from "./components/dialog";
+import { Pagination } from "./components/pagination";
 
 const toast = window.showToast;
 const client = new QueryClient({
@@ -251,60 +252,6 @@ function HistoryModal({ batch, onClose }) {
     </Modal>
   );
 }
-function Pagination({ total, page, size, setPage, setSize }) {
-  const pages = Math.max(1, Math.ceil(total / size)),
-    safe = Math.min(page, pages);
-  useEffect(() => {
-    if (safe !== page) setPage(safe);
-  }, [safe, page]);
-  return (
-    <div
-      id="batch-pagination"
-      className="global-list-footer management-list-footer"
-    >
-      <div className="global-page-summary">
-        共 {total} 个任务{" "}
-        <label>
-          每页{" "}
-          <select
-            className="input global-page-size"
-            value={size}
-            onChange={(e) => {
-              setSize(+e.target.value);
-              setPage(1);
-            }}
-          >
-            {[10, 20, 50, 100].map((n) => (
-              <option key={n}>{n}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="global-pagination">
-        <button
-          type="button"
-          aria-label="上一页"
-          disabled={safe <= 1}
-          onClick={() => setPage(safe - 1)}
-        >
-          <Icon name="previous" />
-        </button>
-        <span>
-          {safe} / {pages}
-        </span>
-        <button
-          type="button"
-          aria-label="下一页"
-          disabled={safe >= pages}
-          onClick={() => setPage(safe + 1)}
-        >
-          <Icon name="next" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function VariableRows({ rows, setRows, headers }) {
   function change(i, key, value) {
     setRows(
@@ -1021,6 +968,8 @@ function ScheduleModal({ batch, onClose, onSaved }) {
             <span>任务重叠</span>
             <select
               className="input"
+              disabled={value.cadence === "ONCE"}
+              title={value.cadence === "ONCE" ? "仅执行一次时无重叠概念" : undefined}
               value={value.overlap_policy}
               onChange={(e) =>
                 setValue({ ...value, overlap_policy: e.target.value })
@@ -1243,9 +1192,11 @@ function App() {
       <Pagination
         total={data.length}
         page={page}
-        size={size}
-        setPage={setPage}
-        setSize={setSize}
+        pageSize={size}
+        onPage={setPage}
+        onSize={setSize}
+        id="batch-pagination"
+        countLabel="个任务"
       />
       {modal?.type === "config" && (
         <ConfigModal

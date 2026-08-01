@@ -2876,21 +2876,41 @@ function WorkflowStudio({options}) {
         },
     })), [edges, insertEdgeId, insertNode]);
 
-    const decoratedNodes = useMemo(() => nodes.map((node) => ({
-        ...node,
-        data: {
-            ...node.data,
-            onConfigure: () => {
-                setEditorInitialTab('settings');
-                setEditorNodeId(node.id);
-            },
-            onRun: () => requestNodeTest(node.id),
-            onOpenLogs: () => {
-                setEditorInitialTab('logs');
-                setEditorNodeId(node.id);
-            },
-        },
-    })), [nodes, requestNodeTest]);
+    // 引用未变的节点复用上次 decorated 对象，让 WorkflowNode memo 浅比较命中，
+    // 避免节点测试 100ms setNodes 触发全量重渲染
+    const decoratedNodesCacheRef = useRef(new Map());
+    const decoratedNodes = useMemo(() => {
+        const cache = decoratedNodesCacheRef.current;
+        if (cache.size > nodes.length * 2) {
+            const alive = new Set(nodes.map((node) => node.id));
+            for (const key of cache.keys()) {
+                if (!alive.has(key)) cache.delete(key);
+            }
+        }
+        return nodes.map((node) => {
+            const cached = cache.get(node.id);
+            if (cached && cached.node === node && cached.onRun === requestNodeTest) {
+                return cached.decorated;
+            }
+            const decorated = {
+                ...node,
+                data: {
+                    ...node.data,
+                    onConfigure: () => {
+                        setEditorInitialTab('settings');
+                        setEditorNodeId(node.id);
+                    },
+                    onRun: () => requestNodeTest(node.id),
+                    onOpenLogs: () => {
+                        setEditorInitialTab('logs');
+                        setEditorNodeId(node.id);
+                    },
+                },
+            };
+            cache.set(node.id, {node, decorated, onRun: requestNodeTest});
+            return decorated;
+        });
+    }, [nodes, requestNodeTest]);
 
     const editorNode = nodes.find((node) => node.id === editorNodeId) || null;
 
