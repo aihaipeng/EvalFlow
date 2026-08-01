@@ -2,33 +2,50 @@
 :root {
     --green: #047857;
     --green-bg: #d1fae5;
-    --red: #b91c1c;
-    --red-bg: #fee2e2;
     --gray: #404040;
     --gray-bg: #D9E1F2;
-    --border: #d7deea;
-    --radius: 8px;
-    --sidebar-w: 200px;
-    --color-accent: #2457d6;
-    --color-accent-hover: #1d4ed8;
     --color-success: #047857;
     --color-danger: #dc2626;
     --color-purple: #7c3aed;
     --color-teal: #0f766e;
     --color-orange: #ea580c;
-    --page-bg: #eef3fb;
+    --radius: 10px;
+    --sidebar-w: 216px;
+    --page-bg: #f3f6fb;
     --surface: #ffffff;
-    --surface-muted: #f6f8fc;
-    --surface-hover: #f8fbff;
-    --surface-selected: #eef2ff;
+    --surface-muted: #f7f9fc;
+    --surface-hover: #f5f8ff;
+    --surface-selected: #eaf0ff;
     --input-bg: #ffffff;
     --input-disabled-bg: #f0f0f0;
+    --border: #d9e1ec;
+    --row-border: #e8edf4;
+    --strong-row-border: #c7d1df;
     --text-main: #172033;
-    --text-secondary: #526071;
+    --text-secondary: #46556a;
     --text-muted: #64748b;
-    --text-subtle: #8a94a3;
-    --row-border: #f0f0f0;
-    --strong-row-border: #cbd5e1;
+    --text-subtle: #7b8798;
+    --color-accent: #2457d6;
+    --color-accent-hover: #1949bd;
+    --focus-ring: rgba(36, 87, 214, 0.24);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.04);
+    --shadow-md: 0 18px 48px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+    --sidebar-bg: #ffffff;
+    --sidebar-border: #d9e1ec;
+    --sidebar-text: #526071;
+    --sidebar-hover-bg: #f5f8ff;
+    --sidebar-hover-text: #172033;
+    --sidebar-active-bg: #eaf0ff;
+    --sidebar-active-text: #1949bd;
+    --sidebar-active-shadow: inset 0 0 0 1px rgba(36, 87, 214, 0.16), 0 6px 18px rgba(15, 23, 42, 0.08);
+    --sidebar-brand-eval: #2457d6;
+    --sidebar-brand-flow: #334155;
+    --sidebar-toggle-bg: #f7f9fc;
+    --sidebar-toggle-border: #c7d1df;
+    --sidebar-toggle-text: #46556a;
+    --sidebar-toggle-hover-bg: #eef3fb;
+    --sidebar-toggle-hover-border: #9fb0c7;
+    --sidebar-toggle-hover-text: #172033;
     --icon-button-text: #111827;
     --icon-button-hover-bg: rgba(15, 23, 42, 0.08);
     --icon-button-active-bg: rgba(15, 23, 42, 0.14);
@@ -36,25 +53,44 @@
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --page-bg: #111315;
-    --surface: #1b1e22;
-    --surface-muted: #23272c;
-    --surface-hover: #292e34;
-    --surface-selected: #24344f;
-    --input-bg: #20242a;
-    --input-disabled-bg: #2a2e33;
-    --text-main: #e8eaed;
-    --text-secondary: #c6cbd2;
-    --text-muted: #a6adb7;
-    --text-subtle: #858d98;
-    --border: #3b4149;
-    --row-border: #30353c;
-    --strong-row-border: #3b4149;
-    --color-accent: #5b8cff;
-    --color-accent-hover: #4778e7;
+    --page-bg: #11151b;
+    --surface: #1a2029;
+    --surface-muted: #202731;
+    --surface-hover: #252e3a;
+    --surface-selected: #253554;
+    --input-bg: #1b222c;
+    --input-disabled-bg: #242b35;
+    --text-main: #edf2f7;
+    --text-secondary: #c8d0dc;
+    --text-muted: #aab4c2;
+    --text-subtle: #8f9bab;
+    --border: #364151;
+    --row-border: #2a3340;
+    --strong-row-border: #465367;
+    --color-accent: #2f5fd0;
+    --color-accent-hover: #2457d6;
     --color-success: #34d399;
     --color-danger: #f87171;
     --color-teal: #2dd4bf;
+    --focus-ring: rgba(47, 95, 208, 0.28);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.18);
+    --shadow-md: 0 22px 60px rgba(0, 0, 0, 0.46), 0 6px 16px rgba(0, 0, 0, 0.28);
+    --sidebar-bg: #172033;
+    --sidebar-border: rgba(255, 255, 255, 0.1);
+    --sidebar-text: #b9c5d6;
+    --sidebar-hover-bg: rgba(255, 255, 255, 0.075);
+    --sidebar-hover-text: #ffffff;
+    --sidebar-active-bg: #284889;
+    --sidebar-active-text: #ffffff;
+    --sidebar-active-shadow: inset 0 0 0 1px rgba(125, 164, 255, 0.18), 0 6px 18px rgba(3, 10, 27, 0.18);
+    --sidebar-brand-eval: #66a6df;
+    --sidebar-brand-flow: #f2f5f8;
+    --sidebar-toggle-bg: rgba(255, 255, 255, 0.06);
+    --sidebar-toggle-border: rgba(255, 255, 255, 0.16);
+    --sidebar-toggle-text: #e2e8f0;
+    --sidebar-toggle-hover-bg: rgba(255, 255, 255, 0.12);
+    --sidebar-toggle-hover-border: rgba(255, 255, 255, 0.3);
+    --sidebar-toggle-hover-text: #ffffff;
     --icon-button-text: #ffffff;
     --icon-button-hover-bg: rgba(255, 255, 255, 0.10);
     --icon-button-active-bg: rgba(255, 255, 255, 0.18);
@@ -380,7 +416,7 @@ body {
 
 .btn-danger {
     background: #fff1f2;
-    color: var(--red);
+    color: var(--color-danger);
     border-color: #fecdd3;
 }
 
@@ -801,7 +837,7 @@ body {
 
 .required-label::after {
     content: " *";
-    color: var(--red);
+    color: var(--color-danger);
 }
 
 .agent-prompt-input {
@@ -907,7 +943,7 @@ body {
 .agent-interrupt-button:disabled:hover {
     background: #fff1f2;
     border-color: #fecdd3;
-    color: var(--red);
+    color: var(--color-danger);
 }
 
 /* 日志区 wrapper */
@@ -1434,81 +1470,6 @@ body.resizing {
 }
 
 /* impeccable:polish-start */
-:root {
-    --radius: 10px;
-    --sidebar-w: 216px;
-    --page-bg: #f3f6fb;
-    --surface-muted: #f7f9fc;
-    --surface-hover: #f5f8ff;
-    --surface-selected: #eaf0ff;
-    --border: #d9e1ec;
-    --row-border: #e8edf4;
-    --strong-row-border: #c7d1df;
-    --text-main: #172033;
-    --text-secondary: #46556a;
-    --text-muted: #64748b;
-    --text-subtle: #7b8798;
-    --color-accent: #2457d6;
-    --color-accent-hover: #1949bd;
-    --focus-ring: rgba(36, 87, 214, 0.24);
-    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.04);
-    --shadow-md: 0 18px 48px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
-    --sidebar-bg: #ffffff;
-    --sidebar-border: #d9e1ec;
-    --sidebar-text: #526071;
-    --sidebar-hover-bg: #f5f8ff;
-    --sidebar-hover-text: #172033;
-    --sidebar-active-bg: #eaf0ff;
-    --sidebar-active-text: #1949bd;
-    --sidebar-active-shadow: inset 0 0 0 1px rgba(36, 87, 214, 0.16), 0 6px 18px rgba(15, 23, 42, 0.08);
-    --sidebar-brand-eval: #2457d6;
-    --sidebar-brand-flow: #334155;
-    --sidebar-toggle-bg: #f7f9fc;
-    --sidebar-toggle-border: #c7d1df;
-    --sidebar-toggle-text: #46556a;
-    --sidebar-toggle-hover-bg: #eef3fb;
-    --sidebar-toggle-hover-border: #9fb0c7;
-    --sidebar-toggle-hover-text: #172033;
-}
-
-:root[data-theme="dark"] {
-    --page-bg: #11151b;
-    --surface: #1a2029;
-    --surface-muted: #202731;
-    --surface-hover: #252e3a;
-    --surface-selected: #253554;
-    --input-bg: #1b222c;
-    --input-disabled-bg: #242b35;
-    --border: #364151;
-    --row-border: #2a3340;
-    --strong-row-border: #465367;
-    --text-main: #edf2f7;
-    --text-secondary: #c8d0dc;
-    --text-muted: #aab4c2;
-    --text-subtle: #8f9bab;
-    --color-accent: #78a0ff;
-    --color-accent-hover: #93b3ff;
-    --focus-ring: rgba(120, 160, 255, 0.28);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.18);
-    --shadow-md: 0 22px 60px rgba(0, 0, 0, 0.46), 0 6px 16px rgba(0, 0, 0, 0.28);
-    --sidebar-bg: #172033;
-    --sidebar-border: rgba(255, 255, 255, 0.1);
-    --sidebar-text: #b9c5d6;
-    --sidebar-hover-bg: rgba(255, 255, 255, 0.075);
-    --sidebar-hover-text: #ffffff;
-    --sidebar-active-bg: #284889;
-    --sidebar-active-text: #ffffff;
-    --sidebar-active-shadow: inset 0 0 0 1px rgba(125, 164, 255, 0.18), 0 6px 18px rgba(3, 10, 27, 0.18);
-    --sidebar-brand-eval: #66a6df;
-    --sidebar-brand-flow: #f2f5f8;
-    --sidebar-toggle-bg: rgba(255, 255, 255, 0.06);
-    --sidebar-toggle-border: rgba(255, 255, 255, 0.16);
-    --sidebar-toggle-text: #e2e8f0;
-    --sidebar-toggle-hover-bg: rgba(255, 255, 255, 0.12);
-    --sidebar-toggle-hover-border: rgba(255, 255, 255, 0.3);
-    --sidebar-toggle-hover-text: #ffffff;
-}
-
 html,
 body {
     min-width: 960px;
@@ -1621,7 +1582,7 @@ textarea {
     min-height: 36px;
     padding: 7px 14px;
     border-color: var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--surface);
     color: var(--text-secondary);
     font-weight: 650;
@@ -1954,8 +1915,8 @@ textarea:focus-visible {
 }
 
 .btn.btn-danger:has(.ui-icon) {
-    border-color: var(--red);
-    background: var(--red);
+    border-color: var(--color-danger);
+    background: var(--color-danger);
     color: #fff;
 }
 

@@ -6,6 +6,7 @@ import {EditorView} from '@codemirror/view';
 import {oneDark} from '@codemirror/theme-one-dark';
 import dagre from '@dagrejs/dagre';
 import * as Dialog from '@radix-ui/react-dialog';
+import {ConfirmDialog} from './components/dialog';
 import {basicSetup} from 'codemirror';
 import parseCurl from 'parse-curl';
 import {Rnd} from 'react-rnd';
@@ -72,11 +73,11 @@ import './workflow-canvas.css';
 import {calculateAlignmentGuides} from './workflow-alignment.mjs';
 
 const NODE_TYPES = {
-    START: {label: '开始', caption: 'START', icon: CirclePlay, color: '#16803c', executable: false},
-    HTTP: {label: 'HTTP', caption: 'HTTP', icon: Globe2, color: '#2563eb', executable: true, runtime: 'HTTP'},
-    LLM: {label: 'LLM', caption: 'LLM', icon: BrainCircuit, color: '#7048c6', executable: true, runtime: 'Gateway'},
-    SCRIPT: {label: 'SCRIPT', caption: 'SCRIPT', icon: Code2, color: '#c56a12', executable: true, runtime: 'Python'},
-    END: {label: '结束', caption: 'END', icon: Check, color: '#3f4b5f', executable: false},
+    START: {label: '开始', caption: 'START', icon: CirclePlay, color: '#047857', executable: false},
+    HTTP: {label: 'HTTP', caption: 'HTTP', icon: Globe2, color: '#2457d6', executable: true, runtime: 'HTTP'},
+    LLM: {label: 'LLM', caption: 'LLM', icon: BrainCircuit, color: '#7c3aed', executable: true, runtime: 'Gateway'},
+    SCRIPT: {label: 'SCRIPT', caption: 'SCRIPT', icon: Code2, color: '#ea580c', executable: true, runtime: 'Python'},
+    END: {label: '结束', caption: 'END', icon: Check, color: '#46556a', executable: false},
 };
 
 const INSERTABLE_TYPES = ['HTTP', 'LLM', 'SCRIPT'];
@@ -2020,6 +2021,7 @@ function WorkflowStudio({options}) {
     const [descriptionEditing, setDescriptionEditing] = useState(false);
     const [workflowId, setWorkflowId] = useState(options.id || null);
     const [saveState, setSaveState] = useState(options.id ? '已保存' : '未保存');
+    const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
     const [modelProviders, setModelProviders] = useState([]);
     const [providerLoadState, setProviderLoadState] = useState('loading');
     const [providerLoadError, setProviderLoadError] = useState('');
@@ -3069,10 +3071,18 @@ function WorkflowStudio({options}) {
         return () => window.removeEventListener('keydown', onStudioKeyDown);
     }, [save]);
 
-    const close = useCallback(() => {
-        if (saveState === '未保存' || saveState === '保存失败') {
-            if (!window.confirm('工作流有尚未保存的修改，确定离开吗？')) return;
-        }
+    useEffect(() => {
+        const onBeforeUnload = (event) => {
+            if (saveState === '未保存' || saveState === '保存失败') {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [saveState]);
+
+    const performClose = useCallback(() => {
         studioClosedRef.current = true;
         nodeTestSourcesRef.current.forEach((_active, nodeId) => {
             hiddenNodeTestsRef.current.add(nodeId);
@@ -3084,7 +3094,15 @@ function WorkflowStudio({options}) {
         });
         if (options.onClose) options.onClose();
         if (workflowElapsedTimer.current !== null) window.clearInterval(workflowElapsedTimer.current);
-    }, [interruptNodeTest, options, saveState]);
+    }, [interruptNodeTest, options]);
+
+    const close = useCallback(() => {
+        if (saveState === '未保存' || saveState === '保存失败') {
+            setLeaveConfirmOpen(true);
+            return;
+        }
+        performClose();
+    }, [performClose, saveState]);
 
     const closeInspector = useCallback(() => {
         if (editorNodeId) {
@@ -3165,6 +3183,7 @@ function WorkflowStudio({options}) {
                 </div>
                 <div className="wf-header-actions">
                     {workflowRunState !== 'IDLE' && <span className={`wf-workflow-timer is-${workflowRunState.toLowerCase()}`} aria-label={`Workflow 执行耗时 ${formatExecutionDuration(workflowElapsedMs)}`}><LoaderCircle size={13} />{formatExecutionDuration(workflowElapsedMs)}</span>}
+                    <span className="wf-save-state" data-state={saveState}><i />{saveState}</span>
                     <button type="button" disabled={!options.executionEnabled || workflowRunState === 'RUNNING'} className="wf-secondary-button" onClick={runAll} title={options.executionEnabled ? '运行 Workflow' : '执行接口尚未接入'}><Play size={15} />运行</button>
                     <button type="button" disabled={!workflowId} className={historyOpen ? 'is-active' : ''} onClick={async () => {const next = !historyOpen; setHistoryOpen(next); if (next) await loadWorkflowHistory();}}><FileClock size={15} />历史</button>
                     <button type="button" disabled={workflowRunState !== 'RUNNING'} className="wf-danger-button" onClick={interruptWorkflow}><Square size={14} />中断</button>
@@ -3355,6 +3374,20 @@ function WorkflowStudio({options}) {
                     onChange={(patch) => setNodes((current) => current.map((node) => node.id === editorNodeId ? {...node, data: {...node.data, ...patch, isDirty: true}} : node))}
                 />
             </main>
+            <ConfirmDialog
+                open={leaveConfirmOpen}
+                title="离开工作流？"
+                confirmLabel="放弃修改"
+                danger
+                onClose={() => setLeaveConfirmOpen(false)}
+                onConfirm={() => {
+                    setLeaveConfirmOpen(false);
+                    performClose();
+                    return true;
+                }}
+            >
+                <p>工作流有尚未保存的修改，离开后将丢失这些改动。</p>
+            </ConfirmDialog>
         </div>
     );
 }

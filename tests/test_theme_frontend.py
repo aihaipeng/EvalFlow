@@ -30,7 +30,7 @@ def test_dark_theme_uses_semantic_surfaces_for_selected_scope():
     style_css = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
 
     assert ':root[data-theme="dark"]' in style_css
-    assert "--page-bg: #111315" in style_css
+    assert "--page-bg: #11151b" in style_css
     assert "background: var(--page-bg)" in style_css
     assert "background: var(--input-bg)" in style_css
     assert "background: var(--surface-muted)" in style_css

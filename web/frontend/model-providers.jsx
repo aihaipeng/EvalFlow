@@ -143,7 +143,7 @@ function ProviderList({ onEdit }) {
   });
   useEffect(() => {
     if (providersQuery.error)
-      toast(`加载模型供应商失败: ${providersQuery.error.message}`, "error");
+      toast(`加载模型供应商失败：${providersQuery.error.message}`, "error");
   }, [providersQuery.error]);
   const providers = providersQuery.data || [];
   const filtered = useMemo(

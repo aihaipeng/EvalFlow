@@ -228,11 +228,13 @@ def test_closing_canvas_keeps_workflow_running_in_background():
     source = read("web/frontend/workflow-canvas.jsx")
     styles = read("web/frontend/workflow-canvas.css")
 
-    close = source[source.index("const close = useCallback(() => {"):source.index("const closeInspector")]
+    close = source[source.index("const performClose = useCallback(() => {"):source.index("const closeInspector")]
     assert "studioClosedRef.current = true;" in close
     assert "interruptWorkflow" not in close
+    assert "const close = useCallback(() => {" in source
+    assert "performClose();" in close
     assert "if (studioClosedRef.current) return;" in source
-    assert ".wf-node-status.is-running i {\n    background: #2563eb;\n}" in styles
+    assert ".wf-node-status.is-running i {\n    background: var(--color-accent);\n}" in styles
     assert ".wf-node-runtime" not in styles
     node_execution = styles[styles.index(".wf-node-execution {"):styles.index("}", styles.index(".wf-node-execution {"))]
     assert "font-size: 11px;" in node_execution
@@ -333,8 +335,7 @@ def test_http_toggles_match_provider_switch_with_green_checked_feedback():
 
     assert '.wf-http-toggle input:checked + i {' in styles
     assert ':root[data-theme="dark"] .wf-http-toggle input:checked + i {' in styles
-    assert "--wf-switch-on: #2ea44f;" in styles
-    assert "--wf-switch-on: #3fb950;" in styles
+    assert "--wf-switch-on: var(--color-success);" in styles
     assert "height: 18px;" in styles
     assert "border-radius: 9px;" in styles
     assert "width: 12px;" in styles
@@ -457,7 +458,7 @@ def test_llm_advanced_parameters_are_protocol_specific():
     assert "&& !protocolParametersError" in source
 
 
-def test_workflow_header_groups_description_with_title_and_hides_saved_marker():
+def test_workflow_header_groups_description_with_title_and_shows_save_state():
     source = read("web/frontend/workflow-canvas.jsx")
     styles = read("web/frontend/workflow-canvas.css")
 
@@ -465,7 +466,8 @@ def test_workflow_header_groups_description_with_title_and_hides_saved_marker():
     left = header[header.index('<div className="wf-header-left">'):header.index('<div className="wf-header-actions">')]
 
     assert 'className={`wf-header-description ${descriptionEditing ? \'is-editing\' : \'\'}`}' in left
-    assert 'className="wf-save-state"' not in header
+    assert 'className="wf-save-state"' in header
+    assert 'data-state={saveState}' in header
     assert "metadataDraft.current.name === workflowName ? event.currentTarget.value : metadataDraft.current.name" in left
     assert "metadataDraft.current.description === workflowDescription ? event.currentTarget.value : metadataDraft.current.description" in left
     assert "metadataDraft.current.name = event.target.value" in left

@@ -137,7 +137,7 @@
 }
 
 .model-provider-field small { color: var(--text-subtle); font-weight: 500; }
-.model-provider-field b { color: var(--red); }
+.model-provider-field b { color: var(--color-danger); }
 .model-provider-field .input { min-height: 42px; font-size: 14px; }
 
 .model-provider-proxy-fields {
@@ -394,7 +394,7 @@
 :root[data-theme="dark"] .model-provider-test-button.is-error { background: #3b1d22; color: #fca5a5; }
 .model-provider-config-button:hover { background: var(--surface-selected); color: var(--color-accent); }
 .model-provider-remove-button { font-size: 20px; }
-.model-provider-remove-button:hover { background: var(--red-bg); color: var(--red); }
+.model-provider-remove-button:hover { background: var(--red-bg); color: var(--color-danger); }
 
 .model-provider-config-body {
     display: grid;
@@ -862,8 +862,8 @@
 .model-provider-health em { font-style: normal; }
 .model-provider-health.is-success { color: var(--green); }
 .model-provider-health.is-success i { background: var(--green); }
-.model-provider-health.is-error { color: var(--red); }
-.model-provider-health.is-error i { background: var(--red); }
+.model-provider-health.is-error { color: var(--color-danger); }
+.model-provider-health.is-error i { background: var(--color-danger); }
 
 .model-provider-sidebar-empty,
 .model-provider-detail-empty { display: grid; min-height: 180px; place-items: center; gap: 7px; padding: 24px; color: var(--text-subtle); font-size: 13px; text-align: center; }
@@ -876,7 +876,7 @@
 .model-provider-editor-heading > span { margin-bottom: 4px; color: var(--text-subtle); font-size: 12px; font-weight: 600; }
 .model-provider-editor-heading h1 { overflow: hidden; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .model-provider-header-save { min-width: 94px; }
-.model-provider-delete-header { color: var(--red); }
+.model-provider-delete-header { color: var(--color-danger); }
 .model-provider-delete-header:hover { background: var(--red-bg); }
 .model-provider-editor.is-workspace-editor .model-provider-editor-section { padding: 22px; border-bottom: 1px solid var(--border); }
 .model-provider-editor.is-workspace-editor .model-provider-editor-section:last-child { border-bottom: 0; }

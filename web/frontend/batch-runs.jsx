@@ -591,10 +591,7 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
         toast(e.message, "error");
       }
     },
-    (errors) => {
-      const firstError = Object.values(errors)[0];
-      toast(firstError?.message || "请检查任务基础配置", "error");
-    },
+    () => {},
   );
   const headers = preview.data?.headers || [];
   return (
@@ -1037,7 +1034,7 @@ function App() {
     refetchInterval: (q) => batchPollingInterval(q.state.data),
   });
   useEffect(() => {
-    if (batches.error) toast(`加载任务失败: ${batches.error.message}`, "error");
+    if (batches.error) toast(`加载任务失败：${batches.error.message}`, "error");
   }, [batches.error]);
   const data = batches.data || [],
     rows = data.slice((page - 1) * size, page * size);

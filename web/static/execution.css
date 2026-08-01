@@ -388,9 +388,9 @@
     white-space: nowrap;
 }
 
-.batch-pass-rate.is-good { color: #2EA44F; }
-.batch-pass-rate.is-warning { color: #D97706; }
-.batch-pass-rate.is-bad { color: #CF222E; }
+.batch-pass-rate.is-good { color: var(--color-success); }
+.batch-pass-rate.is-warning { color: var(--color-orange); }
+.batch-pass-rate.is-bad { color: var(--color-danger); }
 
 .batch-round-select {
     display: flex;
