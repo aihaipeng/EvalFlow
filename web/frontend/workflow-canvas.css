@@ -60,6 +60,11 @@ body.workflow-studio-open {
     overflow: hidden;
 }
 
+/* 画布容器 z-index 2000；画布打开时的 Radix 弹窗（如未保存离开确认）必须在其之上 */
+body.workflow-studio-open .radix-dialog-content {
+    z-index: 2100;
+}
+
 #workflow-studio-root {
     position: fixed;
     z-index: 2000;

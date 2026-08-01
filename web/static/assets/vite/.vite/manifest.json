@@ -47,7 +47,7 @@
     ]
   },
   "web/frontend/test-sets.jsx": {
-    "file": "test-sets-CVs4TVbb.js",
+    "file": "test-sets-Ca43HCe3.js",
     "name": "test-sets",
     "src": "web/frontend/test-sets.jsx",
     "isEntry": true,
@@ -56,11 +56,11 @@
       "_x-BNrdNBnO.js"
     ],
     "css": [
-      "test-sets-Cnwealj_.css"
+      "test-sets-CVKvjsRd.css"
     ]
   },
   "web/frontend/workflow-canvas.jsx": {
-    "file": "workflow-canvas-Cxjve-XZ.js",
+    "file": "workflow-canvas-CE4VXXF7.js",
     "name": "workflow-canvas",
     "src": "web/frontend/workflow-canvas.jsx",
     "isEntry": true,
@@ -70,7 +70,7 @@
       "_dialog-AMDdXRc0.js"
     ],
     "css": [
-      "workflow-canvas-DljNDcX6.css"
+      "workflow-canvas-RiCmzoRc.css"
     ]
   }
 }

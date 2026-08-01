@@ -386,6 +386,26 @@
 :root[data-theme="dark"] .ts-icon-button.danger:hover,:root[data-theme="dark"] .ts-delete-case.ts-icon-button:hover{background:#3b1f28}
 /* impeccable:test-set-icons-end */
 
+/* 字段设置弹窗感官改进：表头与行对齐、删除列精简、deleted 行柔和 */
+.ts-column-settings-head {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    padding: 0 12px 8px 38px;
+}
+.ts-column-settings-list > div {
+    grid-template-columns: 28px minmax(0, 1fr) 44px;
+    padding: 8px 12px;
+}
+.ts-column-settings-list label span {
+    display: none;
+}
+.ts-column-settings-list > div.deleted {
+    background: var(--surface-muted);
+}
+.ts-column-settings-list > div.deleted input[type="text"] {
+    text-decoration: line-through;
+    color: var(--text-subtle);
+}
+
 .ts-confirm-modal-layer { z-index: 10020; }
 .ts-confirm-modal { width: min(480px, calc(100vw - 32px)); }
 .ts-confirm-modal .ts-modal-body { display: grid; gap: 10px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }

@@ -1590,6 +1590,18 @@ textarea {
     transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
+.btn-danger {
+    background: #fff1f2;
+    color: var(--color-danger);
+    border-color: #fecdd3;
+}
+
+.btn-danger:hover {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: #fff;
+}
+
 .btn:hover {
     border-color: var(--strong-row-border);
     background: var(--surface-hover);

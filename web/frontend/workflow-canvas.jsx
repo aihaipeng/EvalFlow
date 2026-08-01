@@ -2157,7 +2157,8 @@ function WorkflowStudio({options}) {
             }
             setWorkflowName(savedMetadata.current.name);
             setWorkflowDescription(savedMetadata.current.description);
-            setSaveState('已保存');
+            // 元数据保存成功不代表图结构已保存：存在脏节点时保持"未保存"，避免静默丢失改动
+            setSaveState(nodes.some((node) => node.data.isDirty) ? '未保存' : '已保存');
             return true;
         } catch (error) {
             setSaveState('保存失败');
@@ -2166,7 +2167,7 @@ function WorkflowStudio({options}) {
             }
             return false;
         }
-    }, [options, persistDraft]);
+    }, [nodes, options, persistDraft]);
 
     const commitWorkflowName = useCallback(async (nextName = workflowName) => {
         if (nameEditCancelled.current) {
