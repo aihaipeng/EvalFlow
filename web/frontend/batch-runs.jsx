@@ -861,7 +861,19 @@ function ScheduleModal({ batch, onClose, onSaved }) {
     weekdays: [...(batch.schedule?.weekdays || scheduleDefaults.weekdays)],
   });
   const save = useMutation({
-    mutationFn: () => saveBatchSchedule(batch.id, value),
+    mutationFn: () => {
+      // 剥离后端返回的只读字段（batch_id/next_run_at/...），仅提交可写字段
+      const {
+        batch_id: _batchId,
+        next_run_at: _nextRunAt,
+        last_run_at: _lastRunAt,
+        last_error: _lastError,
+        created_at: _createdAt,
+        updated_at: _updatedAt,
+        ...body
+      } = value;
+      return saveBatchSchedule(batch.id, body);
+    },
     onSuccess: () => {
       toast("定时任务设置已保存", "success");
       onSaved();
