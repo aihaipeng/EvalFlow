@@ -185,6 +185,35 @@ def test_repository_round_trips_all_five_node_types_after_restart(tmp_path):
     assert restarted.get(NODE_IDS["HTTP"]).node.request.body.content == {"name": "${ci_name}"}
 
 
+def test_end_accepts_legacy_outputs_but_discards_them_on_save(tmp_path):
+    database = tmp_path / "nodes.sqlite3"
+    repository = NodeStructuralRepository(database)
+    legacy_end = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": NODE_IDS["END"],
+            "type": "END",
+            "name": "结束",
+            "description": "结构终点",
+            "outputs": [{"name": "result", "type": "string", "source": "answer"}],
+        }
+    )
+
+    created = repository.create(legacy_end)
+
+    assert created.node.model_dump(mode="json") == {
+        "id": NODE_IDS["END"],
+        "type": "END",
+        "name": "结束",
+        "description": "结构终点",
+    }
+    with sqlite3.connect(database) as connection:
+        definition = connection.execute(
+            "SELECT definition_json FROM node_structural_models WHERE id = ?",
+            (NODE_IDS["END"],),
+        ).fetchone()[0]
+    assert json.loads(definition) == {}
+
+
 def test_database_separates_common_columns_from_type_definition_json(tmp_path):
     database = tmp_path / "nodes.sqlite3"
     repository = NodeStructuralRepository(database)

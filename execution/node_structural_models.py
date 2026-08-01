@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypeAlias
@@ -20,12 +19,13 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from sqlalchemy.exc import IntegrityError
 
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 from execution.node_codec import dump_node_definition
 from execution.time_utils import utc_now_iso
@@ -638,18 +638,18 @@ class HttpNodeStructuralModel(NodeCommon):
 
 
 class EndNodeStructuralModel(NodeCommon):
-    """END 节点结构模型，声明 Workflow 最终结果映射。"""
+    """END 节点结构模型，只作为 Workflow 的结构终点。"""
 
     type: Literal["END"] = Field(default="END", description="固定节点类型 END。")
-    outputs: list[NodeOutput] = Field(
-        default_factory=list,
-        description="从最终 Context 映射出的 Workflow 结果字段。",
-    )
 
-    @field_validator("outputs")
+    @model_validator(mode="before")
     @classmethod
-    def validate_outputs(cls, value: list[NodeOutput]) -> list[NodeOutput]:
-        return _validate_unique_names(value, label="END outputs")
+    def discard_legacy_outputs(cls, value: Any) -> Any:
+        """兼容读取旧 END outputs，并在下一次保存时清除该历史配置。"""
+
+        if isinstance(value, dict) and "outputs" in value:
+            value = {key: item for key, item in value.items() if key != "outputs"}
+        return value
 
 
 NodeStructuralModel: TypeAlias = Annotated[
@@ -689,34 +689,7 @@ class NodeStructuralRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.execute("PRAGMA foreign_keys = OFF")
-                for table in LEGACY_WORKFLOW_TABLES:
-                    connection.execute(f'DROP TABLE IF EXISTS "{table}"')
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS node_structural_models (
-                        id TEXT PRIMARY KEY,
-                        type TEXT NOT NULL CHECK(type IN ('START','SCRIPT','LLM','HTTP','END')),
-                        name TEXT NOT NULL CHECK(length(trim(name)) > 0),
-                        description TEXT NOT NULL DEFAULT '',
-                        definition_json TEXT NOT NULL
-                            CHECK(json_valid(definition_json))
-                            CHECK(json_type(definition_json) = 'object'),
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE INDEX IF NOT EXISTS node_structural_models_by_type_updated
-                    ON node_structural_models(type, updated_at DESC, id DESC)
-                    """
-                )
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
     def create(
@@ -744,7 +717,7 @@ class NodeStructuralRepository:
                     ),
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             raise NodeStructuralRepositoryError(f"写入节点 Structural Model 失败: {exc}") from exc
         return NodeStructuralRecord(node=validated, created_at=now, updated_at=now)
 
@@ -825,16 +798,11 @@ class NodeStructuralRepository:
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        finally:
-            connection.close()
 
     @staticmethod
-    def _from_row(row: sqlite3.Row) -> NodeStructuralRecord:
+    def _from_row(row: Any) -> NodeStructuralRecord:
         try:
             definition = json.loads(row["definition_json"])
             node = NODE_STRUCTURAL_ADAPTER.validate_python(

@@ -101,6 +101,15 @@ def test_test_set_management_title_matches_other_management_pages():
     assert ".ts-heading.execution-page-header.management-page-header" not in source_css
 
 
+def test_test_set_list_omits_summary_metric_cards():
+    source = (Path(__file__).parents[1] / "web" / "frontend" / "test-sets.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    list_view = source[source.index("function ListView("):source.index("function SaveModal(")]
+    assert "<Metrics items=" not in list_view
+
+
 def test_test_set_react_root_unmounts_before_other_navigation_views():
     root = Path(__file__).parents[1]
     source = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
@@ -153,10 +162,23 @@ def test_blank_manual_case_is_removed_without_saving():
     blank_check = 'if (isBlankCase(pendingCase)) {'
     save_request = 'const savePromise = request(`/api/test-sets/${draft.id}`'
 
-    assert 'draft.columns.every((column) => !String(testCase.values[column] ?? "").trim())' in source
+    assert "return isBlankCaseValues(testCase.values, draft.columns);" in source
     assert blank_check in source
     assert source.index(blank_check) < source.index(save_request)
     assert 'setPendingCase(null);' in source[source.index(blank_check):source.index(save_request)]
+
+
+def test_test_set_import_and_save_filter_blank_cases():
+    source = (
+        Path(__file__).parents[1] / "web" / "frontend" / "test-sets.jsx"
+    ).read_text(encoding="utf-8")
+
+    assert "function isBlankCaseValues(values, columns)" in source
+    assert "function filterBlankCases(cases, columns)" in source
+    assert "return { columns, cases: filterBlankCases(cases, columns) };" in source
+    assert "cases: filterBlankCases(dataset.cases, dataset.columns)" in source
+    assert "cases: filterBlankCases([...target.cases, ...appended], target.columns)" in source
+    assert "const nonBlankCases = filterBlankCases(cases, draft.columns);" in source
 
 
 def test_test_set_metadata_uses_inline_blur_save_without_replacing_case_draft():
@@ -176,16 +198,16 @@ def test_test_set_metadata_uses_inline_blur_save_without_replacing_case_draft():
 def test_management_lists_use_names_as_the_only_edit_entry():
     root = Path(__file__).parents[1]
     test_sets = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
-    providers = (root / "web" / "static" / "model-providers.js").read_text(encoding="utf-8")
+    providers = (root / "web" / "frontend" / "model-providers.jsx").read_text(encoding="utf-8")
     workflows = (root / "web" / "static" / "execution.js").read_text(encoding="utf-8")
 
     list_row = test_sets[test_sets.index("state.items.map((item)"):test_sets.index("<PageControls management total={state.total}")]
-    provider_row = providers[providers.index("body.innerHTML = providers.map"):providers.index("body.querySelectorAll('[data-provider-edit]')")]
+    provider_row = providers[providers.index("rows.map((provider)"):providers.index("<Pagination total={filtered.length}")]
     workflow_row = workflows[workflows.index("body.innerHTML = pagination.items.map"):workflows.index("body.querySelectorAll('[data-workflow-open]')")]
 
     assert list_row.count('onOpen(item.id)') == 1
     assert "<strong>{item.name}</strong>" not in list_row
-    assert provider_row.count("data-provider-edit") == 1
+    assert provider_row.count("onEdit(provider.id)") == 1
     assert workflow_row.count("data-workflow-open") == 1
     assert workflow_row.count("data-workflow-copy") == 1
     assert 'title="拷贝工作流" aria-label="拷贝工作流"' in workflow_row

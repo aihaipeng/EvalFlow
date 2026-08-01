@@ -82,11 +82,6 @@ def create_app(
         """返回模型管理样式。"""
         return FileResponse(STATIC_DIR / "model-providers.css", headers=_NO_CACHE)
 
-    @app.get("/model-providers.js")
-    async def model_providers_js():
-        """返回模型管理前端逻辑。"""
-        return FileResponse(STATIC_DIR / "model-providers.js", headers=_NO_CACHE)
-
     return app
 
 

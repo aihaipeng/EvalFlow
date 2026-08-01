@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 
 from execution.batch_schedule import (
     BatchScheduleManager,
@@ -141,3 +142,25 @@ def test_overlap_policy_skips_or_queues_while_task_is_active(tmp_path):
     assert queued["enabled"] is True
     assert queued["next_run_at"] == "2026-01-01T09:00:01.000Z"
     assert scheduler.started == []
+
+
+def test_apscheduler_triggers_persisted_date_job_without_custom_poll_thread(tmp_path):
+    repository = BatchScheduleRepository(tmp_path / "apscheduler.sqlite3")
+    run_at = datetime.now(UTC) + timedelta(milliseconds=350)
+    repository.save(
+        "batch-1",
+        _schedule(cadence="ONCE", run_at=run_at.isoformat(), timezone="UTC"),
+    )
+    store, inputs, scheduler = _Store(), _Inputs(), _Scheduler()
+    manager = BatchScheduleManager(
+        repository, store, inputs, scheduler, poll_interval_seconds=0.05
+    )
+
+    manager.start()
+    deadline = time.monotonic() + 2
+    while not scheduler.started and time.monotonic() < deadline:
+        time.sleep(0.02)
+    manager.shutdown()
+
+    assert scheduler.started == ["batch-1"]
+    assert repository.get("batch-1")["enabled"] is False

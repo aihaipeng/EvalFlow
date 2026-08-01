@@ -1,0 +1,10 @@
+import {createHash} from "node:crypto";
+import {readFile, writeFile} from "node:fs/promises";
+import {build} from "esbuild";
+const output="web/static/assets/batch-runs.js";
+await build({entryPoints:["web/frontend/batch-runs.jsx"],bundle:true,format:"iife",platform:"browser",target:"es2020",minify:true,legalComments:"linked",outfile:output,logLevel:"info"});
+const content=await readFile(output,"utf8");
+const version=createHash("sha256").update(content).digest("hex").slice(0,12);
+const path="web/static/index.html";const index=await readFile(path,"utf8");
+const next=index.replace(/\/assets\/batch-runs\.js(?:\?v=[^"']+)?/,`/assets/batch-runs.js?v=${version}`);
+if(next!==index)await writeFile(path,next,"utf8");

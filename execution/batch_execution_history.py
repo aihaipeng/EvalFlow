@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -10,9 +9,10 @@ from uuid import uuid4
 
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    CoreConnection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 from execution.workflow_execution_store import utc_execution_time
 
@@ -31,38 +31,18 @@ class BatchExecutionHistoryRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS batch_execution_history (
-                        id TEXT PRIMARY KEY,
-                        batch_id TEXT NOT NULL,
-                        execution_round_id TEXT,
-                        workflow_id TEXT NOT NULL,
-                        test_set_name TEXT NOT NULL,
-                        workflow_name TEXT NOT NULL,
-                        total_cases INTEGER NOT NULL CHECK(total_cases >= 0),
-                        executed_cases INTEGER NOT NULL CHECK(executed_cases >= 0),
-                        passed_cases INTEGER NOT NULL CHECK(passed_cases >= 0),
-                        started_at TEXT NOT NULL,
-                        finished_at TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        FOREIGN KEY(workflow_id)
-                            REFERENCES workflow_structural_models(id) ON DELETE CASCADE
-                    );
-                    CREATE INDEX IF NOT EXISTS batch_execution_history_by_batch
-                        ON batch_execution_history(batch_id, finished_at DESC, created_at DESC, id DESC);
-                    CREATE INDEX IF NOT EXISTS batch_execution_history_by_workflow
-                        ON batch_execution_history(workflow_id);
-                    """
-                )
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
-    def record(self, batch: dict[str, Any], *, started_at: str) -> dict[str, Any]:
-        finished_at = str(batch.get("finished_at") or "").strip()
+    def record(
+        self,
+        batch: dict[str, Any],
+        *,
+        started_at: str,
+        finished_at: str | None = None,
+        deduplicate: bool = False,
+    ) -> dict[str, Any]:
+        finished_at = str(finished_at or batch.get("finished_at") or "").strip()
         if not finished_at:
             raise ValueError("任务历史缺少结束时间")
         workflow = batch.get("workflow") if isinstance(batch.get("workflow"), dict) else {}
@@ -90,6 +70,14 @@ class BatchExecutionHistoryRepository:
         }
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if deduplicate:
+                existing = connection.execute(
+                    "SELECT * FROM batch_execution_history WHERE batch_id = ? AND execution_round_id = ? LIMIT 1",
+                    (record["batch_id"], record["execution_round_id"]),
+                ).fetchone()
+                if existing is not None:
+                    connection.commit()
+                    return dict(existing)
             connection.execute(
                 """
                 INSERT INTO batch_execution_history (
@@ -138,17 +126,8 @@ class BatchExecutionHistoryRepository:
         return cursor.rowcount
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection, foreign_keys=True)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        except Exception:
-            if connection.in_transaction:
-                connection.rollback()
-            raise
-        finally:
-            connection.close()

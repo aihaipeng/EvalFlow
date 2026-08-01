@@ -11,6 +11,7 @@ var executionState = {
     batches: [],
     workflowPage: 1,
     workflowPageSize: 10,
+    workflowListRequestId: 0,
     batchPage: 1,
     batchPageSize: 10,
     batchDetailPageSize: 10,
@@ -27,6 +28,7 @@ var executionState = {
     batchConfigTaskId: null,
     batchSchedules: {},
     batchPoll: null,
+    batchListRequestId: 0,
     batchListPollSignature: null,
     batchListUnchangedPolls: 0,
     batchListPollIntervalMs: BATCH_LIST_POLL_BASE_MS,
@@ -352,7 +354,7 @@ function workflowCanvasNode(node) {
         });
         return Object.assign(common, {inputs: inputs});
     }
-    if (data.nodeType === 'END') return Object.assign(common, {outputs: outputBindings(node)});
+    if (data.nodeType === 'END') return common;
     var timeoutSeconds = Number(data.timeoutSeconds);
     var maxAttempts = Number(data.retryCount);
     var retryIntervalSeconds = Number(data.retryIntervalSeconds);
@@ -489,11 +491,15 @@ async function copyWorkflow(workflowId, button) {
 }
 
 async function loadWorkflows() {
+    var requestId = ++executionState.workflowListRequestId;
     try {
         var payload = await API.get('/api/workflows');
+        if (requestId !== executionState.workflowListRequestId) return;
         executionState.workflows = payload.workflows || [];
+        if (currentView !== 'workflows') return;
         renderWorkflowTable();
     } catch (error) {
+        if (requestId !== executionState.workflowListRequestId || currentView !== 'workflows') return;
         showToast(executionErrorMessage(error), 'error');
     }
 }
@@ -512,6 +518,7 @@ function viewWorkflows() {
         '</section>';
     document.getElementById('btn-workflow-add').addEventListener('click', function () { openWorkflowCanvas(); });
     document.getElementById('btn-workflow-refresh').addEventListener('click', loadWorkflows);
+    renderWorkflowTable();
     loadWorkflows();
 }
 
@@ -660,7 +667,7 @@ function renderBatchTable() {
     body.querySelectorAll('[data-batch-edit]').forEach(function (button) { button.addEventListener('click', function () { openBatchCreate(button.getAttribute('data-batch-edit'), 'edit'); }); });
     body.querySelectorAll('[data-batch-schedule]').forEach(function (button) { button.addEventListener('click', function () { openBatchSchedule(button.getAttribute('data-batch-schedule')); }); });
     body.querySelectorAll('[data-batch-copy]').forEach(function (button) { button.addEventListener('click', function () { openBatchCreate(button.getAttribute('data-batch-copy'), 'copy'); }); });
-    body.querySelectorAll('[data-batch-start]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-start'), 'start', {}); }); });
+    body.querySelectorAll('[data-batch-start]').forEach(function (button) { button.addEventListener('click', function () { openBatchStartMode(button.getAttribute('data-batch-start')); }); });
     body.querySelectorAll('[data-batch-cancel]').forEach(function (button) { button.addEventListener('click', function () { batchCommand(button, button.getAttribute('data-batch-cancel'), 'cancel', {}); }); });
     body.querySelectorAll('[data-batch-delete]').forEach(function (button) { button.addEventListener('click', function () { confirmBatchDelete(button.getAttribute('data-batch-delete')); }); });
 }
@@ -680,6 +687,27 @@ function renderBatchHistory(history) {
                 '<td class="batch-time-cell">' + batchTableDateTime(item.started_at) + '</td>' +
                 '<td class="batch-time-cell">' + batchTableDateTime(item.finished_at) + '</td></tr>';
         }).join('') + '</tbody></table></div>';
+}
+
+function openBatchStartMode(batchId) {
+    var batch = executionState.batches.find(function (item) { return item.id === batchId; });
+    if (!batch) return;
+    var summary = batch.summary || {};
+    var hasPrevious = batch.status !== 'QUEUED' || Boolean(batch.started_at) ||
+        (Number(summary.success) + Number(summary.failed) + Number(summary.interrupted) + Number(summary.running)) > 0;
+    var body = '<div class="batch-start-options" role="radiogroup" aria-label="批跑方式">' +
+        '<label><input type="radio" name="batch-start-mode" value="FULL" checked /><span><strong>全量执行</strong><small>作为一次新任务执行全部用例，当前批跑会保存为历史。</small></span></label>' +
+        '<label' + (!hasPrevious ? ' class="is-disabled"' : '') + '><input type="radio" name="batch-start-mode" value="RESUME"' + (!hasPrevious ? ' disabled' : '') + ' /><span><strong>断点续跑</strong><small>只执行上一次任务中尚未执行的用例。</small></span></label>' +
+        '<label' + (!hasPrevious ? ' class="is-disabled"' : '') + '><input type="radio" name="batch-start-mode" value="RETRY_FAILED"' + (!hasPrevious ? ' disabled' : '') + ' /><span><strong>失败重跑</strong><small>只执行上一次任务中非成功的用例。</small></span></label>' +
+        '</div>';
+    openExecutionModal('选择批跑方式', body, async function () {
+        var mode = document.querySelector('input[name="batch-start-mode"]:checked').value;
+        await API.post('/api/batch-runs/' + encodeURIComponent(batchId) + '/start', {mode: mode});
+        closeExecutionModal();
+        showToast(mode === 'FULL' ? '已创建全量批跑' : mode === 'RESUME' ? '已开始断点续跑' : '已开始失败重跑', 'success');
+        await loadBatchRuns();
+    }, '启动');
+    document.querySelector('.execution-modal').classList.add('is-batch-start');
 }
 
 async function openBatchHistory(batchId) {
@@ -817,17 +845,21 @@ async function batchCommand(button, batchId, command, body) {
 }
 
 async function loadBatchRuns() {
+    var requestId = ++executionState.batchListRequestId;
     try {
         var payload = await API.get('/api/batch-runs');
+        if (requestId !== executionState.batchListRequestId) return;
         executionState.batches = payload.batches || [];
         executionState.batchSchedules = {};
         executionState.batches.forEach(function (batch) {
             if (batch.schedule) executionState.batchSchedules[batch.id] = batch.schedule;
         });
+        if (currentView !== 'batch-runs') return;
         renderBatchTable();
         updateBatchListPolling(executionState.batches);
         scheduleBatchPoll(executionState.batches.some(function (batch) { return ['RUNNING', 'STOPPING'].includes(batch.status); }));
     } catch (error) {
+        if (requestId !== executionState.batchListRequestId || currentView !== 'batch-runs') return;
         showToast(executionErrorMessage(error), 'error');
     }
 }
@@ -876,6 +908,7 @@ function viewBatchRuns() {
             '<div class="table-wrap execution-table-wrap management-list-wrap batch-table-wrap"><table class="table execution-table management-list-table batch-table"><thead><tr><th>名称</th><th>测试集</th><th>工作流</th><th>执行进度</th><th>通过率</th><th>启动时间</th><th>结束时间</th><th class="management-list-actions-head batch-actions-head">操作</th></tr></thead><tbody id="batch-list-body"></tbody></table></div>' +
             '<div id="batch-pagination" class="global-list-footer management-list-footer"></div>' +
         '</section>';
+    renderBatchTable();
     document.getElementById('btn-batch-add').addEventListener('click', function () { openBatchCreate(); });
     document.getElementById('btn-batch-refresh').addEventListener('click', function () {
         resetBatchListPolling();
@@ -919,7 +952,7 @@ async function openBatchCreate(sourceBatchId, mode) {
                 '</div>' +
             '</section>' +
             '<section class="batch-variable-injection"><header><div class="batch-section-heading"><strong>变量注入</strong><span>注入到工作流 Context，节点可通过 context["变量名"] 读取</span></div><button class="btn btn-sm" id="batch-variable-add" type="button" disabled>' + icon('add') + '添加变量</button></header><div class="batch-variable-table" id="batch-variables"><div class="batch-variable-empty">正在读取测试集字段...</div></div></section>' +
-            '<section class="batch-evaluation"><header><div class="batch-section-heading"><strong>结果校验</strong><span>从工作流 Context 中获取变量，路径填写 action_match 等价于 context.action_match</span></div><button class="btn btn-sm" id="batch-rule-add" type="button" disabled>' + icon('add') + '添加规则</button></header><div class="batch-evaluation-table" id="batch-evaluation-rules"></div></section>';
+            '<section class="batch-evaluation"><header><div class="batch-section-heading"><strong>结果校验</strong><span>从工作流 Context 中获取变量，路径填写 action 等价于 context["action"]</span></div><button class="btn btn-sm" id="batch-rule-add" type="button" disabled>' + icon('add') + '添加规则</button></header><div class="batch-evaluation-table" id="batch-evaluation-rules"></div></section>';
         executionState.batchConfigMode = mode;
         executionState.batchConfigTaskId = sourceBatchId || null;
         openExecutionModal(mode === 'edit' ? '编辑任务' : mode === 'copy' ? '拷贝任务' : '创建任务', body, createBatchFromModal, '保存');
@@ -959,7 +992,7 @@ function batchEditableConfig(batch) {
         failure_retry_count: configuration.failure_retry_count !== undefined ? configuration.failure_retry_count : (batch.failure_retry_count || 0),
         call_order: configuration.call_order || (batch.input.call_order && batch.input.call_order.mode) || 'SEQUENTIAL',
         case_display_column: configuration.case_display_column || displayColumns.case,
-        rule_display_column: configuration.rule_display_column || displayColumns.rule,
+        rule_display_column: configuration.rule_display_column !== undefined ? configuration.rule_display_column : displayColumns.rule,
     };
 }
 
@@ -1130,9 +1163,10 @@ async function loadBatchPreview(sourceConfig) {
         var displayColumns = sourceConfig ? {case: sourceConfig.case_display_column, rule: sourceConfig.rule_display_column} : {};
         [['case', 'batch-case-display-column'], ['rule', 'batch-rule-display-column']].forEach(function (item) {
             var select = document.getElementById(item[1]);
-            var selected = select.value || displayColumns[item[0]] || preview.headers[0] || '';
-            select.innerHTML = preview.headers.map(function (header) { return '<option value="' + esc(header) + '">' + esc(header) + '</option>'; }).join('');
-            select.value = preview.headers.includes(selected) ? selected : (preview.headers[0] || '');
+            var optional = item[0] === 'rule';
+            var selected = select.value || displayColumns[item[0]] || (optional ? '' : (preview.headers[0] || ''));
+            select.innerHTML = (optional ? '<option value="">不选择</option>' : '') + preview.headers.map(function (header) { return '<option value="' + esc(header) + '">' + esc(header) + '</option>'; }).join('');
+            select.value = preview.headers.includes(selected) ? selected : (optional ? '' : (preview.headers[0] || ''));
         });
         saveButton.disabled = false;
         variableAddButton.disabled = false;
@@ -1232,7 +1266,9 @@ async function viewBatchDetail(batchId, page, pageSize, roundId, options) {
             executionState.batchDetailSearch,
         ]);
         if (options.preservePosition && renderKey === executionState.batchDetailRenderKey) {
-            if (isLatestRound && ['RUNNING', 'STOPPING'].includes(batch.status)) executionState.batchPoll = setTimeout(function () { viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true}); }, BATCH_DETAIL_POLL_INTERVAL_MS);
+            if (isLatestRound && ['RUNNING', 'STOPPING'].includes(batch.status)) executionState.batchPoll = setTimeout(function () {
+                if (currentView === 'batch-detail') viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true});
+            }, BATCH_DETAIL_POLL_INTERVAL_MS);
             return;
         }
         executionState.batchDetailRenderKey = renderKey;
@@ -1290,7 +1326,9 @@ async function viewBatchDetail(batchId, page, pageSize, roundId, options) {
                 searchInput.setSelectionRange(searchSelectionStart, searchSelectionEnd);
             }
         }
-        if (isLatestRound && ['RUNNING', 'STOPPING'].includes(batch.status)) executionState.batchPoll = setTimeout(function () { viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true}); }, BATCH_DETAIL_POLL_INTERVAL_MS);
+        if (isLatestRound && ['RUNNING', 'STOPPING'].includes(batch.status)) executionState.batchPoll = setTimeout(function () {
+            if (currentView === 'batch-detail') viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true});
+        }, BATCH_DETAIL_POLL_INTERVAL_MS);
     } catch (error) {
         showToast(executionErrorMessage(error), 'error');
     }
@@ -1304,7 +1342,7 @@ function batchCaseFilterOptions(summary) {
     return [
         {label: 'Pass', value: 'Pass', kind: 'result', tone: 'pass', icon: 'check', count: summary.Pass || 0},
         {label: 'Failed', value: 'Failed', kind: 'result', tone: 'failed', icon: 'close', count: summary.Failed || 0},
-        {label: 'Error', value: 'Error', kind: 'result', tone: 'error', icon: 'close', count: summary.Error || 0},
+        {label: 'Error', value: 'Error', kind: 'result', tone: 'error', icon: 'alert', count: summary.Error || 0},
         {label: 'Running', value: 'Running', kind: 'state', tone: 'running', icon: 'refresh', count: summary.Running || 0},
         {label: 'Pending', value: 'Pending', kind: 'state', tone: 'pending', icon: 'gauge', count: summary.Pending || 0},
     ];

@@ -45,7 +45,7 @@
 6. [SCRIPT](#chapter-6) ([Structural Model](#chapter-6-1) / [Execution Model](#chapter-6-2) / [Input &amp; Output Protocol](#chapter-6-3) / [用户可见日志](#chapter-6-4))
 7. [LLM](#chapter-7) ([Structural Model](#chapter-7-1) / [Execution Model](#chapter-7-2) / [Input &amp; Output Protocol](#chapter-7-3) / [用户可见日志](#chapter-7-4))
 8. [HTTP](#chapter-8) ([Structural Model](#chapter-8-1) / [Execution Model](#chapter-8-2) / [Input &amp; Output Protocol](#chapter-8-3) / [用户可见日志](#chapter-8-4))
-9. [END](#chapter-9) ([Structural Model](#chapter-9-1) / [Execution Model](#chapter-9-2) / [Input &amp; Output Protocol](#chapter-9-3) / [用户可见日志](#chapter-9-4))
+9. [END](#chapter-9) ([Structural Model](#chapter-9-1) / [Execution Model](#chapter-9-2) / [Input &amp; Output Protocol](#chapter-9-3) / [用户可见呈现](#chapter-9-4))
 10. [Workflow 结构与调度约束](#chapter-10) ([图结构](#chapter-10-1) / [调度](#chapter-10-2) / [错误阶段](#chapter-10-4))
 11. [执行、重试、超时与取消约束](#chapter-11) ([执行状态](#chapter-11-1) / [重试与超时](#chapter-11-3) / [取消](#chapter-11-4))
 12. [错误与数据完整性约束](#chapter-12) ([显式错误](#chapter-12-2) / [原子提交](#chapter-12-3) / [日志](#chapter-12-4))
@@ -550,14 +550,16 @@ run_storage/batch_executions/{batch_execution_id}/
 ```
 
 - `configuration` 是任务下一轮使用的可编辑配置，保存名称、测试集 ID、工作流 ID、变量注入、结果校验、展示列、顺序、并发和失败重试。运行中允许保存 configuration，但当前轮次继续使用启动时冻结的 `execution_configuration`，不得被编辑反向修改。
-- 每次启动（包括用户中断后重新启动、全部完成后再次启动）都从 SQLite 读取当时最新的测试集、字段、用例和 Workflow Structural Model，创建全新的完整执行轮次；不续跑或覆盖上一轮。启动校验失败时不创建部分轮次。
+- 启动入口必须要求用户选择一种模式：`FULL`（全量执行）、`RESUME`（断点续跑）或 `RETRY_FAILED`（失败重跑）。`FULL` 从 SQLite 读取当时最新的测试集、字段、用例和 Workflow Structural Model，创建全新的完整执行轮次；`RESUME` 只将当前轮次中未执行的 `QUEUED / INTERRUPTED` Case 重新排队；`RETRY_FAILED` 只将当前轮次中非 SUCCESS 的 `QUEUED / INTERRUPTED / FAILED` Case 重新排队，已 SUCCESS 的 Case 保留原执行事实。启动校验失败时不创建部分轮次。
+- `FULL` 启动之前必须把当前轮次（无论是否已全部执行完、是否曾暂停、是否编辑过任务）归档到 `rounds/{execution_round_id}`，并写入一条历史记录；当前轮次若尚未结束，历史记录的 `finished_at` 使用封存时刻。当前轮次正在 RUNNING/STOPPING 时必须先停止并等待线程结束，不能与新全量轮次并发写同一 Batch 目录。`RESUME` / `RETRY_FAILED` 不创建新轮次，也不归档当前轮次。
 - 当前轮次再次启动前必须归档到 `rounds/{execution_round_id}`；归档保留该轮 batch、输入快照、Case 事实和 Workflow Execution ID 引用。详情默认展示最新轮次，并允许用户切换历史轮次继续查看用例详情和节点日志；历史轮次不可启动、删除或修改 Case。
 - “编辑任务”保存原任务并立即更新 configuration；“拷贝任务”复用同一表单，名称默认 `{旧任务名}_copy`，保存后创建新的任务 ID，不共享后续配置或执行轮次。创建、编辑和拷贝按钮统一显示“保存”。
 - 变量注入配置为 `source / key / value / type`。`source=TEST_SET` 时 value 必须是当前数据库测试集字段；`source=CUSTOM` 时 value 是用户填写的文本。type 支持 `string / number / integer / boolean / object / array / null`，object 与 array 使用严格 JSON 文本。key 必须是 Context 根变量名且在一个任务内唯一。
 - 每个 Case 在轮次创建阶段从数据库用例解析测试集来源变量，并将自定义值与测试集值转换为配置的 type。注入变量写入该 Case 的 START 快照，节点可直接使用 `context["key"]` 读取。
-- 结果校验由可选的多个校验点组成。每个校验点保存 `name / result_path / operator / expected_value / type`：name 是最大 200 字符的可选展示名称，空值不阻断保存；用户只填写最终 Context 内的相对路径，例如 `action_match`，后端统一规范化并冻结为 `context.action_match`，历史客户端提交的完整 `context.` 路径继续兼容；expected_value 为用户填写的文本，按 type 严格转换。所有校验点使用 AND 语义，任一校验点为 FAIL 或 ERROR 时，该 Case 状态为 FAILED，同时保留原始 Workflow execution_status 用于追溯。用例详情的“结果校验”只向用户展示 `Pass / Failed`；校验项优先显示非空 name，未填写时显示不含 `context.` 前缀的相对路径，内部非 PASS 事实统一展示为 Failed。
+- 结果校验由可选的多个校验点组成。每个校验点保存 `name / result_path / operator / expected_value / type`：name 是最大 200 字符的可选展示名称，空值不阻断保存；用户只填写最终 Context 内的相对路径，例如 `action_match`，其读取语义等价于 SCRIPT 中的 `context["action_match"]`；后端统一规范化并冻结为内部路径 `context.action_match`，历史客户端提交的完整 `context.` 路径继续兼容；expected_value 为用户填写的文本，按 type 严格转换。所有校验点使用 AND 语义，任一校验点为 FAIL 或 ERROR 时，该 Case 状态为 FAILED，同时保留原始 Workflow execution_status 用于追溯。用例详情的“结果校验”只向用户展示 `Pass / Failed`；校验项优先显示非空 name，未填写时显示不含 `context.` 前缀的相对路径，内部非 PASS 事实统一展示为 Failed。
 - `NOT_EMPTY（不为空）` 不使用 expected_value 和 type：路径必须存在，且实际值不能是 null、空白字符串、空数组或空对象；数字 0 和布尔 false 均视为非空。Run 配置选择该运算符时必须禁用“预期值”和“类型”，避免展示无效配置。
 - `case_id` 使用数据库测试用例 ID，只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context。业务字段是否注入由变量注入配置决定。
+- 任务配置中的“用例列”必须选择测试集字段并默认使用第一列；“规则列”为可选展示字段，创建任务时默认未选择，保存空值时不得回退到第一列，详情列表对应单元格显示 `—`。
 - Batch 状态为 `QUEUED / RUNNING / SUCCESS / COMPLETED_WITH_ERRORS / INTERRUPTED`；Case 状态为 `QUEUED / RUNNING / SUCCESS / FAILED / INTERRUPTED`。
 - Case 失败不阻断同 Batch 的其他 Case。Batch 全部成功时为 SUCCESS；存在失败且未被取消时为 COMPLETED_WITH_ERRORS。
 - Run 保存 `failure_retry_count`，范围为 0..10，表示首次执行失败后的额外重试次数。单条 Case 的 Workflow 执行错误或结果校验失败后必须在当前并发槽内立即重试，成功即停止；用户主动中断不重试。Case 的 `workflow_execution_ids` 按实际启动顺序保留首次和全部重试，用于详情页“执行次数”和历史追溯。
@@ -2482,21 +2484,9 @@ END 不读取 Context，不声明 outputs，也不写入 Context。它只参与�
 
 <a id="chapter-9-4"></a>
 
-### 9.4 用户可见日志
+### 9.4 用户可见呈现
 
-END 的空 Node Execution 是真实执行事实，不是前端伪造状态。用户可见日志行显示实际时间、SUCCESS 和耗时；展开后只显示空 inputs、空 outputs 和最小 transitions，不显示 request、response、console 或 error。
-
-示例：
-
-```text
-07-26 10:00:03  SUCCESS  0 ms
-
-inputs
-{}
-
-outputs
-{}
-```
+END 的空 Node Execution 是内部真实执行事实，不是前端伪造状态。它只用于判定 Workflow SUCCESS，不进入用户可见的节点日志、输入或输出区域；Workflow 运行状态和最终业务数据分别通过 Workflow 状态与 `context.final` 展示。
 
 保存或执行时发现 END 不可达、存在非法出边或其他图结构问题，错误属于 Workflow 图校验结果，不得写入 END 节点日志。
 

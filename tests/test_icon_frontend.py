@@ -20,7 +20,7 @@ def test_shared_lucide_registry_loads_before_frontend_modules():
 
 def test_legacy_bitmap_and_symbol_button_icons_are_removed():
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    providers = (STATIC / "model-providers.js").read_text(encoding="utf-8")
+    providers = (FRONTEND / "model-providers.jsx").read_text(encoding="utf-8")
     test_sets = (FRONTEND / "test-sets.jsx").read_text(encoding="utf-8")
 
     assert "ICON_DATA" not in app
@@ -34,13 +34,13 @@ def test_legacy_bitmap_and_symbol_button_icons_are_removed():
 
 def test_same_actions_use_same_semantic_icons_across_modules():
     execution = (STATIC / "execution.js").read_text(encoding="utf-8")
-    providers = (STATIC / "model-providers.js").read_text(encoding="utf-8")
+    providers = (FRONTEND / "model-providers.jsx").read_text(encoding="utf-8")
     test_sets = (FRONTEND / "test-sets.jsx").read_text(encoding="utf-8")
 
-    assert "icon('add')" in execution and "icon('add')" in providers
-    assert "icon('refresh')" in execution and "icon('refresh')" in providers
-    assert "icon('trash')" in execution and "icon('trash')" in providers
-    assert "icon('save')" in execution and "icon('save')" in providers
+    assert "icon('add')" in execution and '<Icon name="add"/>' in providers
+    assert "icon('refresh')" in execution and '<Icon name="refresh"/>' in providers
+    assert "icon('trash')" in execution and '<Icon name="trash"/>' in providers
+    assert "icon('save')" in execution and '<Icon name="save"/>' in providers
     assert "<Plus className=\"ui-icon\" />" in test_sets
     assert "<RefreshCw className=\"ui-icon\" />" in test_sets
     assert "<Trash2 className=\"ui-icon\" />" in test_sets

@@ -2,9 +2,12 @@
   "name": "agent-bench-frontend",
   "private": true,
   "scripts": {
+    "build:model-providers": "node scripts/build-model-providers.mjs",
+    "build:batch-runs": "node scripts/build-batch-runs.mjs",
+    "test:e2e": "playwright test",
     "build:workflow": "node scripts/build-workflow.mjs",
     "build:test-sets": "node scripts/build-test-sets.mjs",
-    "build": "npm run build:workflow && npm run build:test-sets"
+    "build": "npm run build:workflow && npm run build:test-sets && npm run build:model-providers && npm run build:batch-runs"
   },
   "dependencies": {
     "@codemirror/lang-python": "^6.2.1",
@@ -15,6 +18,7 @@
     "@fortune-sheet/core": "^1.0.4",
     "@fortune-sheet/react": "^1.0.4",
     "@xyflow/react": "^12.8.6",
+    "@tanstack/react-query": "^5.83.0",
     "codemirror": "^6.0.2",
     "lucide-react": "^0.468.0",
     "parse-curl": "^0.2.6",
@@ -25,6 +29,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.0",
     "esbuild": "^0.28.1"
   }
 }

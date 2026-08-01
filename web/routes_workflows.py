@@ -7,8 +7,8 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sse_starlette import EventSourceResponse
 
 from execution import (
     WorkflowEdge,
@@ -305,7 +305,7 @@ def stream_node_test_events(
     workflow_id: str,
     test_id: str,
     services: WorkflowServicesDependency,
-) -> StreamingResponse:
+) -> EventSourceResponse:
     """以 SSE 交付实时临时快照；终态交付后服务端立即释放会话。"""
 
     manager = services.node_test_manager
@@ -314,20 +314,20 @@ def stream_node_test_events(
         try:
             for event in manager.iter_events(workflow_id, test_id):
                 if event is None:
-                    yield ": keepalive\n\n"
                     continue
                 event_type = str(event.get("type", "snapshot"))
                 payload = json.dumps(event, ensure_ascii=False, allow_nan=False)
-                yield f"event: {event_type}\ndata: {payload}\n\n"
+                yield {"event": event_type, "data": payload}
         except WorkflowExecutionError as exc:
             payload = json.dumps(
                 {"type": "error", "message": str(exc)}, ensure_ascii=False
             )
-            yield f"event: error\ndata: {payload}\n\n"
+            yield {"event": "error", "data": payload}
 
-    return StreamingResponse(
+    return EventSourceResponse(
         events(),
-        media_type="text/event-stream",
+        ping=15,
+        sep="\n",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

@@ -31,12 +31,14 @@ class BatchScheduler:
         store: BatchExecutionStore,
         workflow_manager: WorkflowExecutionManager,
         history_repository: BatchExecutionHistoryRepository | None = None,
+        batch_inputs: Any | None = None,
         *,
         max_total_case_concurrency: int = 16,
     ):
         self.store = store
         self.workflow_manager = workflow_manager
         self.history_repository = history_repository
+        self.batch_inputs = batch_inputs
         self.store.recover_incomplete()
         self._global_slots = threading.Semaphore(max_total_case_concurrency)
         self._cancel_events: dict[str, threading.Event] = {}
@@ -46,7 +48,15 @@ class BatchScheduler:
         self._lock = threading.RLock()
         self._closed = False
 
-    def start(self, batch_id: str) -> dict[str, Any]:
+    def start(self, batch_id: str, *, mode: str = "FULL") -> dict[str, Any]:
+        mode = str(mode).upper()
+        if mode == "RESUME":
+            return self.resume(batch_id)
+        if mode == "RETRY_FAILED":
+            return self.resume(batch_id, retry_failed=True)
+        if mode not in {"FULL", "__PREPARED"}:
+            raise BatchExecutionError("不支持的批跑模式")
+        prepare_full = mode == "FULL"
         with self._lock:
             if self._closed:
                 raise BatchExecutionError("Batch Scheduler 已关闭")
@@ -57,7 +67,19 @@ class BatchScheduler:
             batch = self.store.get(batch_id)
             if batch is None:
                 raise BatchExecutionError(f"Batch Execution 不存在: {batch_id}")
-            if batch["status"] != "QUEUED":
+            if batch["status"] in {"RUNNING", "STOPPING"}:
+                raise BatchExecutionError("旧任务仍在运行，请先停止并等待任务结束")
+            if prepare_full and self.batch_inputs is not None:
+                if self.store.has_execution(batch) and self.history_repository is not None:
+                    now = utc_execution_time()
+                    self.history_repository.record(
+                        batch,
+                        started_at=str(batch.get("started_at") or now),
+                        finished_at=str(batch.get("finished_at") or now),
+                        deduplicate=True,
+                    )
+                batch = self.batch_inputs.prepare_execution(batch_id)
+            elif batch["status"] != "QUEUED":
                 raise BatchExecutionError("只有待执行任务可以启动")
             event = threading.Event()
             attempt_started_at = utc_execution_time()
@@ -117,7 +139,7 @@ class BatchScheduler:
         batch["error"] = None
         self._update_summary(batch)
         self.store.write_batch(batch)
-        return self.start(batch_id)
+        return self.start(batch_id, mode="__PREPARED")
 
     def cancel(self, batch_id: str) -> bool:
         with self._lock:

@@ -4,17 +4,14 @@ version = "0.1.0"
 description = "Local enterprise Agent testing and workflow orchestration app"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.75,<1",
+    "alembic>=1.18,<2",
+    "apscheduler>=3.11,<4",
     "fastapi>=0.115,<1",
     "httpx[socks]>=0.28,<1",
-    "langchain>=1.0,<2",
-    "langchain-anthropic>=1.0,<2",
-    "langchain-deepseek>=1.1,<2",
-    "langchain-google-genai>=4.0,<5",
-    "langchain-openai>=1.0,<2",
-    "langchain-tavily>=0.2.18",
     "pydantic>=2.12,<3",
-    "rich>=13.9,<15",
+    "requests>=2.32,<3",
+    "sse-starlette>=3.0,<4",
+    "sqlalchemy>=2.0,<3",
     "tzdata>=2025.2",
     "uvicorn[standard]>=0.34,<1",
 ]

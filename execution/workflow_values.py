@@ -352,18 +352,3 @@ def collect_outputs(
         value = extract_output(declaration.source, facts)
         outputs[declaration.name] = convert_output(value, declaration.type)
     return deepcopy(outputs)
-
-
-def collect_end_results(declarations: list[Any], context: dict[str, Any]) -> dict[str, Any]:
-    """按 END 声明从最终 Context 提取并转换 Workflow 结果。"""
-
-    results: dict[str, Any] = {}
-    for declaration in declarations:
-        try:
-            value = resolve_path(context, declaration.source)
-        except WorkflowValueError as exc:
-            raise WorkflowOutputSourceError(
-                f"END 结果 source 无法读取: {declaration.source}"
-            ) from exc
-        results[declaration.name] = convert_output(value, declaration.type)
-    return deepcopy(results)

@@ -58,6 +58,17 @@ def test_evaluator_reads_final_context_and_supports_typed_rules():
     assert evaluation["rules"][1]["result_path"] == "context.final_answer.status"
 
 
+def test_top_level_relative_path_reads_the_same_context_key():
+    evaluation = evaluate_case(
+        {"action_match": True},
+        [rule(result_path="action_match", expected_value="true", type="boolean")],
+    )
+
+    assert evaluation["verdict"] == "PASS"
+    assert evaluation["rules"][0]["result_path"] == "context.action_match"
+    assert evaluation["rules"][0]["actual"] is True
+
+
 def test_evaluator_marks_any_failed_rule_and_missing_context_path():
     evaluation = evaluate_case(
         {"final_answer": {"status": "FAIL"}},

@@ -53,6 +53,10 @@ class BatchResumeRequest(_BatchApiModel):
     retry_failed: bool = False
 
 
+class BatchStartRequest(_BatchApiModel):
+    mode: Literal["FULL", "RESUME", "RETRY_FAILED"] = "FULL"
+
+
 class BatchScheduleRequest(_BatchApiModel):
     enabled: bool = True
     cadence: Literal["ONCE", "DAILY", "WEEKLY", "MONTHLY"] = "DAILY"
@@ -361,6 +365,7 @@ def delete_batch(batch_id: str, services: WorkflowServicesDependency) -> BatchEn
         batch = services.batch_store.delete(batch_id)
         services.batch_history.delete_batch(batch_id)
         services.batch_schedules.delete(batch_id)
+        services.batch_schedule_manager.refresh(batch_id)
         return BatchEnvelope(batch=batch)
     except BatchExecutionError as exc:
         _error(exc)
@@ -385,25 +390,33 @@ def save_batch_schedule(
         raise HTTPException(404, f"Batch Execution 不存在: {batch_id}")
     try:
         schedule = services.batch_schedules.save(batch_id, body.model_dump())
+        services.batch_schedule_manager.refresh(batch_id)
     except ValueError as exc:
         _error(exc)
     return {"schedule": schedule}
 
 
 @router.post("/{batch_id}/start", response_model=BatchEnvelope, status_code=202)
-def start_batch(batch_id: str, services: WorkflowServicesDependency) -> BatchEnvelope:
+def start_batch(
+    batch_id: str,
+    services: WorkflowServicesDependency,
+    body: BatchStartRequest | None = None,
+) -> BatchEnvelope:
     try:
-        batch = services.batch_store.get(batch_id)
-        if batch is None:
+        if services.batch_store.get(batch_id) is None:
             raise HTTPException(404, f"Batch Execution 不存在: {batch_id}")
-        if batch.get("status") == "STOPPED":
-            return BatchEnvelope(batch=services.batch_scheduler.resume(batch_id))
-        if not (
-            batch.get("status") == "QUEUED"
-            and services.batch_store.has_execution(batch)
-        ):
-            services.batch_inputs.prepare_execution(batch_id)
-        return BatchEnvelope(batch=services.batch_scheduler.start(batch_id))
+        if body is None:
+            current = services.batch_store.get(batch_id)
+            mode = (
+                "RESUME"
+                if current
+                and services.batch_store.has_execution(current)
+                and current.get("status") not in {"SUCCESS", "COMPLETED_WITH_ERRORS"}
+                else "FULL"
+            )
+        else:
+            mode = body.mode
+        return BatchEnvelope(batch=services.batch_scheduler.start(batch_id, mode=mode))
     except BatchExecutionError as exc:
         _error(exc)
 

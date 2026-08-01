@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -11,11 +10,14 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
+
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    CoreConnection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 from execution.time_utils import utc_now_iso
 
@@ -91,24 +93,22 @@ def _normalize_cases(
     normalized: list[tuple[str, dict[str, str]]] = []
     seen_ids: set[str] = set()
     for item in cases:
-        case_id = str(item.get("id") or uuid4())
-        if case_id in seen_ids:
-            raise TestSetRepositoryError("用例 ID 不能重复")
-        seen_ids.add(case_id)
         raw_values = item.get("values")
         if not isinstance(raw_values, dict):
             raise TestSetRepositoryError("用例 values 必须是对象")
         if set(raw_values) != expected_keys:
             raise TestSetRepositoryError("每条用例必须包含且仅包含当前测试集字段")
-        normalized.append(
-            (
-                case_id,
-                {
-                    key: "" if raw_values[key] is None else str(raw_values[key])
-                    for key in columns
-                },
-            )
-        )
+        values = {
+            key: "" if raw_values[key] is None else str(raw_values[key])
+            for key in columns
+        }
+        if not any(value.strip() for value in values.values()):
+            continue
+        case_id = str(item.get("id") or uuid4())
+        if case_id in seen_ids:
+            raise TestSetRepositoryError("用例 ID 不能重复")
+        seen_ids.add(case_id)
+        normalized.append((case_id, values))
     return tuple(normalized)
 
 
@@ -124,47 +124,7 @@ class TestSetRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS test_sets (
-                        id TEXT PRIMARY KEY,
-                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                        description TEXT NOT NULL DEFAULT '',
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    );
-
-                    CREATE TABLE IF NOT EXISTS test_set_columns (
-                        test_set_id TEXT NOT NULL,
-                        position INTEGER NOT NULL,
-                        column_key TEXT NOT NULL,
-                        PRIMARY KEY(test_set_id, position),
-                        UNIQUE(test_set_id, column_key),
-                        FOREIGN KEY(test_set_id) REFERENCES test_sets(id) ON DELETE CASCADE
-                    );
-
-                    CREATE TABLE IF NOT EXISTS test_cases (
-                        id TEXT PRIMARY KEY,
-                        test_set_id TEXT NOT NULL,
-                        position INTEGER NOT NULL,
-                        values_json TEXT NOT NULL,
-                        UNIQUE(test_set_id, position),
-                        FOREIGN KEY(test_set_id) REFERENCES test_sets(id) ON DELETE CASCADE
-                    );
-
-                    CREATE INDEX IF NOT EXISTS idx_test_sets_updated
-                        ON test_sets(updated_at DESC, id DESC);
-                    CREATE INDEX IF NOT EXISTS idx_test_cases_set_position
-                        ON test_cases(test_set_id, position);
-                    """
-                )
-                columns = {row["name"] for row in connection.execute("PRAGMA table_info(test_sets)")}
-                if "version" in columns:
-                    connection.execute("ALTER TABLE test_sets DROP COLUMN version")
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
     def create(
@@ -194,7 +154,7 @@ class TestSetRepository:
                     connection, test_set_id, normalized_columns, normalized_cases
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
             raise TestSetRepositoryError(f"创建测试集失败: {exc}") from exc
@@ -217,7 +177,7 @@ class TestSetRepository:
         with self._connect() as connection:
             total = connection.execute(
                 f"SELECT COUNT(*) FROM test_sets ts {where}", params
-            ).fetchone()[0]
+            ).fetchone()["COUNT(*)"]
             rows = connection.execute(
                 f"""
                 SELECT ts.*,
@@ -327,7 +287,7 @@ class TestSetRepository:
                     connection, test_set_id, normalized_columns, normalized_cases
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
             raise TestSetRepositoryError(f"更新测试集失败: {exc}") from exc
@@ -359,7 +319,7 @@ class TestSetRepository:
                 if cursor.rowcount == 0:
                     raise TestSetRepositoryError("测试集不存在")
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
             raise TestSetRepositoryError(f"更新测试集元数据失败: {exc}") from exc
@@ -378,7 +338,7 @@ class TestSetRepository:
 
     @staticmethod
     def _replace_children(
-        connection: sqlite3.Connection,
+        connection: CoreConnection,
         test_set_id: str,
         columns: Sequence[str],
         cases: Sequence[tuple[str, dict[str, str]]],
@@ -413,19 +373,14 @@ class TestSetRepository:
         )
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection, foreign_keys=True)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        finally:
-            connection.close()
 
     @staticmethod
-    def _summary_from_row(row: sqlite3.Row) -> TestSetSummary:
+    def _summary_from_row(row: Any) -> TestSetSummary:
         return TestSetSummary(
             id=row["id"],
             name=row["name"],

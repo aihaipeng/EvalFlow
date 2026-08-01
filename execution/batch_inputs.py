@@ -269,7 +269,9 @@ class BatchInputService:
         columns = tuple(column.key for column in test_set.columns)
         display_columns = {
             "case": self._display_column(columns, case_display_column, "用例列"),
-            "rule": self._display_column(columns, rule_display_column, "规则列"),
+            "rule": self._display_column(
+                columns, rule_display_column, "规则列", allow_empty=True
+            ),
         }
         workflow_snapshot = snapshot_record(workflow_record)
         normalized_variables = _normalize_variables(columns, variables)
@@ -418,10 +420,14 @@ class BatchInputService:
 
     @staticmethod
     def _display_column(
-        columns: tuple[str, ...], value: str | None, label: str
-    ) -> str:
-        if value is None:
-            return columns[0]
+        columns: tuple[str, ...],
+        value: str | None,
+        label: str,
+        *,
+        allow_empty: bool = False,
+    ) -> str | None:
+        if value is None or (allow_empty and value == ""):
+            return None if allow_empty else columns[0]
         if value not in columns:
             raise BatchExecutionError(f"{label}不存在于测试集字段中: {value}")
         return value

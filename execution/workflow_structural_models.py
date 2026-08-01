@@ -4,27 +4,27 @@ from __future__ import annotations
 
 import json
 import math
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from sqlalchemy.exc import IntegrityError
 
 from execution.node_structural_models import (
     NODE_STRUCTURAL_ADAPTER,
     NodeStructuralModel,
-    NodeStructuralRepository,
 )
 from execution.node_codec import dump_node_definition
 from execution.resource_names import next_copy_name
 from execution.time_utils import utc_now_iso
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    CoreConnection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 
 
@@ -172,7 +172,7 @@ class WorkflowNameConflictError(WorkflowStructuralRepositoryError):
     """Workflow 名称已被其他结构记录占用。"""
 
 
-def _raise_workflow_integrity_error(operation: str, exc: sqlite3.IntegrityError) -> None:
+def _raise_workflow_integrity_error(operation: str, exc: IntegrityError) -> None:
     if "workflow_structural_models.name" in str(exc):
         raise WorkflowNameConflictError("Workflow 名称已存在，请使用其他名称") from exc
     raise WorkflowStructuralRepositoryError(
@@ -283,45 +283,7 @@ class WorkflowStructuralRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            NodeStructuralRepository(self.database_path).initialize()
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS workflow_structural_models (
-                        id TEXT PRIMARY KEY,
-                        name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0),
-                        description TEXT NOT NULL DEFAULT '',
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS workflow_node_bindings (
-                        workflow_id TEXT NOT NULL,
-                        node_id TEXT NOT NULL UNIQUE,
-                        position_x REAL NOT NULL,
-                        position_y REAL NOT NULL,
-                        PRIMARY KEY(workflow_id, node_id),
-                        FOREIGN KEY(workflow_id) REFERENCES workflow_structural_models(id) ON DELETE CASCADE,
-                        FOREIGN KEY(node_id) REFERENCES node_structural_models(id) ON DELETE CASCADE
-                    );
-                    CREATE TABLE IF NOT EXISTS workflow_edges (
-                        id TEXT PRIMARY KEY,
-                        workflow_id TEXT NOT NULL,
-                        source_node_id TEXT NOT NULL,
-                        target_node_id TEXT NOT NULL,
-                        UNIQUE(workflow_id, source_node_id, target_node_id),
-                        FOREIGN KEY(workflow_id, source_node_id)
-                            REFERENCES workflow_node_bindings(workflow_id, node_id) ON DELETE CASCADE,
-                        FOREIGN KEY(workflow_id, target_node_id)
-                            REFERENCES workflow_node_bindings(workflow_id, node_id) ON DELETE CASCADE
-                    );
-                    CREATE INDEX IF NOT EXISTS workflow_structural_models_by_updated
-                        ON workflow_structural_models(updated_at DESC, id DESC);
-                    CREATE INDEX IF NOT EXISTS workflow_edges_by_workflow
-                        ON workflow_edges(workflow_id, source_node_id, target_node_id);
-                    """
-                )
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
     def create(
@@ -344,7 +306,7 @@ class WorkflowStructuralRepository:
                 )
                 self._insert_nodes_bindings_edges(connection, validated, nodes, now)
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             _raise_workflow_integrity_error("创建", exc)
         return WorkflowStructuralRecord(
             workflow=validated, node_models=nodes, created_at=now, updated_at=now
@@ -438,7 +400,7 @@ class WorkflowStructuralRepository:
                     connection, copied_workflow, copied_nodes, now
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             _raise_workflow_integrity_error("复制", exc)
         return WorkflowStructuralRecord(
             workflow=copied_workflow,
@@ -519,7 +481,7 @@ class WorkflowStructuralRepository:
                     (validated.name, validated.description, now, validated.id),
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             _raise_workflow_integrity_error("更新", exc)
         return WorkflowStructuralRecord(
             workflow=validated,
@@ -548,7 +510,7 @@ class WorkflowStructuralRepository:
 
     def _insert_nodes_bindings_edges(
         self,
-        connection: sqlite3.Connection,
+        connection: CoreConnection,
         workflow: WorkflowStructuralModel,
         nodes: list[NodeStructuralModel],
         timestamp: str,
@@ -563,7 +525,7 @@ class WorkflowStructuralRepository:
         self._insert_edges(connection, workflow)
 
     @staticmethod
-    def _insert_node(connection: sqlite3.Connection, node: NodeStructuralModel, timestamp: str) -> None:
+    def _insert_node(connection: CoreConnection, node: NodeStructuralModel, timestamp: str) -> None:
         connection.execute(
             "INSERT INTO node_structural_models(id,type,name,description,definition_json,created_at,updated_at) "
             "VALUES (?,?,?,?,?,?,?)",
@@ -571,7 +533,7 @@ class WorkflowStructuralRepository:
         )
 
     @staticmethod
-    def _insert_edges(connection: sqlite3.Connection, workflow: WorkflowStructuralModel) -> None:
+    def _insert_edges(connection: CoreConnection, workflow: WorkflowStructuralModel) -> None:
         for edge in workflow.edges:
             connection.execute(
                 "INSERT INTO workflow_edges VALUES (?, ?, ?, ?)",
@@ -579,7 +541,7 @@ class WorkflowStructuralRepository:
             )
 
     def _record_from_connection(
-        self, connection: sqlite3.Connection, row: sqlite3.Row
+        self, connection: CoreConnection, row: Any
     ) -> WorkflowStructuralRecord:
         bindings = connection.execute(
             "SELECT node_id, position_x, position_y FROM workflow_node_bindings "
@@ -625,17 +587,8 @@ class WorkflowStructuralRepository:
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection, foreign_keys=True)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        except Exception:
-            if connection.in_transaction:
-                connection.rollback()
-            raise
-        finally:
-            connection.close()
 
 
 WORKFLOW_STRUCTURAL_ADAPTER = TypeAdapter(WorkflowStructuralModel)

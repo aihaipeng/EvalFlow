@@ -110,7 +110,11 @@ def test_initialize_creates_only_structural_tables_with_documented_columns(tmp_p
 
     assert set(WORKFLOW_STRUCTURAL_TABLE_DESCRIPTIONS) <= tables
     assert "node_structural_models" in tables
-    assert not any("execution" in table or "log" in table for table in tables)
+    assert not any(
+        table in {"workflow_node_runs", "workflow_runs", "node_runs", "artifacts"}
+        or table.endswith("_logs")
+        for table in tables
+    )
     assert foreign_keys
     assert integrity == "ok"
 

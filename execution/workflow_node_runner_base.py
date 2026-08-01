@@ -14,7 +14,7 @@ from execution.workflow_execution_store import (
     seconds_to_milliseconds,
     utc_execution_time,
 )
-from execution.workflow_values import WorkflowValueError, collect_end_results, strict_json_clone
+from execution.workflow_values import strict_json_clone
 
 
 class ExecutionController(Protocol):
@@ -183,13 +183,5 @@ class NodeRunnerBase:
         document = self._base_node(workflow, node, node_execution_id)
         started = self._start_node(document)
         document["attempt_count"] = 1
-        try:
-            results = collect_end_results(node.outputs, context)
-        except WorkflowValueError as exc:
-            error = _error("END_RESULT_EVALUATION_ERROR", str(exc))
-            self._finish_node(document, "FAILED", started, error=error)
-            return document, {}
-        document["inputs"] = strict_json_clone(context)
-        document["outputs"] = strict_json_clone(results)
         self._finish_node(document, "SUCCESS", started)
-        return document, results
+        return document, {}

@@ -263,13 +263,13 @@ def test_script_workflow_persists_context_and_schedules_end_after_upstream_succe
     assert by_type["SCRIPT"]["inputs"] == {"question": "hello"}
     assert by_type["SCRIPT"]["outputs"] == {"answer": "HELLO"}
     assert by_type["SCRIPT"]["logs"]["attempts"][-1]["console"][0]["content"] == "HELLO\n"
-    assert by_type["END"]["inputs"] == {"question": "hello", "answer": "HELLO"}
+    assert by_type["END"]["inputs"] == {}
     assert by_type["END"]["outputs"] == {}
     assert finished["result"] == {}
     assert next(item for item in finished["nodes"] if item["node_id"] == end.id)["state"] == "FINISHED"
 
 
-def test_end_maps_final_context_to_workflow_result_without_committing_again(tmp_path):
+def test_end_ignores_legacy_result_fields_and_only_marks_workflow_success(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node("START", inputs=[])
     script = make_node(
@@ -296,13 +296,14 @@ def test_end_maps_final_context_to_workflow_result_without_committing_again(tmp_
     )
 
     assert finished["status"] == "SUCCESS"
-    assert finished["result"] == {"text": "通过", "score": 0.95}
+    assert finished["result"] == {}
     assert finished["context"]["final"] == {
         "agent_answer": {"text": "通过", "score": 0.95}
     }
     assert len(finished["context"]["commits"]) == 1
-    assert end_execution["inputs"] == finished["context"]["final"]
-    assert end_execution["outputs"] == finished["result"]
+    assert end_execution["inputs"] == {}
+    assert end_execution["outputs"] == {}
+    assert "outputs" not in end_execution["structural_snapshot"]
 
 
 def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):

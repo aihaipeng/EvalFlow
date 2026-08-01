@@ -73,6 +73,12 @@ def test_workflow_canvas_follows_application_theme():
     assert "background: #181e26;" in styles
     assert "--wf-button-bg: #ffffff;" in styles
     assert "--wf-button-bg: #20262e;" in styles
+    assert "--wf-variable-name: #86efac;" in styles
+    assert "--wf-variable-value: #ffffff;" in styles
+    assert "color: var(--wf-variable-name);" in styles
+    assert "color: var(--wf-variable-value);" in styles
+    assert "width: min(560px, calc(100% - 32px));" in styles
+    assert "grid-template-columns: minmax(160px, 0.85fr) minmax(0, 1.6fr) 32px;" in styles
     assert ".wf-header-actions button,\n.wf-http-import-button," in styles
     assert ".wf-icon-button,\n.wf-header-popover > header button," in styles
     assert ".workflow-studio-shell button:focus-visible {" in styles
@@ -376,6 +382,16 @@ def test_node_inspector_enforces_shared_control_and_section_rules():
     assert "grid-template-columns: minmax(150px, 0.8fr) var(--wf-compact-select-width)" in styles
 
 
+def test_variable_type_changes_preserve_existing_user_input():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "updateRow(row.id, {type});" in source
+    assert "updateStartInput(row.id, {type: event.target.value})" in source
+    assert "updateOutputVariable(row.id, {type: event.target.value})" in source
+    assert "valueText: type === 'null' ? 'null' : row.valueText" not in source
+    assert "{type: event.target.value, value: ''}" not in source
+
+
 def test_available_variables_include_dag_ancestors_current_draft_and_temporary_outputs():
     source = read("web/frontend/workflow-canvas.jsx")
 
@@ -387,16 +403,19 @@ def test_available_variables_include_dag_ancestors_current_draft_and_temporary_o
     assert "if (!variablesOpen || !node) return undefined" in source
 
 
-def test_end_node_exposes_explicit_workflow_result_mappings():
+def test_end_node_is_only_a_user_visible_workflow_marker():
     source = read("web/frontend/workflow-canvas.jsx")
     adapter = read("web/static/execution.js")
 
     assert "const isEnd = node.data.nodeType === 'END';" in source
-    assert "const showOutputVariables = meta.executable || isEnd;" in source
-    assert "isEnd ? '最终结果' : '运行配置'" in source
-    assert "isEnd ? '结果字段' : '输出变量'" in source
-    assert "isEnd ? 'Context 路径' : '提取表达式'" in source
-    assert "if (data.nodeType === 'END') return Object.assign(common, {outputs: outputBindings(node)});" in adapter
+    assert "const showOutputVariables = meta.executable;" in source
+    assert "{data.nodeType !== 'END' && <button type=\"button\" title=\"日志\"" in source
+    assert "{!isEnd && <button type=\"button\" className={tab === 'logs'" in source
+    assert "{meta.executable && <section className=\"wf-config-section wf-editor-full-row\">" in source
+    assert "payload.executions.filter((execution) => execution.type !== 'END')" in source
+    assert "isEnd ? '最终结果' : '运行配置'" not in source
+    assert "isEnd ? '结果字段' : '输出变量'" not in source
+    assert "if (data.nodeType === 'END') return common;" in adapter
 
 
 def test_built_workflow_assets_exist_and_are_nonempty():

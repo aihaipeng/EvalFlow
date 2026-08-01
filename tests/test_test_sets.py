@@ -65,16 +65,36 @@ def test_repository_updates_full_state_directly(tmp_path) -> None:
     assert updated.cases[0].values == {"col_1": "a", "col_2": "c"}
 
 
-def test_repository_allows_empty_case_values_when_all_fields_are_present(tmp_path) -> None:
+def test_repository_skips_blank_cases_on_create_and_update(tmp_path) -> None:
     repository = Repository(tmp_path / "agent-bench.sqlite3")
 
     created = repository.create(
-        name="允许空值",
+        name="忽略空白行",
         columns=["col_1", "col_2"],
-        cases=[{"values": {"col_1": "", "col_2": ""}}],
+        cases=[
+            {"values": {"col_1": "", "col_2": "  \t"}},
+            {"values": {"col_1": "有效值", "col_2": ""}},
+        ],
     )
 
-    assert created.cases[0].values == {"col_1": "", "col_2": ""}
+    assert [case.values for case in created.cases] == [
+        {"col_1": "有效值", "col_2": ""}
+    ]
+
+    updated = repository.update(
+        created.id,
+        name=created.name,
+        description=created.description,
+        columns=["col_1", "col_2"],
+        cases=[
+            {"values": {"col_1": " ", "col_2": ""}},
+            {"values": {"col_1": "更新后有效值", "col_2": ""}},
+        ],
+    )
+
+    assert [case.values for case in updated.cases] == [
+        {"col_1": "更新后有效值", "col_2": ""}
+    ]
 
 
 def test_repository_rejects_duplicate_names_and_invalid_case_shapes(tmp_path) -> None:

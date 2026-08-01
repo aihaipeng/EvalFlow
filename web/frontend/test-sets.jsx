@@ -9,6 +9,7 @@ import "./test-sets.css";
 const PAGE_SIZE = 20;
 const CASE_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+let testSetListCache = null;
 
 async function request(url, options = {}) {
   const response = await fetch(url, {
@@ -155,12 +156,21 @@ function normalizedRange(range) {
   };
 }
 
+function isBlankCaseValues(values, columns) {
+  return columns.every((column) => !String(values?.[column] ?? "").trim());
+}
+
+function filterBlankCases(cases, columns) {
+  return cases.filter((item) => !isBlankCaseValues(item.values, columns));
+}
+
 function buildDataset(selections, mode) {
   if (!selections.length) return { columns: [], cases: [] };
   if (mode === "cells") {
+    const columns = ["col_1"];
     return {
-      columns: ["col_1"],
-      cases: selections.flatMap((selection) => selection.rows.flatMap((row) => row.values.map((value) => ({ values: { col_1: value } })))),
+      columns,
+      cases: filterBlankCases(selections.flatMap((selection) => selection.rows.flatMap((row) => row.values.map((value) => ({ values: { col_1: value } })))), columns),
     };
   }
   const columnCount = Math.max(...selections.map((selection) => selection.columnCount));
@@ -176,7 +186,7 @@ function buildDataset(selections, mode) {
   const cases = Array.from(casesByRow.values()).map((item) => ({
     values: Object.fromEntries(columns.map((column) => [column, item.values[column] || ""])),
   }));
-  return { columns, cases };
+  return { columns, cases: filterBlankCases(cases, columns) };
 }
 
 const Spreadsheet = forwardRef(function Spreadsheet({ source, onSheetChange, onSelectionChange }, forwardedRef) {
@@ -238,7 +248,7 @@ function ListView({ onCreate, onOpen }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [state, setState] = useState({ items: [], metrics: {}, total: 0 });
+  const [state, setState] = useState(() => testSetListCache || { items: [], metrics: {}, total: 0 });
   const [loading, setLoading] = useState(true);
   const [pendingDelete, setPendingDelete] = useState(null);
   const initialQueryEffect = useRef(true);
@@ -250,6 +260,7 @@ function ListView({ onCreate, onOpen }) {
     try {
       const payload = await request(`/api/test-sets?page=${nextPage}&page_size=${nextPageSize}&name_query=${encodeURIComponent(nextQuery)}`);
       if (requestId !== loadRequestId.current) return;
+      testSetListCache = payload;
       setState(payload);
     } catch (error) {
       if (requestId === loadRequestId.current) toast(`加载测试集失败：${error.message}`, "error");
@@ -286,7 +297,6 @@ function ListView({ onCreate, onOpen }) {
   const pages = Math.max(1, Math.ceil(state.total / pageSize));
   return <section className="ts-page execution-page">
     <div className="ts-heading execution-page-header management-page-header"><div className="management-page-title"><h1>测试集管理</h1><span className="management-page-description">维护测试字段与用例</span></div></div>
-    <Metrics items={[["测试集", state.metrics.test_set_count || 0], ["用例总数", state.metrics.case_count || 0], ["本周新增", state.metrics.recent_count || 0]]} />
     <div className="toolbar execution-toolbar management-list-toolbar"><button className="btn btn-primary" type="button" onClick={onCreate}><Plus className="ui-icon" />新建测试集</button><button className="btn" type="button" disabled={loading} onClick={() => load(page, query)}><RefreshCw className="ui-icon" />刷新</button><span className="toolbar-sep" /><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索测试集名称或说明" /></label></div>
     <div className="table-wrap execution-table-wrap management-list-wrap ts-table-wrap ts-list-table-wrap" aria-busy={loading}><table className="table execution-table management-list-table ts-table ts-list-table"><thead><tr><th>测试集名称</th><th>用例数</th><th>字段数</th><th>说明</th><th>最近更新</th><th className="management-list-actions-head">操作</th></tr></thead><tbody>
       {loading && !state.items.length && <tr><td colSpan="6"><div className="execution-empty"><strong>正在加载测试集...</strong></div></td></tr>}
@@ -312,9 +322,9 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
       if (appending) {
         if (dataset.columns.length !== target.columns.length) throw new Error(`字段数量不一致：当前测试集为 ${target.columns.length} 个字段，本次选择为 ${dataset.columns.length} 个字段`);
         const appended = dataset.cases.map((item) => ({ id: makeId("case"), values: Object.fromEntries(target.columns.map((column, index) => [column, item.values[`col_${index + 1}`] || ""])) }));
-        onSaved({ ...target, cases: [...target.cases, ...appended] }, false);
+        onSaved({ ...target, cases: filterBlankCases([...target.cases, ...appended], target.columns) }, false);
       } else {
-        const payload = await request("/api/test-sets", { method: "POST", body: JSON.stringify({ name: name.trim(), description: description.trim(), columns: dataset.columns, cases: dataset.cases }) });
+        const payload = await request("/api/test-sets", { method: "POST", body: JSON.stringify({ name: name.trim(), description: description.trim(), columns: dataset.columns, cases: filterBlankCases(dataset.cases, dataset.columns) }) });
         onSaved(payload.test_set, true);
       }
     } catch (error) { toast(`${appending ? "添加" : "保存"}失败：${error.message}`, "error"); }
@@ -430,10 +440,10 @@ function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
   const dialogRef = useModalAccessibility(onClose);
 
   async function saveColumns(kept, columns) {
-    const cases = draft.cases.map((item) => ({
+    const cases = filterBlankCases(draft.cases.map((item) => ({
       id: item.id,
       values: Object.fromEntries(kept.map((entry, index) => [columns[index], item.values[entry.original] || ""])),
-    }));
+    })), columns);
     setSaving(true);
     try {
       const payload = await request(`/api/test-sets/${draft.id}`, {
@@ -532,11 +542,12 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
   }
 
   function writeBody(cases) {
-    return JSON.stringify({ name: draft.name, description: draft.description, columns: draft.columns, cases: cases.map((item) => ({ id: item.id, values: item.values })) });
+    const nonBlankCases = filterBlankCases(cases, draft.columns);
+    return JSON.stringify({ name: draft.name, description: draft.description, columns: draft.columns, cases: nonBlankCases.map((item) => ({ id: item.id, values: item.values })) });
   }
 
   function isBlankCase(testCase) {
-    return draft.columns.every((column) => !String(testCase.values[column] ?? "").trim());
+    return isBlankCaseValues(testCase.values, draft.columns);
   }
 
   async function persistMetadata(nextName, nextDescription) {

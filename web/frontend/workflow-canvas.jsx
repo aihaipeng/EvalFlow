@@ -966,7 +966,7 @@ function WorkflowNode({data, selected}) {
                 <span className="wf-node-caption">{meta.caption}</span>
                 <span className="wf-node-actions">
                     <button type="button" title="配置" aria-label={`配置 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onConfigure?.();}}><Settings2 size={13} /></button>
-                    <button type="button" title="日志" aria-label={`查看 ${data.label} 日志`} onClick={(event) => {event.stopPropagation(); data.onOpenLogs?.();}}><FileText size={13} /></button>
+                    {data.nodeType !== 'END' && <button type="button" title="日志" aria-label={`查看 ${data.label} 日志`} onClick={(event) => {event.stopPropagation(); data.onOpenLogs?.();}}><FileText size={13} /></button>}
                     {data.nodeType !== 'END' && <button type="button" disabled={testRunning} title="运行" aria-label={`运行 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onRun?.();}}><Play size={13} /></button>}
                 </span>
             </header>
@@ -1128,7 +1128,7 @@ function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
                             <input aria-label={`测试变量名 ${index + 1}`} value={row.name} onChange={(event) => updateRow(row.id, {name: event.target.value})} />
                             <select aria-label={`测试变量类型 ${index + 1}`} value={row.type} onChange={(event) => {
                                 const type = event.target.value;
-                                updateRow(row.id, {type, valueText: type === 'null' ? 'null' : row.valueText});
+                                updateRow(row.id, {type});
                             }}>
                                 {OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}
                             </select>
@@ -1495,7 +1495,7 @@ function Inspector({
     const isEnd = node.data.nodeType === 'END';
     const showCodeEditor = meta.executable && !isHttp && !isLlm;
     const showParametersTab = false;
-    const showOutputVariables = meta.executable || isEnd;
+    const showOutputVariables = meta.executable;
     const modelReference = modelReferenceStatus(
         providers,
         node.data.providerId || '',
@@ -1761,7 +1761,7 @@ function Inspector({
                 <div className="wf-inspector-tabs">
                     <button type="button" className={tab === 'settings' ? 'is-active' : ''} onClick={() => setTab('settings')}>设置</button>
                     {showParametersTab && <button type="button" className={tab === 'parameters' ? 'is-active' : ''} onClick={() => setTab('parameters')}>参数</button>}
-                    <button type="button" className={tab === 'logs' ? 'is-active' : ''} onClick={() => setTab('logs')}>日志</button>
+                    {!isEnd && <button type="button" className={tab === 'logs' ? 'is-active' : ''} onClick={() => setTab('logs')}>日志</button>}
                 </div>
                 {tab === 'settings' ? (
                     <div className="wf-inspector-body">
@@ -1859,7 +1859,7 @@ function Inspector({
                                         {startInputs.map((row, index) => (
                                             <div className="wf-output-variable-row wf-start-input-row" key={row.id}>
                                                 <label><span>变量名</span><input aria-label={`START 变量名 ${index + 1}`} value={row.name} onChange={(event) => updateStartInput(row.id, {name: event.target.value})} /></label>
-                                                <label><span>类型</span><select aria-label={`START 变量类型 ${index + 1}`} value={row.type} onChange={(event) => updateStartInput(row.id, {type: event.target.value, value: ''})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
+                                                <label><span>类型</span><select aria-label={`START 变量类型 ${index + 1}`} value={row.type} onChange={(event) => updateStartInput(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
                                                 <label><span>值</span><input aria-label={`START 变量值 ${index + 1}`} value={row.value} onChange={(event) => updateStartInput(row.id, {value: event.target.value})} placeholder={row.type === 'string' ? '输入文本' : '输入 JSON 值'} /></label>
                                                 {index === 0 ? (
                                                     <button type="button" className="wf-inline-icon-button" onClick={addStartInput} title="添加 START 输入" aria-label="添加 START 输入"><Plus size={15} /></button>
@@ -1955,8 +1955,8 @@ function Inspector({
                                     />
                                 </section>
                             )}
-                            {(meta.executable || isEnd) && <section className="wf-config-section wf-editor-full-row">
-                                <div className="wf-config-title"><Settings2 size={15} /><strong>{isEnd ? '最终结果' : '运行配置'}</strong></div>
+                            {meta.executable && <section className="wf-config-section wf-editor-full-row">
+                                <div className="wf-config-title"><Settings2 size={15} /><strong>运行配置</strong></div>
                                 {meta.executable && <button type="button" aria-expanded={retryOpen} onClick={() => setRetryOpen((open) => !open)}><span>超时与重试</span><ChevronRight className={retryOpen ? 'is-open' : ''} size={15} /></button>}
                                 {meta.executable && retryOpen && (
                                     <div className="wf-config-panel wf-retry-grid">
@@ -1968,13 +1968,13 @@ function Inspector({
                                 )}
                                 {showOutputVariables && (
                                     <>
-                                        <button type="button" aria-expanded={mappingOpen} onClick={() => setMappingOpen((open) => !open)}><span>{isEnd ? '结果字段' : '输出变量'}</span><ChevronRight className={mappingOpen ? 'is-open' : ''} size={15} /></button>
+                                        <button type="button" aria-expanded={mappingOpen} onClick={() => setMappingOpen((open) => !open)}><span>输出变量</span><ChevronRight className={mappingOpen ? 'is-open' : ''} size={15} /></button>
                                         {mappingOpen && (
                                             <div className="wf-config-panel wf-output-variable-list">
                                                 {outputVariables.map((row, index) => (
                                                     <div className="wf-output-variable-row" key={row.id}>
                                                         <label><span>变量名</span><input aria-label={`输出变量名 ${index + 1}`} value={row.name} onChange={(event) => updateOutputVariable(row.id, {name: event.target.value})} /></label>
-                                                        <label><span>{isScript ? 'Python 变量' : isEnd ? 'Context 路径' : '提取表达式'}</span><input aria-label={`输出变量来源 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
+                                                        <label><span>{isScript ? 'Python 变量' : '提取表达式'}</span><input aria-label={`输出变量来源 ${index + 1}`} value={row.value || ''} onChange={(event) => updateOutputVariable(row.id, {value: event.target.value})} /></label>
                                                         <label><span>类型</span><select aria-label={`输出变量类型 ${index + 1}`} value={row.type || 'string'} onChange={(event) => updateOutputVariable(row.id, {type: event.target.value})}>{OUTPUT_VARIABLE_TYPES.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
                                                         {index === 0 ? (
                                                             <button type="button" className="wf-inline-icon-button" onClick={addOutputVariable} title="添加输出变量" aria-label="添加输出变量"><Plus size={15} /></button>
@@ -2679,7 +2679,10 @@ function WorkflowStudio({options}) {
             const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/runs/${encodeURIComponent(executionId)}/nodes`, {headers: {accept: 'application/json'}});
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-            setHistoryNodeExecutions((current) => ({...current, [executionId]: payload.executions || []}));
+            const visibleExecutions = Array.isArray(payload.executions)
+                ? payload.executions.filter((execution) => execution.type !== 'END')
+                : [];
+            setHistoryNodeExecutions((current) => ({...current, [executionId]: visibleExecutions}));
         } catch (error) {
             if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点执行记录加载失败', 'error');
         }

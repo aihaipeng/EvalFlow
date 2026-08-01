@@ -305,6 +305,14 @@
 .batch-schedule-enabled input { width: 18px; height: 18px; }
 .batch-schedule-enabled > span { display: grid; gap: 2px; }
 .batch-schedule-enabled strong { color: var(--text-main); }
+.batch-start-options { display: grid; gap: 10px; }
+.batch-start-options label { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.batch-start-options label:has(input:checked) { border-color: var(--accent); background: var(--surface-muted); }
+.batch-start-options label.is-disabled { opacity: 0.5; cursor: not-allowed; }
+.batch-start-options input { margin-top: 3px; }
+.batch-start-options span { display: grid; gap: 3px; }
+.batch-start-options strong { color: var(--text-main); }
+.batch-start-options small { color: var(--text-subtle); line-height: 1.45; }
 .batch-schedule-enabled small,
 .batch-schedule-grid label > span small { color: var(--text-subtle); font-size: 10px; }
 
@@ -416,49 +424,43 @@
 .batch-round-select .input { min-width: 180px; }
 
 .batch-case-controls {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 14px;
-    margin-bottom: 12px;
+    display: grid;
+    gap: 12px;
+    margin-bottom: 18px;
 }
 
 .batch-result-cards {
     display: grid;
-    flex: 1;
-    grid-template-columns: repeat(5, minmax(112px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
 }
 
 .batch-result-card {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     min-width: 0;
-    min-height: 58px;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--case-result-border);
+    min-height: 116px;
+    align-items: start;
+    gap: 16px;
+    padding: 17px 20px;
+    border: 1px solid var(--status-card-border);
     border-radius: 8px;
-    background: var(--case-result-bg);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    color: var(--case-result-fg);
+    background: var(--surface);
+    color: var(--status-card-fg);
     cursor: pointer;
     text-align: left;
-    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease, background-color 150ms ease;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
 .batch-result-card:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--case-result-border) 70%, var(--case-result-fg) 30%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 4px 12px rgba(15, 23, 42, 0.08);
+    border-color: color-mix(in srgb, var(--status-card-border) 72%, var(--status-card-fg) 28%);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .batch-result-card.is-active {
-    transform: none;
-    border-color: var(--case-result-fg);
-    background: color-mix(in srgb, var(--case-result-bg) 88%, var(--case-result-fg) 12%);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--case-result-fg) 34%, transparent);
+    border-color: var(--status-card-fg);
+    background: color-mix(in srgb, var(--surface) 86%, var(--status-card-fg) 14%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-card-fg) 34%, transparent);
 }
 
 .batch-result-card-label {
@@ -477,17 +479,26 @@
 
 .batch-result-card-label span {
     overflow: hidden;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 650;
     line-height: 1.15;
     text-overflow: ellipsis;
+    text-transform: uppercase;
     white-space: nowrap;
 }
 
 .batch-result-card strong {
-    font-size: 16px;
+    align-self: end;
+    font-size: 36px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
     line-height: 1;
-    text-align: right;
+    text-align: left;
+}
+
+.batch-case-search {
+    order: -1;
+    justify-self: start;
 }
 
 .batch-case-search {
@@ -652,6 +663,12 @@
     --case-result-fg: #dce3ec;
 }
 
+.batch-result-card.is-pass { --status-card-border: #279967; --status-card-fg: #54e99a; }
+.batch-result-card.is-failed { --status-card-border: #b96d78; --status-card-fg: #ffadb5; }
+.batch-result-card.is-error { --status-card-border: #6f2aca; --status-card-fg: #ceb2ff; }
+.batch-result-card.is-running { --status-card-border: #6481b7; --status-card-fg: #b3c9ff; }
+.batch-result-card.is-pending { --status-card-border: #718096; --status-card-fg: #aeb8c8; }
+
 .batch-case-result-mark {
     display: inline-flex;
     width: 12px;
@@ -685,9 +702,16 @@
 .batch-case-execution-state.is-pending { color: var(--text-subtle); }
 
 @media (max-width: 1200px) {
-    .batch-case-controls { flex-wrap: wrap; }
-    .batch-case-search { width: 100%; margin-top: 0; }
+    .batch-result-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .batch-case-search { width: min(300px, 100%); margin-top: 0; }
     .batch-case-table-wrap { max-height: calc(100vh - 336px); }
+}
+
+@media (max-width: 700px) {
+    .batch-result-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .batch-result-card { min-height: 104px; padding: 15px 16px; }
+    .batch-result-card strong { font-size: 32px; }
+    .batch-case-search { min-width: 0; }
 }
 
 .batch-case-table .batch-case-actions-head,

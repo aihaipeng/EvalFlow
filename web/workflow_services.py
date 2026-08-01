@@ -58,7 +58,7 @@ class WorkflowServices:
         self.batch_history.initialize()
         self.batch_inputs = BatchInputService(self.repository, self.test_sets, self.batch_store)
         self.batch_scheduler = BatchScheduler(
-            self.batch_store, self.manager, self.batch_history
+            self.batch_store, self.manager, self.batch_history, self.batch_inputs
         )
         self.batch_schedules = BatchScheduleRepository(self.database_path)
         self.batch_schedules.initialize()

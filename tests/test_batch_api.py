@@ -193,6 +193,22 @@ def test_batch_api_previews_database_set_creates_starts_and_traces_cases(tmp_pat
         assert client.delete(f"/api/workflows/{workflow_id}").status_code == 200
 
 
+def test_batch_rule_display_column_is_optional_and_does_not_fallback(tmp_path: Path):
+    application = create_app(database_path=tmp_path / "database.sqlite3", execution_root=tmp_path / "workflow-executions")
+    with TestClient(application) as client:
+        workflow_id = _create_workflow(client)
+        test_set_id = _create_test_set(client)
+        body = _batch_body(test_set_id, workflow_id, "Optional Rule Column")
+        body["rule_display_column"] = ""
+
+        created = client.post("/api/batch-runs", json=body)
+
+        assert created.status_code == 201, created.text
+        batch = created.json()["batch"]
+        assert batch["input"]["display_columns"] == {"case": "question", "rule": None}
+        assert batch["configuration"]["rule_display_column"] is None
+
+
 def test_batch_schedule_api_persists_and_triggers_once_while_app_is_running(tmp_path: Path):
     application = create_app(
         database_path=tmp_path / "database.sqlite3",

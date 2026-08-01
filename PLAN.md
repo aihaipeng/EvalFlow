@@ -1,5 +1,123 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.38 成熟框架渐进替换与维护成本治理（已完成，2026-08-02）
+
+### 业务背景与目标
+
+- Why：Agent Bench v2 已形成可用的测试集、供应商、Workflow 和任务调度闭环，但数据库建表升级、定时触发、部分前端状态管理和前端验证仍由项目自行维护。后续应优先用成熟开源组件承接通用基础能力，减少重复代码、升级风险和排障成本，把维护投入保留给 Workflow 快照、执行追溯、结果校验等核心业务能力。
+- Who / Where：4 至 5 名桌面端测试工程师继续在本机浏览器完成测试集导入、Workflow 配置、任务复制与执行、结果排障；维护者在不新增外部服务、不改变 SQLite 唯一事实来源的前提下持续迭代产品。
+- What / Priority：以降低维护成本为首要目标，采用渐进替换；保持现有 SQLite、单机部署、用户流程、API 契约和执行证据语义。P0 先清理无效依赖，并只建立 2 至 3 条改造前最小浏览器冒烟基线；P1 再治理数据库迁移、前端服务端状态和定时触发；完整 Playwright 自动化体系在项目改造完成后建设；P2 仅处理收益明确的小型基础封装。
+- How to Measure：每个替换项必须证明自研代码或直接依赖减少，现有真实数据库可无损升级，核心用户故事在浏览器中通过，任务失败仍能在 10 秒内识别失败位置、期望值、实际值和建议动作；任何替换不得要求 Redis、Docker、独立数据库或常驻外部服务。
+
+### 审计基线与已确认决策
+
+- 当前基线：12 个 Repository、6 处独立 `sqlite3.connect`、17 处手写 `CREATE TABLE / ALTER TABLE`；定时调度模块约 393 行；原生前端约有 230 次 DOM 查询、94 次手动事件绑定和 32 个定时器/轮询点。
+- 测试基线：约 304 个 Python 测试函数，没有浏览器 E2E 测试文件；前端测试大量依赖读取源码后的字符串断言，无法覆盖按钮、弹窗、轮询与实际后端路由是否协同生效。
+- 依赖基线：运行源码未导入 `anthropic`、`langchain`、`langchain-anthropic`、`langchain-deepseek`、`langchain-google-genai`、`langchain-openai`、`langchain-tavily` 和 `rich`；删除前仍需通过全量回归与三类真实模型协议冒烟。
+- 保持现状：FastAPI、Pydantic、React、XYFlow、CodeMirror、Dagre、SheetJS 和 esbuild 已承担清晰职责，不为统一技术栈而替换。
+- 暂不替换：Workflow 执行内核、Batch 用例调度内核、模型网关、Execution JSON 证据存储和 Context 路径语义属于业务核心；LangGraph、Prefect、LiteLLM、JMESPath 等不得在没有独立兼容性验证和新业务收益时直接替换。
+- Excel 网格：FortuneSheet 先通过适配层隔离；Univer 开源核心目前不能无损覆盖本项目所需的免费 XLSX 导入/导出边界，暂不迁移。
+- 构建工具：两个 esbuild 构建脚本规模较小，暂不迁移 Vite；当第三个原生页面开始 React 化或确需开发服务器/HMR 时再复评。
+- 自动化测试顺序：用户确认采用“改造前最小冒烟、改造后完整建设”。改造前不扩建完整 Playwright 用例集，只固化能够识别应用可启动、核心资源可创建以及任务可复制/启动的 2 至 3 条基线；完整异常、边界和回归矩阵统一在所有实际改造项完成后实施。
+
+### 替换清单与优先级
+
+| 优先级 | 当前组件或问题 | 目标方案 | 替换边界 | 主要价值 | 决策 |
+| --- | --- | --- | --- | --- | --- |
+| P0 | 无浏览器 E2E，大量源码字符串断言 | Playwright 最小冒烟基线 | 改造前只建立 2 至 3 条真实浏览器主路径；保留 API、模型和纯函数单测 | 为改造提供最低行为基线，不提前扩建完整测试体系 | completed |
+| P0 | 8 个运行源码未使用的直接依赖 | 删除无效 AI SDK 与 `rich` | 不改变基于 `httpx` 的模型协议实现 | 缩小安装、锁文件和供应链升级面 | completed |
+| P1 | 手写 SQLite DDL、连接与迁移 | Alembic + SQLAlchemy Core | 先接管 schema version，再逐个迁移 Repository；不做全量 ORM 重写 | 统一事务、连接和可回放升级 | completed |
+| P1 | `execution.js`、`model-providers.js` 手工 DOM/请求/轮询 | React + TanStack Query | 页面级独立挂载，先供应商管理、后任务调度；保持现有 API 和视觉语言 | 减少请求竞态、重复状态和事件清理代码 | completed |
+| P1 | 自研日期计算与定时扫描线程 | APScheduler 3.11.x 稳定分支 | 只替换“何时触发”；保留 `BatchScheduler` 的并发、停止、续跑、重试和汇总 | 复用成熟时区、Cron、misfire 和并发限制 | completed |
+| P2 | 手写 SSE framing、keepalive 与断连处理 | `sse-starlette` | 只替换 HTTP SSE 交付层；保留有界日志队列和运行会话语义 | 减少协议细节和断连清理代码 | completed |
+| 暂缓 | FortuneSheet 网格 | 适配层隔离并持续评估 Univer | 不改变浏览器内 XLSX 读取和累计选区流程 | 控制停更或兼容风险，不引入付费能力依赖 | monitor |
+
+### 子任务、依赖与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 13.38.1 | 清理无效 Python 依赖 | `pyproject.toml`、`uv.lock` / 删除 8 个未使用直接依赖 | 静态 import 扫描；`uv sync --locked`；全量 pytest；OpenAI-compatible、Responses API、Anthropic live smoke | 无 | completed |
+| 13.38.2 | 建立改造前最小浏览器冒烟基线 | 当前 FastAPI 页面与 API / 最小 Playwright 配置、fixture、2 至 3 条主路径 | 至少验证应用启动与目录切换、测试集/Workflow 可创建、任务可创建并复制或启动；console/page error 为 0 | 无；必须先于 P1 替换完成 | completed |
+| 13.38.3 | 引入数据库版本基线 | 现有 SQLite schema / Alembic baseline 与自动升级入口 | 复制真实数据库后升级；`integrity_check=ok`、`foreign_key_check=[]`；重复启动幂等；全量 Repository/API 回归 | 13.38.2 | completed |
+| 13.38.4 | 渐进迁移数据库访问 | 现有 Repository / 共享 SQLAlchemy Engine 与 Core 查询 | 每次只迁移一个 Repository；迁移前后 API 响应、排序、唯一约束和事务失败行为一致 | 13.38.3 | completed |
+| 13.38.5 | React 化供应商管理 | `model-providers.js` / 独立 React 页面与 Query hooks | 创建、编辑、连接测试、模型刷新、删除 E2E；代理、TLS 与密钥不落日志 | 13.38.2 | completed |
+| 13.38.6 | React 化任务调度 | `execution.js` 中 Batch 页面 / React 页面与 Query hooks | 创建、编辑、复制、定时设置、启动、停止、筛选、分页和详情轮询 E2E | 13.38.5 | completed |
+| 13.38.7 | 替换定时触发层 | `batch_schedule.py` / APScheduler 适配器与 SQLite 持久化策略 | 单次、每日、每周、每月 31 日、Asia/Shanghai、错过执行、SKIP/QUEUE、重启恢复专项测试 | 13.38.2；建议在 13.38.3 后实施 | completed |
+| 13.38.8 | 评估 SSE 小型替换 | 当前 SSE 路由 / 保留或采用 `sse-starlette` 的决策记录 | 日志顺序、5 MB 截断、15 秒 keepalive、取消、断连释放和进程关闭测试；净减少代码不足时不替换 | 13.38.2 | completed |
+| 13.38.9 | 改造后建设完整自动化测试并复盘价值 | 全部实际改造产物 / 完整 Playwright 回归体系与量化结论 | 扩展覆盖测试集导入、Workflow 保存、任务创建/编辑/复制、定时设置、启动/停止、结果定位和异常恢复；同时执行 pytest、静态检查、生产构建、SQLite 检查和真实三协议冒烟；对比依赖数、自研 LOC、失败率和排障时间 | 13.38.1-13.38.8 中实际实施项全部完成后执行 | completed |
+
+#### 13.38.1 验证记录
+
+- 已从直接依赖和 `uv.lock` 删除 `anthropic`、`langchain`、`langchain-anthropic`、`langchain-deepseek`、`langchain-google-genai`、`langchain-openai`、`langchain-tavily` 和 `rich`；静态与动态导入扫描均未发现运行引用。
+- `uv lock` 与 `uv sync --locked` 成功；解析依赖由 84 个降至 34 个，净减少 50 个包。8 个目标包及其 LangGraph、OpenAI SDK、Google SDK 等无效传递依赖均已离开锁文件和项目虚拟环境。
+- 首次全量回归发现 SCRIPT 节点的既有用户脚本契约依赖 `import requests`，此前该包由 LangChain 间接带入；已将 `requests>=2.32,<3` 补为明确直接依赖，没有恢复任何目标 AI SDK。失败用例单独复跑 `1 passed`。
+- 模型网关、供应商管理和 Workflow 执行专项回归 `94 passed, 1 warning`；最终全量回归 `393 passed, 4 skipped, 1 warning in 40.15s`；Python `compileall`、锁文件检查和 `git diff --check` 均通过。
+- 4 项 skip 为当前环境未配置 OpenAI、Anthropic、DeepSeek 或 DashScope API Key 的既有 live 测试；本轮没有读取数据库密钥或产生真实模型费用。三类协议的离线请求构造、模拟传输、响应与 usage 解析均已覆盖；下一次具备专用测试密钥时仍须补跑真实三协议 smoke，并把结果回填到 13.38.9 的最终发布门禁。
+
+#### 13.38.2 - 13.38.4 数据库与迁移验证记录
+
+- 新增 Alembic baseline、SQLAlchemy `MetaData` 和共享 SQLite Engine；模型供应商、节点结构模型、测试集、Workflow、任务计划与执行历史 Repository 已统一通过 SQLAlchemy Core 访问，业务 Repository 不再自行执行 DDL。
+- 对真实数据库副本连续升级两次，迁移版本稳定为 `20260802_0001`；升级前后 12 张业务表及行数保持一致，`PRAGMA integrity_check=ok`、`foreign_key_check=[]`，证明升级幂等且未破坏既有数据。
+- 数据库专项回归 `104 passed`；排序、唯一约束、旧字段兼容、事务失败和 API 契约均由 Repository/API 测试覆盖。
+
+#### 13.38.5 - 13.38.8 框架替换验证记录
+
+- 供应商管理和任务调度改为独立 React 18 + TanStack Query 页面；保留现有 FastAPI 路由、页面视觉语言和结果详情能力。供应商页面覆盖创建、编辑、删除、连接/模型操作契约，任务页面覆盖创建、编辑、复制、定时、启动、停止、分页、详情和活动任务轮询。
+- 日期触发改由 APScheduler 3.11 管理，持久化层仍为现有 SQLite，Job 只保存任务 ID，不序列化 API Key、代理密码或 Workflow 快照；真实后台触发专项与单次/日/周/月、时区、misfire、SKIP/QUEUE、恢复测试通过。
+- Workflow SSE 交付层采用 `sse-starlette`，保留原有有界队列、运行会话与日志语义；15 秒 ping、事件顺序、取消和断连路径由路由及运行流专项覆盖。
+
+#### 13.38.9 最终自动化与价值复盘
+
+- 新增隔离临时 SQLite 的 Playwright WebServer 与 4 条真实 Chromium E2E：四个管理目录切换；供应商创建/编辑/删除；测试集编辑保存与 Workflow 画布创建保存；任务创建/复制/定时/启动/结果详情。全部浏览器 `console` / `pageerror` 为 0，最终结果 `4 passed in 5.8s`。
+- 最终 Python 全量回归 `392 passed, 4 skipped, 1 warning in 53.74s`；`npm run build`、`uv lock --check`、Python `compileall` 和 `git diff --check` 全部通过。4 项 skip 仍仅为没有专用外部模型 API Key 的 live smoke；离线三协议网关测试均通过。
+- 最终 Python 锁解析为 42 个包，相比改造前 84 个净减少 42 个；删除 8 个无效直接依赖后，仅按职责引入 SQLAlchemy、Alembic、APScheduler 与 `sse-starlette`。供应商旧原生脚本 671 行已删除，数据库 DDL 和定时扫描线程退出业务 Repository/调度管理器。
+- 自动化分层结论：Playwright 证明用户可见主路径，pytest/API 专项继续覆盖任务停止、失败恢复、调度边界、SSE 断连、Excel 数据转换和模型协议异常，避免把所有故障注入都塞进高成本浏览器测试。
+
+### 阶段验收标准与回滚要求
+
+- 依赖治理：8 个目标直接依赖从项目声明和锁文件的可达依赖图中移除；全量自动测试通过，三种模型协议请求与 usage 解析行为不变。
+- 改造前冒烟：只要求 2 至 3 条 Playwright 主路径，覆盖应用可用、核心资源可创建以及任务可复制或启动；其目标是提供最低行为基线，不在此阶段追求完整异常和边界覆盖。
+- 改造后自动化：全部实际改造项完成后，再建立覆盖测试集导入、Workflow 保存、任务创建/编辑/复制、定时设置、任务启动/停止、结果定位和异常恢复的完整 Playwright 回归体系；届时不得再以源码字符串断言作为这些流程的唯一证明。
+- 数据库：必须先备份再升级；旧数据库无损打开，schema upgrade 可重复执行，任何失败都不得留下半迁移表；单个 Repository 验证通过后才能迁移下一个。
+- 前端：按页面切换而非一次性重写；API payload、用户可见文案、键盘操作、主题和轮询停止条件保持一致；页面迁移后删除对应旧实现，禁止长期双写。
+- 定时调度：APScheduler 固定在 3.11.x 稳定分支，禁止直接采用仍有不兼容风险的 4.0 预发布分支；调度存储不得序列化 API Key、代理密码或完整任务快照。
+- 核心能力保护：Workflow/Batch 执行器、冻结快照、取消/续跑、结果校验和证据追溯的任何语义变化都视为替换失败，必须回退该子任务而不是修改业务契约迁就框架。
+- 发布门禁：每个子任务独立提交、独立验证；验证失败时暂停所有依赖任务。最终必须报告执行结果、未覆盖范围、已知风险和恢复方式。
+
+### 调研依据
+
+- SQLAlchemy 2.0 Core/ORM 与 SQLite Engine：<https://docs.sqlalchemy.org/en/20/>。
+- Alembic SQLite batch migration：<https://alembic.sqlalchemy.org/en/latest/batch.html>。
+- APScheduler 3.11 稳定分支与 4.0 预发布警告：<https://github.com/agronholm/apscheduler>。
+- React 既有项目渐进接入：<https://react.dev/learn/add-react-to-an-existing-project>。
+- TanStack Query React 兼容性与轮询：<https://tanstack.com/query/latest/docs/framework/react/installation>、<https://tanstack.com/query/v5/docs/framework/react/guides/polling>。
+- Playwright 自动等待：<https://playwright.dev/docs/actionability>。
+- `sse-starlette` FastAPI/SSE 能力：<https://github.com/sysid/sse-starlette>。
+- Univer 开源与 Pro 能力边界：<https://github.com/dream-num/univer>；SheetJS 浏览器导入：<https://docs.sheetjs.com/docs/solutions/input/>。
+
+## T13.37 任务结果校验 Context 路径说明修复（已完成，2026-08-02）
+
+### 业务背景与验收目标
+
+- Why：任务配置人员需要直接按 Workflow Context 的变量名填写结果路径，不能被内部保存格式误导。
+- Who / Where：测试工程师在新建或编辑任务的“结果校验”区域配置顶层 Context 变量。
+- What / Priority：P0 明确 `action_match` 的读取语义等价于 `context["action_match"]`；保持内部 `context.action_match` 归一化和历史完整路径兼容不变。
+- How to Measure：新建、编辑任务显示同一说明；相对路径保存后归一化；用最终 Context `{"action_match": true}` 执行校验可通过。
+
+### 子任务与独立验收
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.37.1 | 固化路径业务语义 | `action_match` 与最终 Context / 顶层变量读取契约 | Case evaluator 单元测试 | 无 | completed |
+| 13.37.2 | 修正创建和编辑界面说明 | 结果校验帮助文字 / `context["action_match"]` 用户语义 | 前端契约测试 | 13.37.1 | completed |
+| 13.37.3 | 回归受影响流程 | 规范、前端、执行器 / 可发布结果 | 专项测试、构建、静态检查、E2E 回归 | 13.37.2 | completed |
+
+### 验证记录
+
+- Case evaluator 专项 `15 passed`，确认 `action_match` 从 `{"action_match": true}` 读取并在内部规范化为 `context.action_match`。
+- 任务配置前端专项 `9 passed`；JavaScript 语法检查与 `npm run build` 通过。
+- 全量回归 `391 passed, 4 skipped`；端到端 Batch API 用例覆盖测试集预览、任务创建、启动、Context 结果校验和 Case 追溯。唯一警告为 Starlette `httpx` 兼容层的既有弃用提示。
+
 ## T13.36 前端交互与页面易用性优化（已完成，2026-08-01）
 
 ### 业务背景与目标

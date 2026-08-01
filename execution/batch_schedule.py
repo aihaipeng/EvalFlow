@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
-import threading
 from calendar import monthrange
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
@@ -13,14 +11,18 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.date import DateTrigger
+
 from execution.batch_execution_store import BatchExecutionError, BatchExecutionStore
 from execution.batch_inputs import BatchInputService
 from execution.batch_scheduler import BatchScheduler
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    CoreConnection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 
 
@@ -156,32 +158,7 @@ class BatchScheduleRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS batch_schedules (
-                        batch_id TEXT PRIMARY KEY,
-                        enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
-                        cadence TEXT NOT NULL,
-                        run_at TEXT NOT NULL,
-                        run_time TEXT NOT NULL,
-                        weekdays_json TEXT NOT NULL,
-                        month_day INTEGER NOT NULL,
-                        timezone TEXT NOT NULL,
-                        overlap_policy TEXT NOT NULL,
-                        next_run_at TEXT,
-                        last_run_at TEXT,
-                        last_error TEXT,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    );
-                    CREATE INDEX IF NOT EXISTS batch_schedules_due
-                        ON batch_schedules(enabled, next_run_at);
-                    """
-                )
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
     def save(
@@ -319,27 +296,18 @@ class BatchScheduleRepository:
         return cursor.rowcount
 
     @staticmethod
-    def _row(row: sqlite3.Row) -> dict[str, Any]:
+    def _row(row: Any) -> dict[str, Any]:
         data = dict(row)
         data["enabled"] = bool(data["enabled"])
         data["weekdays"] = json.loads(data.pop("weekdays_json"))
         return data
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        except Exception:
-            if connection.in_transaction:
-                connection.rollback()
-            raise
-        finally:
-            connection.close()
 
 
 class BatchScheduleManager:
@@ -359,21 +327,62 @@ class BatchScheduleManager:
         self.scheduler = scheduler
         self.poll_interval_seconds = max(0.05, poll_interval_seconds)
         self.now = now
-        self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._scheduler: BackgroundScheduler | None = None
 
     def start(self) -> int:
         recovered = self.repository.recover_missed(now=self.now())
-        if self._thread and self._thread.is_alive():
+        if self._scheduler and self._scheduler.running:
             return recovered
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._run,
+        self._scheduler = BackgroundScheduler(
+            timezone=UTC,
             daemon=True,
-            name="batch-schedule-manager",
+            job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 1},
         )
-        self._thread.start()
+        self._scheduler.start()
+        self.refresh()
         return recovered
+
+    def refresh(self, batch_id: str | None = None) -> None:
+        """Synchronize persisted next occurrences into APScheduler date jobs."""
+
+        scheduler = self._scheduler
+        if scheduler is None or not scheduler.running:
+            return
+        schedules = [self.repository.get(batch_id)] if batch_id else self.repository.list()
+        for schedule in schedules:
+            if not schedule:
+                if batch_id:
+                    job_id = self._job_id(batch_id)
+                    if scheduler.get_job(job_id):
+                        scheduler.remove_job(job_id)
+                continue
+            job_id = self._job_id(schedule["batch_id"])
+            if not schedule["enabled"] or not schedule["next_run_at"]:
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+                continue
+            run_date = _parse_utc(schedule["next_run_at"])
+            if run_date <= self.now().astimezone(UTC):
+                run_date = self.now().astimezone(UTC) + timedelta(seconds=self.poll_interval_seconds)
+            scheduler.add_job(
+                self._run_occurrence,
+                DateTrigger(run_date=run_date, timezone=UTC),
+                args=[schedule["batch_id"]],
+                id=job_id,
+                replace_existing=True,
+            )
+
+    @staticmethod
+    def _job_id(batch_id: str) -> str:
+        return f"batch-schedule:{batch_id}"
+
+    def _run_occurrence(self, batch_id: str) -> None:
+        try:
+            self.run_due()
+        except Exception:
+            logger.exception("定时任务触发失败: %s", batch_id)
+        finally:
+            self.refresh()
 
     def run_due(self, *, now: datetime | None = None) -> int:
         now = (now or self.now()).astimezone(UTC)
@@ -419,17 +428,7 @@ class BatchScheduleManager:
         return triggered
 
     def shutdown(self, *, wait_seconds: float = 10) -> None:
-        self._stop_event.set()
-        thread = self._thread
-        if thread:
-            thread.join(timeout=max(0, wait_seconds))
-            if thread.is_alive():
-                raise BatchExecutionError("定时任务调度器未能及时终止")
-        self._thread = None
-
-    def _run(self) -> None:
-        while not self._stop_event.wait(self.poll_interval_seconds):
-            try:
-                self.run_due()
-            except Exception:
-                logger.exception("定时任务轮询失败")
+        scheduler = self._scheduler
+        if scheduler and scheduler.running:
+            scheduler.shutdown(wait=wait_seconds > 0)
+        self._scheduler = None

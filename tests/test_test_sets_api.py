@@ -98,6 +98,32 @@ def test_test_set_api_rejects_duplicate_names_invalid_fields_and_legacy_version(
         assert response.status_code == 422
 
 
+def test_test_set_api_skips_blank_cases_before_persistence(tmp_path) -> None:
+    with _client(tmp_path) as client:
+        payload = _create_payload("空白行过滤")
+        payload["cases"].append({"values": {"col_1": "  ", "col_2": "\t"}})
+
+        created_response = client.post("/api/test-sets", json=payload)
+        assert created_response.status_code == 201, created_response.text
+        created = created_response.json()["test_set"]
+        assert len(created["cases"]) == 2
+
+        update_response = client.put(
+            f"/api/test-sets/{created['id']}",
+            json={
+                **payload,
+                "cases": [
+                    {"values": {"col_1": "", "col_2": ""}},
+                    {"values": {"col_1": "保留", "col_2": "用例"}},
+                ],
+            },
+        )
+        assert update_response.status_code == 200, update_response.text
+        updated = update_response.json()["test_set"]
+        assert len(updated["cases"]) == 1
+        assert updated["cases"][0]["values"] == {"col_1": "保留", "col_2": "用例"}
+
+
 def test_test_set_schema_contains_only_runtime_fields(tmp_path) -> None:
     database = tmp_path / "agent-bench.sqlite3"
     with _client(tmp_path):

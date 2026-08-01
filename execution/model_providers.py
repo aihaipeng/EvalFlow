@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import Enum
@@ -13,12 +12,13 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy.exc import IntegrityError
 
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    configure_sqlite_connection,
+    database_connection,
     database_initialize_lock_for,
-    initialize_sqlite_pragmas,
+    upgrade_database,
 )
 
 
@@ -245,66 +245,7 @@ class ModelProviderRepository:
         with self._initialize_lock:
             if self._initialized:
                 return
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._connect(initialize=False) as connection:
-                initialize_sqlite_pragmas(connection)
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS model_providers (
-                        id TEXT PRIMARY KEY,
-                        name TEXT,
-                        website_url TEXT,
-                        api_key TEXT NOT NULL,
-                        base_url TEXT NOT NULL,
-                        protocol TEXT NOT NULL,
-                        proxy_mode TEXT NOT NULL DEFAULT 'SYSTEM',
-                        proxy_url TEXT,
-                        proxy_username TEXT,
-                        proxy_password TEXT,
-                        verify_ssl INTEGER NOT NULL DEFAULT 1,
-                        model_endpoint TEXT,
-                        models_json TEXT NOT NULL,
-                        model_configs_json TEXT NOT NULL DEFAULT '{}',
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    )
-                    """
-                )
-                columns = {
-                    row["name"]
-                    for row in connection.execute(
-                        "PRAGMA table_info(model_providers)"
-                    ).fetchall()
-                }
-                if "proxy_mode" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN proxy_mode TEXT NOT NULL DEFAULT 'SYSTEM'"
-                    )
-                if "proxy_url" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN proxy_url TEXT"
-                    )
-                if "proxy_username" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN proxy_username TEXT"
-                    )
-                if "proxy_password" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN proxy_password TEXT"
-                    )
-                if "verify_ssl" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN verify_ssl INTEGER NOT NULL DEFAULT 1"
-                    )
-                    if "skip_ssl_verify" in columns:
-                        connection.execute(
-                            "UPDATE model_providers SET verify_ssl = CASE WHEN skip_ssl_verify = 1 THEN 0 ELSE 1 END"
-                        )
-                if "model_configs_json" not in columns:
-                    connection.execute(
-                        "ALTER TABLE model_providers ADD COLUMN model_configs_json TEXT NOT NULL DEFAULT '{}'"
-                    )
-                connection.commit()
+            upgrade_database(self.database_path)
             self._initialized = True
 
     def create(self, record: ModelProviderRecord) -> ModelProviderRecord:
@@ -333,7 +274,7 @@ class ModelProviderRepository:
                     ),
                 )
                 connection.commit()
-        except sqlite3.IntegrityError as exc:
+        except IntegrityError as exc:
             raise ModelProviderRepositoryError(f"写入模型供应商失败: {exc}") from exc
         return record
 
@@ -391,16 +332,11 @@ class ModelProviderRepository:
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        configure_sqlite_connection(connection)
-        try:
+        with database_connection(self.database_path, initialize=False) as connection:
             yield connection
-        finally:
-            connection.close()
 
     @staticmethod
-    def _from_row(row: sqlite3.Row) -> ModelProviderRecord:
+    def _from_row(row: Any) -> ModelProviderRecord:
         return ModelProviderRecord(
             id=row["id"], name=row["name"], website_url=row["website_url"],
             api_key=row["api_key"], base_url=row["base_url"],

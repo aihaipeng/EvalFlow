@@ -253,6 +253,8 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     item.setAttribute('aria-current', 'page');
     var view = item.getAttribute('data-view');
     if (view !== 'sets' && window.TestSetManagement) window.TestSetManagement.unmount();
+    if (view !== 'models' && window.ModelProviderManagement) window.ModelProviderManagement.unmount();
+    if (view !== 'batch-runs' && window.BatchRunManagement) window.BatchRunManagement.unmount();
     if (view === 'sets') {
         viewSets();
     } else if (view === 'models') {

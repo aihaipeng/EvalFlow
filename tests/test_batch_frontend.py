@@ -22,6 +22,12 @@ def test_batch_frontend_uses_database_test_sets_and_saved_workflows():
     styles = (STATIC_DIR / "execution.css").read_text(encoding="utf-8")
 
     assert 'data-view="batch-runs"' in html
+    assert "batchListRequestId" in javascript
+    assert "workflowListRequestId" in javascript
+    assert "if (requestId !== executionState.batchListRequestId) return;" in javascript
+    assert "if (requestId !== executionState.workflowListRequestId) return;" in javascript
+    assert "if (currentView !== 'batch-runs') return;" in javascript
+    assert "renderBatchTable();\n    document.getElementById('btn-batch-add')" in javascript
     assert '/assets/icons.js?v=' in html
     assert "API.get('/api/test-sets?page=1&page_size=200')" in javascript
     assert "API.get('/api/workflows')" in javascript
@@ -228,6 +234,8 @@ def test_batch_list_and_details_hide_status_and_verdict_columns():
     assert "结束于" not in detail_view
     assert 'id="batch-case-display-column"' in javascript
     assert 'id="batch-rule-display-column"' in javascript
+    assert "optional ? '<option value=\"\">不选择</option>' : ''" in javascript
+    assert "optional ? '' : (preview.headers[0] || '')" in javascript
     assert "case_display_column:" in javascript
     assert "rule_display_column:" in javascript
     assert "function batchCaseResult" in detail_view
@@ -251,6 +259,12 @@ def test_batch_list_and_details_hide_status_and_verdict_columns():
     assert "executionState.batchDetailRenderKey = renderKey;" in detail_view
     assert "viewBatchDetail(batchId, 1, pageSize, roundId, {preservePosition: true})" in detail_view
     assert "viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true})" in detail_view
+    assert "if (currentView === 'batch-detail') viewBatchDetail(batchId, page, pageSize, roundId, {preservePosition: true});" in detail_view
+    assert "function openBatchStartMode(batchId)" in javascript
+    assert 'value="FULL" checked' in javascript
+    assert 'value="RESUME"' in javascript
+    assert 'value="RETRY_FAILED"' in javascript
+    assert "API.post('/api/batch-runs/' + encodeURIComponent(batchId) + '/start', {mode: mode})" in javascript
     assert "var values = await API.get('/api/batch-runs/' + encodeURIComponent(batchId) + '/cases' + caseQuery);" in detail_view
     assert "var batch = values.batch;" in detail_view
     assert "Promise.all([" not in detail_view
@@ -268,7 +282,16 @@ def test_batch_list_and_details_hide_status_and_verdict_columns():
     assert 'id="batch-case-search"' in detail_view
     assert 'data-full-value="' in detail_view
     assert "searchInput.parentElement.dataset.fullValue = searchInput.value;" in detail_view
-    assert ".batch-case-controls {\n    display: flex;\n    align-items: flex-end;" in styles
+    assert ".batch-case-controls {\n    display: grid;\n    gap: 12px;" in styles
+    assert "grid-template-columns: repeat(5, minmax(0, 1fr));" in styles
+    assert "grid-template-rows: auto minmax(0, 1fr);" in styles
+    assert "min-height: 116px;" in styles
+    assert "font-size: 36px;" in styles
+    assert "text-transform: uppercase;" in styles
+    assert ".batch-result-card.is-error { --status-card-border: #6f2aca; --status-card-fg: #ceb2ff; }" in styles
+    assert ".batch-result-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }" in styles
+    assert ".batch-result-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }" in styles
+    assert ".batch-case-search {\n    order: -1;\n    justify-self: start;" in styles
     search_styles = styles[styles.index(".batch-case-search {"):]
     search_styles = search_styles[:search_styles.index("}")]
     assert "margin-top" not in search_styles
@@ -321,7 +344,7 @@ def test_batch_list_and_details_hide_status_and_verdict_columns():
     assert "text-align: center;" in case_first_column
     assert "text-align: center;" in case_second_column
     assert "{label: 'Failed', value: 'Failed', kind: 'result', tone: 'failed', icon: 'close'" in detail_view
-    assert "{label: 'Error', value: 'Error', kind: 'result', tone: 'error', icon: 'close'" in detail_view
+    assert "{label: 'Error', value: 'Error', kind: 'result', tone: 'error', icon: 'alert'" in detail_view
 
 
 def test_batch_schedule_modal_persists_real_schedule_and_is_validated():
@@ -551,28 +574,28 @@ def test_management_navigation_labels_icons_pagination_and_alignment_are_consist
 
 def test_top_level_management_lists_share_batch_list_contract_without_detail_tables():
     javascript = (STATIC_DIR / "execution.js").read_text(encoding="utf-8")
-    providers = (STATIC_DIR / "model-providers.js").read_text(encoding="utf-8")
+    providers = (STATIC_DIR.parent / "frontend" / "model-providers.jsx").read_text(encoding="utf-8")
     test_sets = (STATIC_DIR.parent / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
     global_styles = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
 
     assert javascript.count('class="table execution-table management-list-table') == 2
-    assert providers.count('class="table execution-table management-list-table') == 1
+    assert providers.count('className="table execution-table management-list-table') == 1
     assert test_sets.count('className="table execution-table management-list-table') == 1
     assert 'class="management-list-time"' in javascript
-    assert 'class="management-list-time"' in providers
+    assert 'className="management-list-time"' in providers
     assert 'className="management-list-time ts-time"' in test_sets
     assert javascript.count("management-list-toolbar") == 2
     assert providers.count("management-list-toolbar") == 1
     assert test_sets.count("management-list-toolbar") == 1
     assert javascript.count('class="execution-page-header management-page-header"') == 2
-    assert providers.count('class="execution-page-header management-page-header"') == 1
+    assert providers.count('className="execution-page-header management-page-header"') == 1
     assert test_sets.count('className="ts-heading execution-page-header management-page-header"') == 1
     assert "开发、保存和手动验证工作流结构" not in javascript
     assert "按数据库测试集用例并发执行已保存的工作流" not in javascript
     assert "从 Excel 选择内容创建测试集，后续用例统一存储在数据库中。" not in test_sets
     assert '<span class="management-page-description">编排并验证工作流</span>' in javascript
     assert '<span class="management-page-description">执行任务并追踪结果</span>' in javascript
-    assert '<span class="management-page-description">配置模型接入与连接</span>' in providers
+    assert '<span className="management-page-description">配置模型接入与连接</span>' in providers
     assert '<span className="management-page-description">维护测试字段与用例</span>' in test_sets
     assert "overflow: auto;" in global_styles[global_styles.index(".management-list-wrap.table-wrap"):]
     assert "position: sticky;" in global_styles[global_styles.index(".management-list-table.table th.management-list-actions-head,"):]
@@ -644,7 +667,7 @@ def test_batch_variable_and_evaluation_sections_use_management_table_layout():
     assert 'class="batch-section-heading"><strong>结果校验</strong><span>' in config_view
     assert 'id="batch-variable-add" type="button" disabled' in config_view
     assert 'id="batch-rule-add" type="button" disabled' in config_view
-    assert '从工作流 Context 中获取变量，路径填写 action_match 等价于 context.action_match' in config_view
+    assert '从工作流 Context 中获取变量，路径填写 action 等价于 context["action"]' in config_view
     assert "全部校验点通过时，用例才通过" not in config_view
     assert ">类型</span>" in variable_view
     assert ">类型</span>" in evaluation_view
