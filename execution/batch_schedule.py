@@ -298,7 +298,10 @@ class BatchScheduleRepository:
     def _row(row: Any) -> dict[str, Any]:
         data = dict(row)
         data["enabled"] = bool(data["enabled"])
-        data["weekdays"] = json.loads(data.pop("weekdays_json"))
+        try:
+            data["weekdays"] = json.loads(data.pop("weekdays_json"))
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ValueError(f"调度计划星期配置数据损坏: {data.get('batch_id', '?')}") from exc
         return data
 
     @contextmanager

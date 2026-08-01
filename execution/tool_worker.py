@@ -12,10 +12,11 @@ from copy import deepcopy
 from contextlib import redirect_stderr, redirect_stdout
 from types import MappingProxyType
 from typing import Any
-from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 from pydantic import BaseModel, TypeAdapter
+
+from execution.sensitive_data import proxy_url_with_auth
 
 
 _RESPONSE_ADAPTER = TypeAdapter(Any)
@@ -155,20 +156,6 @@ def _execute_python(payload: dict[str, Any]) -> tuple[Any, dict[str, Any] | None
     return None, captured
 
 
-def _proxy_url_with_auth(url: str, username: str | None, password: str | None) -> str:
-    if not username:
-        return url
-    parsed = urlsplit(url)
-    host = parsed.hostname or ""
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    credentials = quote(username, safe="")
-    if password is not None:
-        credentials += ":" + quote(password, safe="")
-    return urlunsplit((parsed.scheme, f"{credentials}@{host}{port}", parsed.path, "", ""))
-
-
 def _execute_raw_http(payload: dict[str, Any]) -> dict[str, Any]:
     request = payload["request"]
     network = payload.get("network") or {}
@@ -185,7 +172,7 @@ def _execute_raw_http(payload: dict[str, Any]) -> dict[str, Any]:
         if not proxy.get("url"):
             raise ValueError("CUSTOM Proxy 缺少 URL")
         client_options["trust_env"] = False
-        client_options["proxy"] = _proxy_url_with_auth(
+        client_options["proxy"] = proxy_url_with_auth(
             proxy["url"], proxy.get("username"), proxy.get("password")
         )
     elif mode != "SYSTEM":

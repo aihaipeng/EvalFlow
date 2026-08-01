@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
-from urllib.parse import quote
 
 import httpx
 
@@ -19,6 +17,7 @@ from execution.model_protocols import (
     model_protocol_headers,
     validate_protocol_parameters,
 )
+from execution.sensitive_data import proxy_url_with_auth
 
 
 DEFAULT_ANTHROPIC_MAX_TOKENS = 8192
@@ -206,7 +205,7 @@ def model_http_client_options(
         options.update(
             {
                 "trust_env": False,
-                "proxy": _proxy_url_with_auth(
+                "proxy": proxy_url_with_auth(
                     proxy_url,
                     username=proxy_username,
                     password=proxy_password,
@@ -218,26 +217,6 @@ def model_http_client_options(
     if not verify_ssl:
         options["verify"] = False
     return options
-
-
-def _proxy_url_with_auth(
-    proxy_url: str,
-    *,
-    username: str | None,
-    password: str | None,
-) -> str:
-    if not username:
-        return proxy_url
-    parsed = urlsplit(proxy_url)
-    hostname = parsed.hostname or ""
-    if ":" in hostname and not hostname.startswith("["):
-        hostname = f"[{hostname}]"
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    credentials = quote(username, safe="")
-    if password is not None:
-        credentials += ":" + quote(password, safe="")
-    netloc = f"{credentials}@{hostname}{port}"
-    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
 
 def anthropic_headers(api_key: str) -> dict[str, str]:

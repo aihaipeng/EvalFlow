@@ -28,6 +28,10 @@ from execution.workflow_values import (
 )
 
 
+class LlmMessageEmptyError(WorkflowValueError):
+    """LLM 消息模板解析后为空（应报 LLM_MESSAGE_EMPTY）。"""
+
+
 LLM_ATTEMPT_PAYLOAD_BUDGET_BYTES = 5 * 1024 * 1024
 
 
@@ -127,7 +131,7 @@ class LlmNodeRunner(NodeRunnerBase):
                 if message.role == "SYSTEM" and not content.strip():
                     continue
                 if message.role != "SYSTEM" and not content.strip():
-                    raise WorkflowValueError(
+                    raise LlmMessageEmptyError(
                         f"LLM {message.role} 消息解析后为空"
                     )
                 resolved_messages.append(
@@ -158,13 +162,12 @@ class LlmNodeRunner(NodeRunnerBase):
             )
             self._finish_pending_node(document, "FAILED", error)
             return document, {}
+        except LlmMessageEmptyError as exc:
+            error = _error("LLM_MESSAGE_EMPTY", str(exc))
+            self._finish_pending_node(document, "FAILED", error)
+            return document, {}
         except (WorkflowValueError, ValueError) as exc:
-            code = (
-                "LLM_MESSAGE_EMPTY"
-                if str(exc).startswith("LLM ") and str(exc).endswith("消息解析后为空")
-                else "LLM_EXECUTION_ERROR"
-            )
-            error = _error(code, str(exc))
+            error = _error("LLM_EXECUTION_ERROR", str(exc))
             self._finish_pending_node(document, "FAILED", error)
             return document, {}
 

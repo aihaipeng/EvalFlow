@@ -688,12 +688,18 @@ class WorkflowStructuralRepository:
         )
         nodes = []
         for node_row in node_rows:
+            try:
+                definition = json.loads(node_row["definition_json"])
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise WorkflowStructuralRepositoryError(
+                    f"节点定义数据损坏: {node_row['id']}"
+                ) from exc
             payload = {
                 "id": node_row["id"],
                 "type": node_row["type"],
                 "name": node_row["name"],
                 "description": node_row["description"],
-                **json.loads(node_row["definition_json"]),
+                **definition,
             }
             nodes.append(NODE_STRUCTURAL_ADAPTER.validate_python(payload))
         validate_workflow_graph(workflow, nodes)

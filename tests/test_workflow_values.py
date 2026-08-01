@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from execution.workflow_values import (
@@ -181,8 +183,20 @@ def test_output_conversion_matrix(value, target, expected):
         (" null ", "null"),
         ("[]", "object"),
         ("0.123456789012345678901", "number"),
+        ("Infinity", "number"),
+        ("NaN", "number"),
+        (float("inf"), "number"),
+        (float("nan"), "number"),
     ],
 )
 def test_output_conversion_rejects_undefined_or_lossy_paths(value, target):
     with pytest.raises(WorkflowOutputTypeError):
         convert_output(value, target)
+
+
+def test_output_conversion_of_large_exact_integers_round_trips_exactly():
+    # 超大有限数走精确十进制整数路径，不得抛 OverflowError 或丢失精度（A7）
+    expected = int(Decimal("1e400"))
+    assert convert_output("1e400", "number") == expected
+    assert convert_output("1e400", "integer") == expected
+    assert convert_output("9e15", "integer") == 9000000000000000

@@ -286,6 +286,12 @@ class BatchExecutionStore:
                 if staging.is_dir():
                     remove_execution_tree(staging)
                     changed = 1
+            # 无 journal 的 staging 视为未提交事务，直接删除（有 journal 的由
+            # _recover_replace_transactions 前向重放后消费）
+            for staging in root.glob(".replace-*"):
+                if staging.is_dir():
+                    remove_execution_tree(staging)
+                    changed = 1
         return changed
 
     def _archive_current(self, root: Path) -> None:

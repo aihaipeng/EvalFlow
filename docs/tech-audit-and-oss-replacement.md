@@ -29,6 +29,7 @@
 | Glide Data Grid | **门禁未通过，不替换** | 免费 XLSX、多 Sheet、多矩形选择、Ctrl 叠加、暗色主题和大表门禁未同时成立，FortuneSheet + SheetJS 保持隔离 |
 | axe / Playwright | **已进入门禁** | 5 条 Chromium E2E 覆盖四目录、三类资源 CRUD/保存和任务全流程；WCAG A/AA 扫描无违规 |
 | 并发 UI 改动合并 | **已完成** | 当前“新建供应商 / 新建任务”等术语和视觉样式作为最终基线，架构替换未回退用户改动 |
+| A 类二轮核对补强 | **已完成** | 重构收敛后逐项核对 A1-A20：16 项已由重构修复并有测试锚定；补强 4 处残留——A4 LLM 消息空分类改专用异常类（删除字符串前缀匹配）、A7 超大有限数精确整数路径补 1e400/inf 回归测试、A18 batch_schedule/_record_from_connection 两处裸 `json.loads` 包领域错误、A20 `proxy_url_with_auth` 下沉 `sensitive_data.py` 消除双 HTTP 栈重复；另 A13 补无 journal `.replace-*` staging 清理 |
 
 补充修复：全量回归发现 Windows 深目录中的 Execution JSON/ZIP 可能超过 `MAX_PATH`，现已对原子写入、归档和读取使用扩展长度路径；该修复不改变 manifest 或 Execution JSON 协议。
 
