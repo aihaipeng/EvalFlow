@@ -57,7 +57,7 @@ def test_json_template_rejects_invalid_final_json_and_missing_variables():
     [
         ("response.data[id==3]", {"id": 3, "name": "three"}),
         ("response.data[id>=2].name", ["two-hr", "three"]),
-        ("response.data[name contain two-]", {"id": 2, "name": "two-hr"}),
+        ('response.data[name contain "two-"]', {"id": 2, "name": "two-hr"}),
         ("request.items[0].value", 7),
         ("request.items[-1].value", 9),
         ("request.items[-2].value", 7),
@@ -118,6 +118,40 @@ def test_output_extraction_rejects_python_integer_indexes_outside_array(source):
 def test_output_extraction_rejects_slices_and_index_expressions(source):
     with pytest.raises(WorkflowOutputSourceError, match="下标无效"):
         extract_output(source, {"response": {"choices": []}})
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ("response.value[id==1]", "非数组值使用了过滤器"),
+        ("response.data[value>\"1\"]", "排序比较只支持"),
+        ("response.data[value contain 1]", "contain 只支持"),
+        ("response.data[value==unquoted]", "严格 JSON scalar"),
+    ],
+)
+def test_output_extraction_rejects_invalid_filter_types_and_literals(source, message):
+    facts = {
+        "response": {
+            "value": {"id": 1},
+            "data": [{"value": {"nested": True}}],
+        }
+    }
+
+    with pytest.raises(WorkflowOutputSourceError, match=message):
+        extract_output(source, facts)
+
+
+def test_output_filter_uses_strict_json_equality_with_one_numeric_domain():
+    facts = {
+        "response": {
+            "data": [
+                {"value": True, "label": "boolean"},
+                {"value": 1.0, "label": "number"},
+            ]
+        }
+    }
+
+    assert extract_output("response.data[value==1].label", facts) == "number"
 
 
 @pytest.mark.parametrize(

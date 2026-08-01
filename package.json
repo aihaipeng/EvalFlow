@@ -2,12 +2,13 @@
   "name": "agent-bench-frontend",
   "private": true,
   "scripts": {
-    "build:model-providers": "node scripts/build-model-providers.mjs",
-    "build:batch-runs": "node scripts/build-batch-runs.mjs",
+    "dev": "vite",
+    "openapi:generate": "uv run python scripts/export_openapi.py && openapi-typescript web/frontend/generated/openapi.json -o web/frontend/generated/openapi.d.ts",
+    "openapi:check": "uv run python scripts/check_openapi.py",
+    "typecheck": "npm run openapi:check && tsc --noEmit",
+    "test:frontend": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
-    "build:workflow": "node scripts/build-workflow.mjs",
-    "build:test-sets": "node scripts/build-test-sets.mjs",
-    "build": "npm run build:workflow && npm run build:test-sets && npm run build:model-providers && npm run build:batch-runs"
+    "build": "vite build"
   },
   "dependencies": {
     "@codemirror/lang-python": "^6.2.1",
@@ -17,19 +18,29 @@
     "@dagrejs/dagre": "^1.1.5",
     "@fortune-sheet/core": "^1.0.4",
     "@fortune-sheet/react": "^1.0.4",
-    "@xyflow/react": "^12.8.6",
+    "@hookform/resolvers": "^5.6.0",
+    "@radix-ui/react-alert-dialog": "^1.1.23",
+    "@radix-ui/react-dialog": "^1.1.23",
     "@tanstack/react-query": "^5.83.0",
+    "@xyflow/react": "^12.8.6",
     "codemirror": "^6.0.2",
     "lucide-react": "^0.468.0",
+    "openapi-fetch": "^0.17.0",
     "parse-curl": "^0.2.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.84.0",
     "react-rnd": "^10.5.2",
     "shellwords": "^0.1.1",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.54.0",
-    "esbuild": "^0.28.1"
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.0"
   }
 }

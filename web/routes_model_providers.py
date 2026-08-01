@@ -152,6 +152,33 @@ class ProviderListResponse(_StrictModel):
     providers: list[ModelProviderSummary]
 
 
+class ProviderLatencyResponse(_StrictModel):
+    reachable: bool
+    latency_ms: int
+    status_code: int
+
+
+class ProviderDiscoveredModel(_StrictModel):
+    id: str
+    owned_by: str | None = None
+
+
+class ProviderModelsResponse(_StrictModel):
+    protocol: str
+    endpoint: str
+    latency_ms: int
+    models: list[ProviderDiscoveredModel]
+
+
+class ModelAvailabilityResponse(_StrictModel):
+    available: bool
+    latency_ms: int
+    status_code: int | None
+    output: Any = None
+    response_body: str
+    error: str | None
+
+
 def get_model_repository(request: Request) -> ModelProviderRepository:
     services: WorkflowServices = request.app.state.workflow_services
     return services.model_repository
@@ -253,7 +280,7 @@ def create_provider(
     return ProviderEnvelope(provider=provider)
 
 
-@router.post("/latency")
+@router.post("/latency", response_model=ProviderLatencyResponse)
 async def test_latency(body: ProviderConnectionRequest) -> dict[str, Any]:
     started_at = time.perf_counter()
     try:
@@ -281,7 +308,7 @@ async def test_latency(body: ProviderConnectionRequest) -> dict[str, Any]:
         raise HTTPException(502, f"BASE_URL 无法访问: {type(exc).__name__}") from exc
 
 
-@router.post("/models")
+@router.post("/models", response_model=ProviderModelsResponse)
 async def fetch_models(body: ProviderConnectionRequest) -> dict[str, Any]:
     attempts: list[str] = []
     async with httpx.AsyncClient(
@@ -326,7 +353,7 @@ async def fetch_models(body: ProviderConnectionRequest) -> dict[str, Any]:
     raise HTTPException(502, f"自动获取模型失败，可手工添加模型。{summary}")
 
 
-@router.post("/test-model")
+@router.post("/test-model", response_model=ModelAvailabilityResponse)
 async def test_model_availability(body: ModelAvailabilityRequest) -> dict[str, Any]:
     prompt = "请回复：模型连接正常。不要补充其他内容。"
     messages = [{"role": "user", "content": prompt}]

@@ -37,6 +37,40 @@ class WorkflowOutputTypeError(WorkflowValueError):
     """source 提取值无法按 outputs.type 的统一矩阵完成转换。"""
 
 
+class ContextVariableNotFoundError(WorkflowValueError):
+    """Context 根变量或嵌套路径不存在。"""
+
+    def __init__(self, name: str, path: str) -> None:
+        super().__init__(f"Context 变量不存在: {path}")
+        self.name = name
+        self.path = path
+
+
+def template_references(value: Any) -> list[tuple[str, str]]:
+    """按出现顺序返回模板中的 ``(根变量, 完整路径)`` 静态引用。"""
+
+    references: list[tuple[str, str]] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, list):
+            for child in item:
+                collect(child)
+            return
+        if isinstance(item, dict):
+            for child in item.values():
+                collect(child)
+            return
+        if not isinstance(item, str):
+            return
+        for match in _REFERENCE.finditer(item):
+            path = match.group(1)
+            root = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", path).group(0)
+            references.append((root, path))
+
+    collect(value)
+    return references
+
+
 def strict_json_clone(value: Any) -> Any:
     """生成不含 NaN/Infinity、循环引用或非 JSON 对象的独立深拷贝。"""
 
@@ -79,9 +113,14 @@ def resolve_path(root: Any, path: str) -> Any:
 def _context_value(context: dict[str, Any], path: str) -> tuple[str, Any]:
     root_name = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", path).group(0)
     if root_name not in context:
-        raise WorkflowValueError(f"Context 变量不存在: {root_name}")
+        raise ContextVariableNotFoundError(root_name, path)
     suffix = path[len(root_name) :]
-    return root_name, resolve_path(context[root_name], suffix) if suffix else context[root_name]
+    if not suffix:
+        return root_name, context[root_name]
+    try:
+        return root_name, resolve_path(context[root_name], suffix)
+    except WorkflowValueError as exc:
+        raise ContextVariableNotFoundError(root_name, path) from exc
 
 
 def _stringify_template_value(value: Any) -> str:
@@ -168,36 +207,70 @@ def parse_json_template(
 
 def _parse_literal(text: str) -> Any:
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return text
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WorkflowOutputSourceError(
+            "输出 source 过滤器 literal 必须是严格 JSON scalar"
+        ) from exc
+    if isinstance(value, (dict, list)):
+        raise WorkflowOutputSourceError(
+            "输出 source 过滤器 literal 必须是严格 JSON scalar"
+        )
+    return value
+
+
+def _json_number(value: Any) -> Decimal | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return Decimal(str(value))
+
+
+def _json_equal(left: Any, right: Any) -> bool:
+    left_number = _json_number(left)
+    right_number = _json_number(right)
+    if left_number is not None or right_number is not None:
+        return (
+            left_number is not None
+            and right_number is not None
+            and left_number == right_number
+        )
+    return type(left) is type(right) and left == right
 
 
 def _compare(left: Any, operator: str, right: Any) -> bool:
     if operator == "contain":
         if isinstance(left, str) and isinstance(right, str):
             return right in left
-        if isinstance(left, (list, dict)):
-            return right in left
-        return False
+        if isinstance(left, list):
+            return any(_json_equal(item, right) for item in left)
+        raise WorkflowOutputSourceError(
+            "输出 source contain 只支持 string/string 或 array/scalar"
+        )
     if operator == "==":
-        return left == right
+        return _json_equal(left, right)
     if operator == "!=":
-        return left != right
-    if isinstance(left, bool) or isinstance(right, bool):
-        return False
-    try:
-        if operator == "<":
-            return left < right
-        if operator == ">":
-            return left > right
-        if operator == "<=":
-            return left <= right
-        if operator == ">=":
-            return left >= right
-    except TypeError:
-        return False
-    return False
+        return not _json_equal(left, right)
+    left_number = _json_number(left)
+    right_number = _json_number(right)
+    if left_number is not None and right_number is not None:
+        comparable_left, comparable_right = left_number, right_number
+    elif isinstance(left, str) and isinstance(right, str):
+        comparable_left, comparable_right = left, right
+    else:
+        raise WorkflowOutputSourceError(
+            "输出 source 排序比较只支持同类 string 或精确 JSON number"
+        )
+    if operator == "<":
+        return comparable_left < comparable_right
+    if operator == ">":
+        return comparable_left > comparable_right
+    if operator == "<=":
+        return comparable_left <= comparable_right
+    if operator == ">=":
+        return comparable_left >= comparable_right
+    raise WorkflowOutputSourceError(f"输出 source 不支持比较符: {operator}")
 
 
 def _read_output_part(current: Any, part: str | int) -> Any:
@@ -242,7 +315,9 @@ def extract_output(source: str, facts: dict[str, Any]) -> Any:
         condition = _CONDITION.fullmatch(content)
         if condition:
             if not isinstance(current, list):
-                current = None
+                raise WorkflowOutputSourceError(
+                    "输出 source 对非数组值使用了过滤器"
+                )
             else:
                 right = _parse_literal(condition.group(3))
                 matches = []
@@ -334,7 +409,10 @@ def convert_output(value: Any, target: str) -> Any:
             return int(decimal_value)
         if decimal_value == decimal_value.to_integral_value():
             return int(decimal_value)
-        converted = float(decimal_value)
+        try:
+            converted = float(decimal_value)
+        except (OverflowError, ValueError) as exc:
+            raise WorkflowOutputTypeError("数值转换会产生非有限值") from exc
         if not math.isfinite(converted) or Decimal(str(converted)) != decimal_value:
             raise WorkflowOutputTypeError("数值转换会产生精度丢失")
         return converted

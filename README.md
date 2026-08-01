@@ -4,12 +4,11 @@ EvalFlow 是一个本机运行的企业 Agent 测试编排工具。它用于管�
 
 当前版本支持：
 
-- Excel 测试集上传、分页浏览、任意 Sheet 批量执行和字段映射
-- Script / Agent 工具 CRUD、ZIP 导入导出、SSE 日志和运行中断
-- Workflow HTTP 节点、请求模板、连接失败重试和大响应 Artifact
-- Parser、Evaluator、Check Aggregator、Case Aggregator 固定工作流
-- 多 Run 调度、Case 并发、取消、手工恢复和完整执行追溯
-- DeepSeek 与 DashScope 真实模型工具链测试
+- 浏览器内解析 Excel、多 Sheet/区域选择、测试集字段与用例维护
+- OpenAI Chat Completions、Responses API 与 Anthropic 协议的模型供应商管理
+- START / SCRIPT / LLM / HTTP / END 可视化 Workflow 编排和单节点测试
+- 任务创建、复制、定时触发、Case 并发、停止、失败重跑和断点续跑
+- Context 结果校验、节点日志、请求响应和完整 Execution JSON 追溯
 
 系统只面向桌面浏览器和本机使用，服务固定绑定 `127.0.0.1`。
 Workflow 和节点测试调度器保存进程内活动状态，因此当前部署只支持单个 Uvicorn worker；`run.py` 已按该约束启动。不要使用 `--workers 2` 或其他多进程部署参数。
@@ -20,7 +19,7 @@ Workflow 和节点测试调度器保存进程内活动状态，因此当前部�
 - Windows 10 或 Windows 11
 - [uv](https://docs.astral.sh/uv/)
 - Git，仅在通过 Git 获取项目时需要
-- Node.js 不是运行依赖；只有修改 Workflow 前端源码并重新构建静态资源时才需要
+- Node.js 不是运行依赖；只有修改前端源码并重新构建静态资源时才需要
 
 ## 安装与启动
 
@@ -54,9 +53,9 @@ uv run python run.py
 
 - 创建 `run_storage/` 本地数据目录；
 - 创建 `run_storage/agent_bench.sqlite3` SQLite 数据库；
-- 使用 `CREATE TABLE IF NOT EXISTS` 创建当前版本所需的测试集、用例、模型、Node、Workflow、节点绑定和 Edge 表及索引。
+- 通过 Alembic 自动升级到当前 SQLAlchemy Core schema；首次启动会创建测试集、用例、模型、Node、Workflow、任务计划和执行历史等表及索引。
 
-数据库初始化由 Repository 统一管理，请勿手工创建同名表或使用旧版本 Workflow 表结构。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的模型和 Workflow 列表是正常行为。
+数据库 schema 由 `execution/database_schema.py` 和 `migrations/` 统一管理，请勿在 Repository 或数据库工具中手工建表。全新克隆的仓库不包含 `run_storage/` 中的本地数据，因此首次运行看到空的供应商和 Workflow 列表是正常行为。
 
 如果需要把另一台机器的已有数据迁移过来，应在服务停止后整体备份和迁移 `run_storage/`。该目录可能包含测试集、API Key、请求响应与执行日志，不应提交到 GitHub。
 
@@ -78,10 +77,17 @@ uv run python run.py
 # 全量测试
 uv run pytest -q
 
+# OpenAPI 契约、TypeScript 和前端纯函数检查
+npm run typecheck
+npm run test:frontend
+
+# 隔离数据库上的 Chromium E2E 与 axe WCAG A/AA
+npm run test:e2e
+
 # 启动开发服务
 uv run python run.py
 
-# 修改 Workflow 前端源码后重新构建
+# 修改前端源码后重新构建 Vite 多入口生产资源
 npm ci
 npm run build
 ```
@@ -115,19 +121,22 @@ uv run pytest tests/test_agent_live_integration.py -m live -q
 ```text
 run.py                              # Uvicorn 本机服务入口，固定监听 127.0.0.1:8010
 pyproject.toml / uv.lock            # Python 版本、运行依赖和锁定依赖
-package.json / package-lock.json    # Workflow 前端构建依赖与 npm 脚本
+package.json / package-lock.json    # 前端运行/构建依赖与 npm 脚本
+vite.config.mjs / tsconfig.json     # Vite 多入口、内容哈希与 TypeScript 门禁
 
 web/
-├─ app.py                           # FastAPI 应用、路由注册和静态站点挂载
+├─ app.py                           # FastAPI 应用、路由注册、Vite manifest 注入
 ├─ routes_*.py                      # 测试集、模型、Workflow 和 Run API
 ├─ workflow_services.py             # lifespan 管理的 Workflow 应用级资源
-├─ frontend/                        # 测试集管理与 Workflow Studio 前端源码
+├─ frontend/                        # 四个按需加载的 React 页面源码
 │  ├─ test-sets.jsx / test-sets.css
-│  ├─ workflow-canvas.jsx
-│  ├─ workflow-canvas.css
-│  └─ workflow-alignment.mjs
+│  ├─ model-providers.jsx / model-provider-api.ts
+│  ├─ batch-runs.jsx / batch-api.ts
+│  ├─ workflow-canvas.jsx / workflow-canvas.css
+│  ├─ components/dialog.jsx
+│  └─ generated/openapi.d.ts
 └─ static/                          # 单页应用及可直接运行的已构建静态资源
-   └─ assets/workflow-canvas.*      # npm run build 生成的 Workflow bundle
+   └─ assets/vite/                  # manifest、内容哈希入口、共享 chunk 与 source map
 
 execution/
 ├─ init_db.py                       # SQLite 默认路径、共享初始化锁与连接设置
@@ -150,7 +159,9 @@ execution/
 ├─ batch_scheduler.py               # Case 并发、取消和手工恢复
 └─ workflow_values.py               # Context 引用、类型转换与输出提取
 
-scripts/build-workflow.mjs          # Workflow 前端生产构建脚本
+scripts/export_openapi.py           # 从 FastAPI 可重复导出 OpenAPI
+scripts/check_openapi.py            # 检查生成契约是否与后端同步
+migrations/                         # Alembic schema 版本
 tests/                              # Python 单元/集成测试及 Node 几何测试
 docs/                               # 产品需求与企业编排业务基线
 WORKFLOW_SPEC.md                    # 当前 Workflow Structural/Execution 契约
@@ -162,4 +173,4 @@ run_storage/
 logs/                               # 本地服务日志，不提交
 ```
 
-更完整的业务边界和执行语义见 [企业 Agent 测试编排需求基线](docs/enterprise-agent-test-orchestration.md)。
+完整执行语义见 [WORKFLOW_SPEC.md](WORKFLOW_SPEC.md)，改造决策与开源替换结果见 [技术审查与开源替换评估](docs/tech-audit-and-oss-replacement.md) 和 [PLAN.md](PLAN.md)。

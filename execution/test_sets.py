@@ -10,12 +10,16 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 from uuid import uuid4
 
+from sqlalchemy import case, delete, func, insert, or_, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
+
+from execution.database_schema import test_cases, test_set_columns, test_sets
 
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    CoreConnection,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
@@ -142,18 +146,17 @@ class TestSetRepository:
         test_set_id = str(uuid4())
         now = utc_now_iso()
         try:
-            with self._connect() as connection:
-                connection.execute(
-                    """
-                    INSERT INTO test_sets(id, name, description, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (test_set_id, normalized_name, normalized_description, now, now),
-                )
+            with self._transaction() as connection:
+                connection.execute(insert(test_sets).values(
+                    id=test_set_id,
+                    name=normalized_name,
+                    description=normalized_description,
+                    created_at=now,
+                    updated_at=now,
+                ))
                 self._replace_children(
                     connection, test_set_id, normalized_columns, normalized_cases
                 )
-                connection.commit()
         except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
@@ -167,32 +170,49 @@ class TestSetRepository:
         self, *, page: int = 1, page_size: int = 20, name_query: str = ""
     ) -> tuple[list[TestSetSummary], int]:
         query = name_query.strip().casefold()
-        where = ""
-        params: list[Any] = []
+        predicate = None
         if query:
-            where = "WHERE lower(ts.name) LIKE ? OR lower(ts.description) LIKE ?"
             pattern = f"%{query}%"
-            params.extend((pattern, pattern))
+            predicate = or_(
+                func.lower(test_sets.c.name).like(pattern),
+                func.lower(test_sets.c.description).like(pattern),
+            )
         offset = (page - 1) * page_size
+        case_counts = (
+            select(
+                test_cases.c.test_set_id,
+                func.count(test_cases.c.id).label("case_count"),
+            )
+            .group_by(test_cases.c.test_set_id)
+            .subquery()
+        )
+        column_counts = (
+            select(
+                test_set_columns.c.test_set_id,
+                func.count(test_set_columns.c.position).label("column_count"),
+            )
+            .group_by(test_set_columns.c.test_set_id)
+            .subquery()
+        )
+        count_statement = select(func.count()).select_from(test_sets)
+        list_statement = (
+            select(
+                test_sets,
+                func.coalesce(case_counts.c.case_count, 0).label("case_count"),
+                func.coalesce(column_counts.c.column_count, 0).label("column_count"),
+            )
+            .outerjoin(case_counts, case_counts.c.test_set_id == test_sets.c.id)
+            .outerjoin(column_counts, column_counts.c.test_set_id == test_sets.c.id)
+        )
+        if predicate is not None:
+            count_statement = count_statement.where(predicate)
+            list_statement = list_statement.where(predicate)
+        list_statement = list_statement.order_by(
+            test_sets.c.updated_at.desc(), test_sets.c.id.desc()
+        ).limit(page_size).offset(offset)
         with self._connect() as connection:
-            total = connection.execute(
-                f"SELECT COUNT(*) FROM test_sets ts {where}", params
-            ).fetchone()["COUNT(*)"]
-            rows = connection.execute(
-                f"""
-                SELECT ts.*,
-                       COUNT(DISTINCT tc.id) AS case_count,
-                       COUNT(DISTINCT tsc.position) AS column_count
-                FROM test_sets ts
-                LEFT JOIN test_cases tc ON tc.test_set_id = ts.id
-                LEFT JOIN test_set_columns tsc ON tsc.test_set_id = ts.id
-                {where}
-                GROUP BY ts.id
-                ORDER BY ts.updated_at DESC, ts.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                [*params, page_size, offset],
-            ).fetchall()
+            total = connection.execute(count_statement).scalar_one()
+            rows = connection.execute(list_statement).mappings().all()
         return [self._summary_from_row(row) for row in rows], int(total)
 
     def metrics(self) -> dict[str, int]:
@@ -201,15 +221,17 @@ class TestSetRepository:
         )
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT
-                    COUNT(*) AS test_set_count,
-                    COALESCE((SELECT COUNT(*) FROM test_cases), 0) AS case_count,
-                    SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent_count
-                FROM test_sets
-                """,
-                (cutoff,),
-            ).fetchone()
+                select(
+                    func.count(test_sets.c.id).label("test_set_count"),
+                    select(func.count(test_cases.c.id))
+                    .scalar_subquery()
+                    .label("case_count"),
+                    func.coalesce(
+                        func.sum(case((test_sets.c.created_at >= cutoff, 1), else_=0)),
+                        0,
+                    ).label("recent_count"),
+                )
+            ).mappings().one()
         return {
             "test_set_count": int(row["test_set_count"]),
             "case_count": int(row["case_count"]),
@@ -219,24 +241,20 @@ class TestSetRepository:
     def get(self, test_set_id: str) -> TestSetRecord | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM test_sets WHERE id = ?", (test_set_id,)
-            ).fetchone()
+                select(test_sets).where(test_sets.c.id == test_set_id)
+            ).mappings().first()
             if row is None:
                 return None
             columns = connection.execute(
-                """
-                SELECT column_key, position FROM test_set_columns
-                WHERE test_set_id = ? ORDER BY position
-                """,
-                (test_set_id,),
-            ).fetchall()
+                select(test_set_columns.c.column_key, test_set_columns.c.position)
+                .where(test_set_columns.c.test_set_id == test_set_id)
+                .order_by(test_set_columns.c.position)
+            ).mappings().all()
             cases = connection.execute(
-                """
-                SELECT id, position, values_json FROM test_cases
-                WHERE test_set_id = ? ORDER BY position
-                """,
-                (test_set_id,),
-            ).fetchall()
+                select(test_cases.c.id, test_cases.c.position, test_cases.c.values_json)
+                .where(test_cases.c.test_set_id == test_set_id)
+                .order_by(test_cases.c.position)
+            ).mappings().all()
         return TestSetRecord(
             id=row["id"],
             name=row["name"],
@@ -272,21 +290,21 @@ class TestSetRepository:
         normalized_cases = _normalize_cases(cases, normalized_columns)
         now = utc_now_iso()
         try:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 cursor = connection.execute(
-                    """
-                    UPDATE test_sets
-                    SET name = ?, description = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (normalized_name, normalized_description, now, test_set_id),
+                    update(test_sets)
+                    .where(test_sets.c.id == test_set_id)
+                    .values(
+                        name=normalized_name,
+                        description=normalized_description,
+                        updated_at=now,
+                    )
                 )
                 if cursor.rowcount == 0:
                     raise TestSetRepositoryError("测试集不存在")
                 self._replace_children(
                     connection, test_set_id, normalized_columns, normalized_cases
                 )
-                connection.commit()
         except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
@@ -307,18 +325,18 @@ class TestSetRepository:
         normalized_description = _normalize_description(description)
         now = utc_now_iso()
         try:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 cursor = connection.execute(
-                    """
-                    UPDATE test_sets
-                    SET name = ?, description = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (normalized_name, normalized_description, now, test_set_id),
+                    update(test_sets)
+                    .where(test_sets.c.id == test_set_id)
+                    .values(
+                        name=normalized_name,
+                        description=normalized_description,
+                        updated_at=now,
+                    )
                 )
                 if cursor.rowcount == 0:
                     raise TestSetRepositoryError("测试集不存在")
-                connection.commit()
         except IntegrityError as exc:
             if "test_sets.name" in str(exc):
                 raise TestSetNameConflictError("测试集名称已存在") from exc
@@ -329,54 +347,56 @@ class TestSetRepository:
         return record
 
     def delete(self, test_set_id: str) -> bool:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM test_sets WHERE id = ?", (test_set_id,)
+                delete(test_sets).where(test_sets.c.id == test_set_id)
             )
-            connection.commit()
         return cursor.rowcount > 0
 
     @staticmethod
     def _replace_children(
-        connection: CoreConnection,
+        connection: Connection,
         test_set_id: str,
         columns: Sequence[str],
         cases: Sequence[tuple[str, dict[str, str]]],
     ) -> None:
         connection.execute(
-            "DELETE FROM test_set_columns WHERE test_set_id = ?", (test_set_id,)
+            delete(test_set_columns).where(test_set_columns.c.test_set_id == test_set_id)
         )
         connection.execute(
-            "DELETE FROM test_cases WHERE test_set_id = ?", (test_set_id,)
+            delete(test_cases).where(test_cases.c.test_set_id == test_set_id)
         )
-        connection.executemany(
-            """
-            INSERT INTO test_set_columns(test_set_id, position, column_key)
-            VALUES (?, ?, ?)
-            """,
-            ((test_set_id, index, key) for index, key in enumerate(columns)),
-        )
-        connection.executemany(
-            """
-            INSERT INTO test_cases(id, test_set_id, position, values_json)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                (
-                    case_id,
-                    test_set_id,
-                    index,
-                    json.dumps(values, ensure_ascii=False, separators=(",", ":")),
-                )
-                for index, (case_id, values) in enumerate(cases)
-            ),
-        )
+        column_rows = [
+            {"test_set_id": test_set_id, "position": index, "column_key": key}
+            for index, key in enumerate(columns)
+        ]
+        if column_rows:
+            connection.execute(insert(test_set_columns), column_rows)
+        case_rows = [
+            {
+                "id": case_id,
+                "test_set_id": test_set_id,
+                "position": index,
+                "values_json": json.dumps(
+                    values, ensure_ascii=False, separators=(",", ":")
+                ),
+            }
+            for index, (case_id, values) in enumerate(cases)
+        ]
+        if case_rows:
+            connection.execute(insert(test_cases), case_rows)
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[Connection]:
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self) -> Iterator[Connection]:
+        self.initialize()
+        with database_transaction(self.database_path, initialize=False) as connection:
             yield connection
 
     @staticmethod

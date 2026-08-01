@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 from execution import DEFAULT_DATABASE_PATH, DEFAULT_EXECUTION_ROOT
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from web.routes_local_clipboard import router as local_clipboard_router
@@ -15,6 +16,36 @@ from web.workflow_services import WorkflowServices
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+VITE_ASSET_DIR = STATIC_DIR / "assets" / "vite"
+VITE_MANIFEST_PATH = VITE_ASSET_DIR / ".vite" / "manifest.json"
+
+
+def _render_index_html() -> str:
+    """Resolve Vite's content-hashed lazy entry assets into the HTML shell."""
+
+    try:
+        manifest = json.loads(VITE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("前端资源尚未构建，请先运行 `npm run build`") from exc
+
+    replacements: dict[str, str] = {}
+    for name in ("test-sets", "model-providers", "workflow-canvas", "batch-runs"):
+        source = f"web/frontend/{name}.jsx"
+        entry = manifest.get(source)
+        if not isinstance(entry, dict) or not entry.get("file"):
+            raise RuntimeError(f"Vite manifest 缺少入口: {source}")
+        css = entry.get("css") if isinstance(entry.get("css"), list) else []
+        replacements[f"__VITE_{name.upper().replace('-', '_')}_JS__"] = (
+            f"/assets/vite/{entry['file']}"
+        )
+        replacements[f"__VITE_{name.upper().replace('-', '_')}_CSS__"] = (
+            f"/assets/vite/{css[0]}" if css else ""
+        )
+
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for token, value in replacements.items():
+        html = html.replace(token, value)
+    return html
 
 
 def create_app(
@@ -55,7 +86,7 @@ def create_app(
     @app.get("/")
     async def index():
         """返回首页 HTML。"""
-        return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
+        return HTMLResponse(_render_index_html(), headers=_NO_CACHE)
 
     @app.get("/style.css")
     async def style_css():

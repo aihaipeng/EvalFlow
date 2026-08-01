@@ -10,8 +10,17 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from sqlalchemy import delete, insert, literal_column, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
+from execution.database_schema import (
+    node_structural_models as node_models_table,
+    workflow_edges,
+    workflow_node_bindings,
+    workflow_structural_models as workflows_table,
+)
 from execution.node_structural_models import (
     NODE_STRUCTURAL_ADAPTER,
     NodeStructuralModel,
@@ -21,11 +30,12 @@ from execution.resource_names import next_copy_name
 from execution.time_utils import utc_now_iso
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    CoreConnection,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
+from execution.workflow_values import template_references
 
 
 WORKFLOW_STRUCTURAL_TABLE_DESCRIPTIONS = {
@@ -268,6 +278,58 @@ def validate_workflow_graph(
             f"Workflow Context 变量名必须唯一: {', '.join(duplicates)}"
         )
 
+    declarations: dict[str, tuple[str, str]] = {}
+    for node in models:
+        if node.type == "START":
+            declarations.update(
+                {item.name: (node.id, item.type) for item in node.inputs}
+            )
+        elif node.type in {"SCRIPT", "LLM", "HTTP"}:
+            declarations.update(
+                {item.name: (node.id, item.type) for item in node.outputs}
+            )
+
+    for node in models:
+        values: list[Any] = []
+        if node.type == "LLM":
+            values.extend(message.content for message in node.context.messages)
+        elif node.type == "HTTP":
+            values.append(node.request.url)
+            values.extend(header.value for header in node.request.headers)
+            values.extend(parameter.value for parameter in node.request.params)
+            values.append(
+                node.request.body.template_text
+                if node.request.body.template_text is not None
+                else node.request.body.model_dump(mode="json")["content"]
+            )
+        else:
+            continue
+
+        ancestors: set[str] = set()
+        pending = list(reverse[node.id])
+        while pending:
+            ancestor = pending.pop()
+            if ancestor in ancestors:
+                continue
+            ancestors.add(ancestor)
+            pending.extend(reverse[ancestor])
+
+        for root_name, path in template_references(values):
+            declaration = declarations.get(root_name)
+            if declaration is None:
+                raise WorkflowStructuralRepositoryError(
+                    f"节点“{node.name}”引用的 Context 变量不存在: {path}"
+                )
+            producer_id, declared_type = declaration
+            if producer_id not in ancestors:
+                raise WorkflowStructuralRepositoryError(
+                    f"节点“{node.name}”的 Context 引用必须来自 START 或可达上游节点: {path}"
+                )
+            if path != root_name and declared_type not in {"object", "array"}:
+                raise WorkflowStructuralRepositoryError(
+                    f"节点“{node.name}”的嵌套 Context 引用要求根变量为 object 或 array: {path}"
+                )
+
 
 class WorkflowStructuralRepository:
     """以单个 SQLite 事务保存 Workflow、Node、binding 和 Edge 当前结构。"""
@@ -298,14 +360,15 @@ class WorkflowStructuralRepository:
         validate_workflow_graph(validated, nodes)
         now = timestamp or utc_now_iso()
         try:
-            with self._connect() as connection:
-                connection.execute("BEGIN IMMEDIATE")
-                connection.execute(
-                    "INSERT INTO workflow_structural_models VALUES (?, ?, ?, ?, ?)",
-                    (validated.id, validated.name, validated.description, now, now),
-                )
+            with self._transaction(immediate=True) as connection:
+                connection.execute(insert(workflows_table).values(
+                    id=validated.id,
+                    name=validated.name,
+                    description=validated.description,
+                    created_at=now,
+                    updated_at=now,
+                ))
                 self._insert_nodes_bindings_edges(connection, validated, nodes, now)
-                connection.commit()
         except IntegrityError as exc:
             _raise_workflow_integrity_error("创建", exc)
         return WorkflowStructuralRecord(
@@ -315,8 +378,8 @@ class WorkflowStructuralRepository:
     def get(self, workflow_id: str) -> WorkflowStructuralRecord | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM workflow_structural_models WHERE id = ?", (workflow_id,)
-            ).fetchone()
+                select(workflows_table).where(workflows_table.c.id == workflow_id)
+            ).mappings().first()
             if row is None:
                 return None
             return self._record_from_connection(connection, row)
@@ -324,9 +387,15 @@ class WorkflowStructuralRepository:
     def list(self) -> list[WorkflowStructuralSummary]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT id, name, description, updated_at FROM workflow_structural_models "
-                "ORDER BY updated_at DESC, id DESC"
-            ).fetchall()
+                select(
+                    workflows_table.c.id,
+                    workflows_table.c.name,
+                    workflows_table.c.description,
+                    workflows_table.c.updated_at,
+                ).order_by(
+                    workflows_table.c.updated_at.desc(), workflows_table.c.id.desc()
+                )
+            ).mappings().all()
         return [WorkflowStructuralSummary(**dict(row)) for row in rows]
 
     def copy(self, workflow_id: str) -> WorkflowStructuralRecord:
@@ -334,12 +403,10 @@ class WorkflowStructuralRepository:
 
         now = utc_now_iso()
         try:
-            with self._connect() as connection:
-                connection.execute("BEGIN IMMEDIATE")
+            with self._transaction(immediate=True) as connection:
                 row = connection.execute(
-                    "SELECT * FROM workflow_structural_models WHERE id = ?",
-                    (workflow_id,),
-                ).fetchone()
+                    select(workflows_table).where(workflows_table.c.id == workflow_id)
+                ).mappings().first()
                 if row is None:
                     raise WorkflowStructuralRepositoryError(
                         f"Workflow 不存在: {workflow_id}"
@@ -348,8 +415,8 @@ class WorkflowStructuralRepository:
                 existing_names = {
                     item["name"]
                     for item in connection.execute(
-                        "SELECT name FROM workflow_structural_models"
-                    )
+                        select(workflows_table.c.name)
+                    ).mappings()
                 }
                 try:
                     copied_name = next_copy_name(
@@ -386,20 +453,16 @@ class WorkflowStructuralRepository:
                     ],
                 )
                 validate_workflow_graph(copied_workflow, copied_nodes)
-                connection.execute(
-                    "INSERT INTO workflow_structural_models VALUES (?, ?, ?, ?, ?)",
-                    (
-                        copied_workflow.id,
-                        copied_workflow.name,
-                        copied_workflow.description,
-                        now,
-                        now,
-                    ),
-                )
+                connection.execute(insert(workflows_table).values(
+                    id=copied_workflow.id,
+                    name=copied_workflow.name,
+                    description=copied_workflow.description,
+                    created_at=now,
+                    updated_at=now,
+                ))
                 self._insert_nodes_bindings_edges(
                     connection, copied_workflow, copied_nodes, now
                 )
-                connection.commit()
         except IntegrityError as exc:
             _raise_workflow_integrity_error("复制", exc)
         return WorkflowStructuralRecord(
@@ -421,21 +484,27 @@ class WorkflowStructuralRepository:
         validate_workflow_graph(validated, nodes)
         now = timestamp or utc_now_iso()
         try:
-            with self._connect() as connection:
-                connection.execute("BEGIN IMMEDIATE")
+            with self._transaction(immediate=True) as connection:
                 current = connection.execute(
-                    "SELECT created_at FROM workflow_structural_models WHERE id = ?",
-                    (validated.id,),
-                ).fetchone()
+                    select(workflows_table.c.created_at).where(
+                        workflows_table.c.id == validated.id
+                    )
+                ).mappings().first()
                 if current is None:
                     raise WorkflowStructuralRepositoryError(f"Workflow 不存在: {validated.id}")
                 existing = {
                     row["node_id"]: row["type"]
                     for row in connection.execute(
-                        "SELECT b.node_id, n.type FROM workflow_node_bindings b "
-                        "JOIN node_structural_models n ON n.id = b.node_id WHERE b.workflow_id = ?",
-                        (validated.id,),
-                    )
+                        select(
+                            workflow_node_bindings.c.node_id,
+                            node_models_table.c.type,
+                        )
+                        .join(
+                            node_models_table,
+                            node_models_table.c.id == workflow_node_bindings.c.node_id,
+                        )
+                        .where(workflow_node_bindings.c.workflow_id == validated.id)
+                    ).mappings()
                 }
                 incoming = {node.id: node for node in nodes}
                 for node_id, node in incoming.items():
@@ -444,43 +513,71 @@ class WorkflowStructuralRepository:
                             f"节点 type 创建后不可修改: {existing[node_id]} -> {node.type}"
                         )
                     owner = connection.execute(
-                        "SELECT workflow_id FROM workflow_node_bindings WHERE node_id = ?",
-                        (node_id,),
-                    ).fetchone()
+                        select(workflow_node_bindings.c.workflow_id).where(
+                            workflow_node_bindings.c.node_id == node_id
+                        )
+                    ).mappings().first()
                     if owner is not None and owner["workflow_id"] != validated.id:
                         raise WorkflowStructuralRepositoryError(f"Node 已属于其他 Workflow: {node_id}")
 
-                connection.execute("DELETE FROM workflow_edges WHERE workflow_id = ?", (validated.id,))
+                connection.execute(
+                    delete(workflow_edges).where(
+                        workflow_edges.c.workflow_id == validated.id
+                    )
+                )
                 removed = set(existing) - set(incoming)
                 for node_id in removed:
                     connection.execute(
-                        "DELETE FROM workflow_node_bindings WHERE workflow_id = ? AND node_id = ?",
-                        (validated.id, node_id),
+                        delete(workflow_node_bindings).where(
+                            workflow_node_bindings.c.workflow_id == validated.id,
+                            workflow_node_bindings.c.node_id == node_id,
+                        )
                     )
-                    connection.execute("DELETE FROM node_structural_models WHERE id = ?", (node_id,))
+                    connection.execute(
+                        delete(node_models_table).where(node_models_table.c.id == node_id)
+                    )
 
                 for node in nodes:
                     if node.id in existing:
                         connection.execute(
-                            "UPDATE node_structural_models SET name = ?, description = ?, "
-                            "definition_json = ?, updated_at = ? WHERE id = ?",
-                            (node.name, node.description, dump_node_definition(node), now, node.id),
+                            update(node_models_table)
+                            .where(node_models_table.c.id == node.id)
+                            .values(
+                                name=node.name,
+                                description=node.description,
+                                definition_json=dump_node_definition(node),
+                                updated_at=now,
+                            )
                         )
                     else:
                         self._insert_node(connection, node, now)
                 for binding in validated.nodes:
-                    connection.execute(
-                        "INSERT INTO workflow_node_bindings(workflow_id,node_id,position_x,position_y) "
-                        "VALUES (?,?,?,?) ON CONFLICT(workflow_id,node_id) DO UPDATE SET "
-                        "position_x=excluded.position_x, position_y=excluded.position_y",
-                        (validated.id, binding.node_id, binding.position_x, binding.position_y),
+                    statement = sqlite_insert(workflow_node_bindings).values(
+                        workflow_id=validated.id,
+                        node_id=binding.node_id,
+                        position_x=binding.position_x,
+                        position_y=binding.position_y,
                     )
+                    connection.execute(statement.on_conflict_do_update(
+                        index_elements=[
+                            workflow_node_bindings.c.workflow_id,
+                            workflow_node_bindings.c.node_id,
+                        ],
+                        set_={
+                            "position_x": statement.excluded.position_x,
+                            "position_y": statement.excluded.position_y,
+                        },
+                    ))
                 self._insert_edges(connection, validated)
                 connection.execute(
-                    "UPDATE workflow_structural_models SET name = ?, description = ?, updated_at = ? WHERE id = ?",
-                    (validated.name, validated.description, now, validated.id),
+                    update(workflows_table)
+                    .where(workflows_table.c.id == validated.id)
+                    .values(
+                        name=validated.name,
+                        description=validated.description,
+                        updated_at=now,
+                    )
                 )
-                connection.commit()
         except IntegrityError as exc:
             _raise_workflow_integrity_error("更新", exc)
         return WorkflowStructuralRecord(
@@ -491,26 +588,27 @@ class WorkflowStructuralRepository:
         )
 
     def delete(self, workflow_id: str) -> bool:
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self._transaction(immediate=True) as connection:
             node_ids = [
                 row["node_id"]
                 for row in connection.execute(
-                    "SELECT node_id FROM workflow_node_bindings WHERE workflow_id = ?",
-                    (workflow_id,),
-                )
+                    select(workflow_node_bindings.c.node_id).where(
+                        workflow_node_bindings.c.workflow_id == workflow_id
+                    )
+                ).mappings()
             ]
             cursor = connection.execute(
-                "DELETE FROM workflow_structural_models WHERE id = ?", (workflow_id,)
+                delete(workflows_table).where(workflows_table.c.id == workflow_id)
             )
             for node_id in node_ids:
-                connection.execute("DELETE FROM node_structural_models WHERE id = ?", (node_id,))
-            connection.commit()
+                connection.execute(
+                    delete(node_models_table).where(node_models_table.c.id == node_id)
+                )
         return cursor.rowcount > 0
 
     def _insert_nodes_bindings_edges(
         self,
-        connection: CoreConnection,
+        connection: Connection,
         workflow: WorkflowStructuralModel,
         nodes: list[NodeStructuralModel],
         timestamp: str,
@@ -518,46 +616,69 @@ class WorkflowStructuralRepository:
         for node in nodes:
             self._insert_node(connection, node, timestamp)
         for binding in workflow.nodes:
-            connection.execute(
-                "INSERT INTO workflow_node_bindings VALUES (?, ?, ?, ?)",
-                (workflow.id, binding.node_id, binding.position_x, binding.position_y),
-            )
+            connection.execute(insert(workflow_node_bindings).values(
+                workflow_id=workflow.id,
+                node_id=binding.node_id,
+                position_x=binding.position_x,
+                position_y=binding.position_y,
+            ))
         self._insert_edges(connection, workflow)
 
     @staticmethod
-    def _insert_node(connection: CoreConnection, node: NodeStructuralModel, timestamp: str) -> None:
-        connection.execute(
-            "INSERT INTO node_structural_models(id,type,name,description,definition_json,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (node.id, node.type, node.name, node.description, dump_node_definition(node), timestamp, timestamp),
-        )
+    def _insert_node(connection: Connection, node: NodeStructuralModel, timestamp: str) -> None:
+        connection.execute(insert(node_models_table).values(
+            id=node.id,
+            type=node.type,
+            name=node.name,
+            description=node.description,
+            definition_json=dump_node_definition(node),
+            created_at=timestamp,
+            updated_at=timestamp,
+        ))
 
     @staticmethod
-    def _insert_edges(connection: CoreConnection, workflow: WorkflowStructuralModel) -> None:
+    def _insert_edges(connection: Connection, workflow: WorkflowStructuralModel) -> None:
         for edge in workflow.edges:
-            connection.execute(
-                "INSERT INTO workflow_edges VALUES (?, ?, ?, ?)",
-                (edge.id, workflow.id, edge.source_node_id, edge.target_node_id),
-            )
+            connection.execute(insert(workflow_edges).values(
+                id=edge.id,
+                workflow_id=workflow.id,
+                source_node_id=edge.source_node_id,
+                target_node_id=edge.target_node_id,
+            ))
 
     def _record_from_connection(
-        self, connection: CoreConnection, row: Any
+        self, connection: Connection, row: Any
     ) -> WorkflowStructuralRecord:
         bindings = connection.execute(
-            "SELECT node_id, position_x, position_y FROM workflow_node_bindings "
-            "WHERE workflow_id = ? ORDER BY rowid",
-            (row["id"],),
-        ).fetchall()
+            select(
+                workflow_node_bindings.c.node_id,
+                workflow_node_bindings.c.position_x,
+                workflow_node_bindings.c.position_y,
+            )
+            .where(workflow_node_bindings.c.workflow_id == row["id"])
+            .order_by(literal_column("rowid"))
+        ).mappings().all()
         edges = connection.execute(
-            "SELECT id, source_node_id, target_node_id FROM workflow_edges "
-            "WHERE workflow_id = ? ORDER BY rowid",
-            (row["id"],),
-        ).fetchall()
+            select(
+                workflow_edges.c.id,
+                workflow_edges.c.source_node_id,
+                workflow_edges.c.target_node_id,
+            )
+            .where(workflow_edges.c.workflow_id == row["id"])
+            .order_by(literal_column("rowid"))
+        ).mappings().all()
+        bindings_alias = workflow_node_bindings.alias("bindings")
         node_rows = connection.execute(
-            "SELECT n.* FROM workflow_node_bindings b JOIN node_structural_models n ON n.id=b.node_id "
-            "WHERE b.workflow_id = ? ORDER BY b.rowid",
-            (row["id"],),
-        ).fetchall()
+            select(node_models_table)
+            .select_from(
+                bindings_alias.join(
+                    node_models_table,
+                    node_models_table.c.id == bindings_alias.c.node_id,
+                )
+            )
+            .where(bindings_alias.c.workflow_id == row["id"])
+            .order_by(literal_column("bindings.rowid"))
+        ).mappings().all()
         workflow = WorkflowStructuralModel(
             id=row["id"],
             name=row["name"],
@@ -587,7 +708,15 @@ class WorkflowStructuralRepository:
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self, *, immediate: bool = False):
+        self.initialize()
+        with database_transaction(
+            self.database_path, initialize=False, immediate=immediate
+        ) as connection:
             yield connection
 
 

@@ -1,5 +1,41 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.39 全仓技术审查整改与第二阶段开源替换（已完成，2026-08-02）
+
+- Why：先修复影响运行正确性、重启收敛和错误定位的契约偏差，再由成熟组件接管构建、接口类型、弹窗和数据库查询等通用能力；不得用框架迁移掩盖真实缺陷。
+- Who / Where：4 至 5 名测试工程师继续在本机浏览器和 SQLite 单机环境使用；不新增 Redis、Docker、外部数据库、云端服务或运维角色。
+- What / Priority：A1-A20 为 P0；前端双写清理、Vite、OpenAPI 类型客户端、Radix Dialog、SQLAlchemy Core 深化为 P1；表单、表格、Excel 网格 PoC 与 axe 门禁为条件 P2。Workflow/Batch 状态机、Execution JSON、Context 路径和模型协议核心不换。
+- How to Measure：每项先补复现或契约测试并独立验证；最终全量 pytest、类型检查、生产构建、Playwright、SQLite 完整性与真实数据库升级通过，且 API/schema/Execution JSON 语义不变。
+- 审查与替换依据：`docs/tech-audit-and-oss-replacement.md`。
+
+| 子任务 | 目标 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|
+| 13.39.1 | 修复 Workflow 契约 A1-A12 | 每项复现测试；Workflow/Node/Value 专项 | 无 | completed |
+| 13.39.2 | 修复 Batch 存储与调度 A13-A17 | 故障注入、取消/重启/并发专项 | 13.39.1 | completed |
+| 13.39.3 | 修复 Repository/模型网关 A18-A20 | 损坏数据、去重、三协议专项 | 13.39.2 | completed |
+| 13.39.4 | 删除 execution.js Batch 双写并迁移活动桥 | 前端契约、构建、Playwright | 13.39.3 | completed |
+| 13.39.5 | Vite 多入口 + manifest | 单一配置、按需加载、bundle 对比、E2E | 13.39.4 | completed |
+| 13.39.6 | TypeScript/OpenAPI 类型客户端 | 可重复生成、`tsc --noEmit`、故意漂移失败测试 | 13.39.5 | completed |
+| 13.39.7 | Radix Dialog/AlertDialog | 键盘、焦点返回、axe、视觉回归 | 13.39.6 | completed |
+| 13.39.8 | SQLAlchemy Core 逐 Repository 深化 | 原始执行点归零或隔离、真实 DB、Repository/API 回归 | 13.39.3 | completed |
+| 13.39.9 | P2 条件 PoC 与自动化门禁 | RHF/Zod 净收益；Table/Grid 条件门禁；axe | 13.39.7、13.39.8 | completed |
+| 13.39.10 | 全量发布回归与文档回填 | pytest、build、typecheck、Playwright、SQLite、diff check | 13.39.1-13.39.9 | completed |
+
+### T13.39 实施与验证记录
+
+- A1-A20 已按审计顺序修复并补充契约、故障注入、并发、重启恢复和协议测试；Workflow 值解析、Runner 生命周期、LLM/HTTP 证据、Batch 原子替换/取消语义、Repository 损坏数据和模型网关三协议均保持既有业务协议。
+- 删除 `execution.js` 中约 640 行不可达 Batch 列表/配置/历史/定时代码；任务列表、配置、历史和定时统一由 React + TanStack Query 管理，原生脚本只保留 Workflow 列表与 Batch 结果详情活动桥。活动任务轮询按运行时长采用 `1s → 2.5s → 5s` 退避。
+- 4 个独立构建脚本已合并为 `vite.config.mjs`；FastAPI 从 manifest 注入四个内容哈希入口并继续按页面懒加载。构建总量未高于迁移前，测试集和 Workflow 大入口仍保留按需加载边界。
+- 供应商与任务页面已通过 `openapi-typescript` + `openapi-fetch` 使用 FastAPI 生成的 `paths`；`npm run typecheck` 同时执行 OpenAPI 漂移检查和 `tsc --noEmit`，页面不再拼接对应 API 动态 URL。
+- 模型、任务、测试集和节点测试弹窗已采用 Radix Dialog/AlertDialog；项目包装层统一处理 Esc、焦点陷阱、关闭后焦点返回和可访问名称。`execution.js` 的 Workflow 删除与 Batch 结果详情仍是明确登记的原生兼容桥，待对应页面 React 化时整体退役，不再承载新功能。
+- 6 个 Repository 已迁移为 SQLAlchemy Core `select/insert/update/delete` 与显式事务；`CoreConnection/CoreRow/CoreRows/database_connection` facade 已删除。仅 `init_db.py` 隔离保留 `BEGIN IMMEDIATE` 和连接 PRAGMA 三个 SQLite driver SQL。
+- RHF + Zod 任务表单 PoC 将 8 组手写 `value/onChange` 基础字段状态改为注册式字段，将基础提交分支归并为一份 schema，并为 5 个可失败字段提供就地错误与 `aria-describedby`。创建、编辑和复制共用同一 schema；未扩展到 Workflow 实时画布。
+- TanStack Table 条件未触发：当前管理列表仍只有简单过滤和分页，没有列隐藏、批量选择或服务端排序需求。Glide Data Grid 门禁未通过且业务需求未变化，继续保留 FortuneSheet + SheetJS 适配边界，不为“统一技术栈”强行替换。
+- Playwright 增加 axe WCAG A/AA 门禁，并覆盖四目录、供应商 CRUD、测试集编辑、Workflow 创建、任务创建/复制/定时/启动/详情以及 Radix Escape/焦点返回；同步合并当前 UI 术语“新建供应商 / 新建任务”，修复副标题/空态对比度、分页和动态表格控件可访问名称。
+- Windows 深目录回归暴露 Execution JSON/ZIP 超出 `MAX_PATH`；原子写入、归档发布和归档读取已统一使用扩展长度路径，归档文件名缩短但 manifest/Execution 语义不变。
+- 最终 Python 全量回归 `420 passed, 4 skipped, 1 warning`；4 项 skip 为未配置真实模型密钥的 live smoke，warning 为既有 Starlette `httpx` 兼容提示。前端专项 `61 passed`、Node 测试 `8 passed`、Playwright `5 passed`；`npm run typecheck` 与 `npm run build` 通过。
+- 真实数据库副本连续执行两次 Alembic 升级后保持 `20260802_0001`，11 张业务表行数不变，`PRAGMA integrity_check=ok`、`foreign_key_check=[]`；原始数据库未被测试写入。
+
 ## T13.38 成熟框架渐进替换与维护成本治理（已完成，2026-08-02）
 
 ### 业务背景与目标

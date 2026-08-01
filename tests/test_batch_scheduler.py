@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -241,7 +242,8 @@ def test_scheduler_stop_waits_for_running_case_and_leaves_queued_case_unexecuted
     finished = _wait_batch(store, batch["id"])
     cases = store.list_cases(batch["id"])
     assert finished["status"] == "STOPPED"
-    assert [case["status"] for case in cases] == ["SUCCESS", "QUEUED"]
+    assert [case["status"] for case in cases] == ["INTERRUPTED", "QUEUED"]
+    assert cases[0]["execution_status"] == "INTERRUPTED"
     assert cases[1]["execution_status"] == "NOT_STARTED"
     assert cases[1]["started_at"] is None
     assert sum(len(case["workflow_execution_ids"]) for case in cases) == 1
@@ -254,7 +256,7 @@ def test_scheduler_stop_waits_for_running_case_and_leaves_queued_case_unexecuted
     cases = store.list_cases(batch["id"])
     assert resumed["status"] == "SUCCESS"
     assert [case["status"] for case in cases] == ["SUCCESS", "SUCCESS"]
-    assert [len(case["workflow_execution_ids"]) for case in cases] == [1, 1]
+    assert [len(case["workflow_execution_ids"]) for case in cases] == [2, 1]
     completed_history = history_repository.list_recent(batch["id"])
     assert len(completed_history) == 2
     assert completed_history[0]["executed_cases"] == 2
@@ -316,7 +318,12 @@ def test_single_case_execution_blocks_batch_commands_and_updates_summary(tmp_pat
     scheduler.start_case(batch["id"], case["id"])
     with pytest.raises(BatchExecutionError, match="单条用例正在执行"):
         scheduler.start(batch["id"])
-    assert not scheduler.cancel(batch["id"])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if store.get_case(batch["id"], case["id"])["status"] == "RUNNING":
+            break
+        time.sleep(0.03)
+    assert scheduler.cancel(batch["id"])
 
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -325,15 +332,123 @@ def test_single_case_execution_blocks_batch_commands_and_updates_summary(tmp_pat
             break
         time.sleep(0.03)
 
-    assert latest["summary"]["success"] == 1
+    assert latest["summary"]["interrupted"] == 1
     assert latest["summary"]["queued"] == 1
     assert latest["execution_mode"] is None
 
-    scheduler.start(batch["id"])
+    scheduler.resume(batch["id"])
     finished = _wait_batch(store, batch["id"])
     cases = store.list_cases(batch["id"])
     assert finished["status"] == "SUCCESS"
-    assert [len(item["workflow_execution_ids"]) for item in cases] == [1, 1]
+    assert [len(item["workflow_execution_ids"]) for item in cases] == [2, 1]
+
+
+def test_cancel_event_prevents_failure_retry_from_starting_another_workflow(
+    tmp_path: Path, monkeypatch
+):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path, "result = 'unused'"
+    )
+    test_set = _test_set(test_sets, [("C-1", "one")])
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="cancel before retry",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}
+        ],
+        case_concurrency=1,
+        failure_retry_count=3,
+    )
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
+    calls = []
+
+    def fail_and_cancel(_batch, case, cancel_event):
+        calls.append(case["id"])
+        case["status"] = "FAILED"
+        case["execution_status"] = "FAILED"
+        cancel_event.set()
+
+    monkeypatch.setattr(scheduler, "_run_case_attempt", fail_and_cancel)
+    scheduler.start(batch["id"])
+    _wait_batch(store, batch["id"])
+    case = store.list_cases(batch["id"])[0]
+
+    assert calls == [case["id"]]
+    assert case["status"] == "INTERRUPTED"
+    assert case["error"]["code"] == "USER_INTERRUPTED"
+
+
+def test_case_poll_fails_when_workflow_thread_dies_without_terminal_fact(
+    tmp_path: Path, monkeypatch
+):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path, "result = 'unused'"
+    )
+    test_set = _test_set(test_sets, [("C-1", "one")])
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="lost workflow",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}
+        ],
+        case_concurrency=1,
+    )
+    case = store.list_cases(batch["id"])[0]
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
+    execution_id = str(uuid4())
+    scheduler._active_executions[batch["id"]] = set()
+    monkeypatch.setattr(
+        manager,
+        "start_batch",
+        lambda *_args, **_kwargs: {
+            "id": execution_id,
+            "workflow_id": workflow_id,
+        },
+    )
+    monkeypatch.setattr(
+        manager.store,
+        "get_workflow",
+        lambda *_args, **_kwargs: {"status": "RUNNING"},
+    )
+    monkeypatch.setattr(manager, "is_active", lambda _execution_id: False)
+
+    with pytest.raises(BatchExecutionError, match="未产生终态"):
+        scheduler._run_case_attempt(batch, case, threading.Event())
+
+    assert scheduler._active_executions[batch["id"]] == set()
+
+
+def test_shutdown_interrupts_and_joins_single_case_threads(tmp_path: Path):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path, "import time\ntime.sleep(30)\nresult = 'late'"
+    )
+    test_set = _test_set(test_sets, [("C-1", "one")])
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="single shutdown",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}
+        ],
+        case_concurrency=1,
+    )
+    case = store.list_cases(batch["id"])[0]
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
+    scheduler.start_case(batch["id"], case["id"])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if store.get_case(batch["id"], case["id"])["status"] == "RUNNING":
+            break
+        time.sleep(0.03)
+
+    scheduler.shutdown(wait_seconds=8)
+
+    assert scheduler._case_threads == {}
+    assert scheduler._case_events == {}
+    assert store.get_case(batch["id"], case["id"])["status"] == "INTERRUPTED"
+    assert store.get(batch["id"])["status"] not in {"RUNNING", "STOPPING"}
 
 
 

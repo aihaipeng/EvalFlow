@@ -110,6 +110,23 @@ def test_due_once_schedule_starts_task_and_disables_itself(tmp_path):
     assert current["last_run_at"] == "2026-01-01T09:00:02.000Z"
 
 
+def test_due_terminal_schedule_delegates_exactly_one_prepare_to_scheduler(tmp_path):
+    repository = BatchScheduleRepository(tmp_path / "terminal.sqlite3")
+    repository.save(
+        "batch-1",
+        _schedule(cadence="ONCE", run_at="2026-01-01T09:00:01", timezone="UTC"),
+        now=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    store, inputs, scheduler = _Store(status="SUCCESS"), _Inputs(), _Scheduler()
+
+    BatchScheduleManager(repository, store, inputs, scheduler).run_due(
+        now=datetime(2026, 1, 1, 9, 0, 2, tzinfo=UTC)
+    )
+
+    assert scheduler.started == ["batch-1"]
+    assert inputs.prepared == []
+
+
 def test_overlap_policy_skips_or_queues_while_task_is_active(tmp_path):
     now = datetime(2026, 1, 1, 9, 0, 2, tzinfo=UTC)
     store, inputs, scheduler = _Store(status="RUNNING"), _Inputs(), _Scheduler()

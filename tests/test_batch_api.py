@@ -519,7 +519,7 @@ def test_task_configuration_can_be_saved_while_current_round_is_running(tmp_path
         assert batch["status"] == "STOPPED"
         assert batch["finished_at"]
         cases = client.get(f"/api/batch-runs/{task_id}/cases").json()["cases"]
-        assert [case["status"] for case in cases] == ["SUCCESS", "QUEUED"]
+        assert [case["status"] for case in cases] == ["INTERRUPTED", "QUEUED"]
         assert sum(len(case["workflow_execution_ids"]) for case in cases) == 1
         listed = client.get("/api/batch-runs").json()["batches"][0]
         assert listed["finished_at"] == batch["finished_at"]

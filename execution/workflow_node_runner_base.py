@@ -108,8 +108,7 @@ class NodeRunnerBase:
         interrupted = self._wait_interruptibly(controller, delay_milliseconds)
         if interrupted:
             error = _error("WORKFLOW_ABORTED", "Workflow 已停止")
-            self._finish_node(document, "INTERRUPTED", lifecycle_started, error=error)
-            self.store.write_node(document)
+            self._finish_pending_node(document, "INTERRUPTED", error)
             return None
         if on_running is not None:
             on_running()
@@ -136,12 +135,22 @@ class NodeRunnerBase:
     ) -> None:
         """把尚未开始真实尝试的配置错误持久化为 PENDING -> FAILED。"""
 
+        self._finish_pending_node(document, "FAILED", error)
+
+    def _finish_pending_node(
+        self,
+        document: dict[str, Any],
+        status: str,
+        error: dict[str, Any],
+    ) -> None:
+        """在真实尝试开始前终结节点，不伪造 started_at 或 duration_ms。"""
+
         self.store.write_node(document)
-        document["status"] = "FAILED"
+        document["status"] = status
         document["finished_at"] = local_execution_time()
         document["error"] = error
         document["transitions"].append(
-            {"status": "FAILED", "at": utc_execution_time(), "reason": error["code"]}
+            {"status": status, "at": utc_execution_time(), "reason": error["code"]}
         )
         self.store.write_node(document)
 

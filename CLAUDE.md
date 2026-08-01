@@ -14,14 +14,15 @@ uv run python run.py                # 启动本机服务 http://127.0.0.1:8010
 uv run pytest -q                    # 全量 Python 测试
 uv run pytest tests/test_workflow_execution.py -q             # 单文件
 uv run pytest tests/test_batch_api.py::test_case -q           # 单用例
-node --test tests/*.test.mjs        # 前端几何/对齐测试（3 个 .mjs 用例）
+npm run typecheck                   # OpenAPI 漂移检查 + TypeScript
+npm run test:frontend               # 前端几何/对齐纯函数测试
 npm run test:e2e                    # Playwright 浏览器 E2E（自动启动隔离服务器 :8765）
 npm ci && npm run build             # 修改 web/frontend 后重建全部 4 个 React bundle
 ```
 
-- 修改 `web/frontend/` 源码后必须 `npm run build`：4 个 React 页面分别由 `scripts/build-*.mjs`（esbuild）构建到 `web/static/assets/`，构建脚本自动改写 `index.html` 里的 `?v=` 版本哈希；构建产物提交进仓库，日常运行不依赖 Node.js。
+- 修改 `web/frontend/` 源码后必须 `npm run build`：Vite 从单一配置构建 4 个按需入口和共享 chunk 到 `web/static/assets/vite/`，FastAPI 按 manifest 注入内容哈希资源；构建产物提交进仓库，日常运行不依赖 Node.js。
 - live 模型测试：设置 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` 后 `uv run pytest -m live -q`；无密钥时自动 skip，属正常现象。
-- 交付前的完整回归惯例（见 PLAN.md 各任务验证记录）：`uv run pytest -q` + `python -m compileall` + `npm run build` + `git diff --check`。
+- 交付前的完整回归惯例（见 PLAN.md 各任务验证记录）：`uv run pytest -q` + `python -m compileall` + `npm run typecheck` + `npm run test:frontend` + `npm run build` + `npm run test:e2e` + SQLite 检查 + `git diff --check`。
 
 ## 架构
 
@@ -33,7 +34,7 @@ npm ci && npm run build             # 修改 web/frontend 后重建全部 4 个 
 
 ### 双模型存储（强制）
 
-- **Structural Model**（Workflow/Node/Edge/Model Provider/测试集/调度计划元数据）只允许存 SQLite（`run_storage/agent_bench.sqlite3`）。表定义统一集中在 `execution/database_schema.py`（SQLAlchemy Core `MetaData`），启动时由 `execution/init_db.py::upgrade_database()` 通过 Alembic 升级到最新版本；Repository 经 `database_connection()` 取得共享 Engine 的 Core 连接（`CoreConnection`/`CoreRow` 是 sqlite3 风格 facade，Repository 保持原生 SQL 写法）。默认路径、按 resolved path 共享的初始化锁和 PRAGMA（WAL/foreign_keys）统一由 `execution/init_db.py` 拥有。改表结构必须同时改 `database_schema.py` 并新增手写的 `migrations/versions/` 迁移版本；Alembic 迁移只能经应用托管连接执行（`migrations/env.py` 拒绝 CLI 直连），禁止在 Repository 中手写 DDL。
+- **Structural Model**（Workflow/Node/Edge/Model Provider/测试集/调度计划元数据）只允许存 SQLite（`run_storage/agent_bench.sqlite3`）。表定义统一集中在 `execution/database_schema.py`（SQLAlchemy Core `MetaData`），启动时由 `execution/init_db.py::upgrade_database()` 通过 Alembic 升级到最新版本；Repository 通过 `database_read_connection()` 或自动提交/回滚的 `database_transaction()` 使用共享 Engine 和 Core 表达式，不保留 sqlite3 facade。默认路径、按 resolved path 共享的初始化锁和 PRAGMA（WAL/foreign_keys）统一由 `execution/init_db.py` 拥有。改表结构必须同时改 `database_schema.py` 并新增手写的 `migrations/versions/` 迁移版本；Alembic 迁移只能经应用托管连接执行（`migrations/env.py` 拒绝 CLI 直连），禁止在 Repository 中手写 DDL。
 - **Execution Model**（Workflow/Node/Batch/Case 运行记录）只允许存本机 JSON 文件（`run_storage/workflow_executions/`、`run_storage/batch_executions/`）。数据库不得创建 Execution 表，文件系统不得另存 Structural Model。
 
 ### 执行链
@@ -47,12 +48,12 @@ npm ci && npm run build             # 修改 web/frontend 后重建全部 4 个 
 
 ### 路由与本地文件约束
 
-- FastAPI 处理器按实际 I/O 模型声明：直接调用同步 sqlite3 / openpyxl / 文件系统的用普通 `def`（线程池执行）；只有真正 `await` 异步客户端（如模型供应商连接测试的 httpx）才用 `async def`。
+- FastAPI 处理器按实际 I/O 模型声明：直接调用同步 SQLAlchemy / 文件系统的用普通 `def`（线程池执行）；只有真正 `await` 异步客户端（如模型供应商连接测试的 httpx）才用 `async def`。
 - 测试集、供应商和 Workflow 等结构化数据必须通过对应 SQLite Repository 在事务中写入；路由不得直接操作数据库文件或维护第二份事实来源。
 
 ### 前端
 
-- `web/static/app.js` 是手写 SPA 外壳（侧边栏导航、主题切换、按视图挂载 feature bundle）；`web/frontend/` 是 4 个 React 页面源码：`workflow-canvas.jsx`（React Flow @xyflow/react 工作流画布）、`test-sets.jsx`（测试集管理）、`model-providers.jsx`（供应商管理）、`batch-runs.jsx`（任务调度），后两个为 React 18 + TanStack Query；各自经 `scripts/build-*.mjs` 构建为 `web/static/assets/*.js`。供应商管理旧原生脚本已删除；任务调度原生 `execution.js` 仍在 `index.html` 中加载。
+- `web/static/app.js` 是手写 SPA 外壳（侧边栏导航、主题切换、按视图挂载 feature bundle）；`web/frontend/` 是 4 个 React 页面源码：`workflow-canvas.jsx`（React Flow 工作流画布）、`test-sets.jsx`（测试集管理）、`model-providers.jsx`（供应商管理）、`batch-runs.jsx`（任务调度）。Vite 统一生成 manifest 和内容哈希入口；供应商与任务 API 使用 `openapi-typescript` + `openapi-fetch`，提交型任务表单使用 React Hook Form + Zod，弹窗使用 Radix primitives。`execution.js` 只保留 Workflow 列表和 Batch 结果详情等活动兼容桥，不得新增 Batch 列表/配置双写。
 - 只支持桌面浏览器，不新增移动端适配或回归。
 
 完整目录说明见 README.md「项目结构」。

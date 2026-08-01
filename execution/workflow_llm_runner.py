@@ -18,6 +18,7 @@ from execution.workflow_execution_store import (
 )
 from execution.workflow_node_runner_base import NodeRunnerBase
 from execution.workflow_values import (
+    ContextVariableNotFoundError,
     WorkflowOutputSourceError,
     WorkflowOutputTypeError,
     WorkflowValueError,
@@ -25,6 +26,36 @@ from execution.workflow_values import (
     resolve_template,
     strict_json_clone,
 )
+
+
+LLM_ATTEMPT_PAYLOAD_BUDGET_BYTES = 5 * 1024 * 1024
+
+
+def _compact_json_size(value: Any) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+
+
+def _store_attempt_payload(
+    attempt: dict[str, Any],
+    field: str,
+    value: Any,
+    remaining_bytes: int,
+) -> int:
+    cloned = strict_json_clone(value)
+    size = _compact_json_size(cloned)
+    if size <= remaining_bytes:
+        attempt[field] = cloned
+        return remaining_bytes - size
+    attempt[field] = None
+    attempt["truncated_fields"].append(field)
+    return remaining_bytes
 
 
 class LlmNodeRunner(NodeRunnerBase):
@@ -85,9 +116,6 @@ class LlmNodeRunner(NodeRunnerBase):
             )
             self._fail_pending_configuration(document, error)
             return document, {}
-        started = self._begin_business_node(document, node, controller, on_running)
-        if started is None:
-            return document, {}
         try:
             resolved_messages = []
             inputs: dict[str, Any] = {}
@@ -122,6 +150,14 @@ class LlmNodeRunner(NodeRunnerBase):
                 provider.protocol, payload
             )
             request_body["stream"] = False
+        except ContextVariableNotFoundError as exc:
+            error = _error(
+                "CONTEXT_VARIABLE_NOT_FOUND",
+                str(exc),
+                {"name": exc.name, "path": exc.path},
+            )
+            self._finish_pending_node(document, "FAILED", error)
+            return document, {}
         except (WorkflowValueError, ValueError) as exc:
             code = (
                 "LLM_MESSAGE_EMPTY"
@@ -129,13 +165,22 @@ class LlmNodeRunner(NodeRunnerBase):
                 else "LLM_EXECUTION_ERROR"
             )
             error = _error(code, str(exc))
-            self._finish_node(document, "FAILED", started, error=error)
+            self._finish_pending_node(document, "FAILED", error)
+            return document, {}
+
+        started = self._begin_business_node(document, node, controller, on_running)
+        if started is None:
             return document, {}
 
         final_status = "FAILED"
         final_error = None
         outputs: dict[str, Any] = {}
-        usage_total = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        usage_total: dict[str, int | None] = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
+        attempt_payload_bytes = LLM_ATTEMPT_PAYLOAD_BUDGET_BYTES
         for attempt_number in range(1, node.execution.max_attempts + 2):
             if controller.interrupted():
                 final_status = "INTERRUPTED"
@@ -148,12 +193,18 @@ class LlmNodeRunner(NodeRunnerBase):
                 "started_at": local_execution_time(),
                 "finished_at": None,
                 "duration_ms": None,
-                "request": strict_json_clone(request_body),
+                "request": None,
                 "response": None,
                 "response_received": False,
                 "error": None,
                 "truncated_fields": [],
             }
+            attempt_payload_bytes = _store_attempt_payload(
+                attempt,
+                "request",
+                request_body,
+                attempt_payload_bytes,
+            )
             document["attempts"].append(attempt)
             document["attempt_count"] = attempt_number
             document["request"] = strict_json_clone(request_body)
@@ -211,11 +262,21 @@ class LlmNodeRunner(NodeRunnerBase):
             else:
                 response_fact = result["response"]["response"]
                 raw_response = response_fact["body"]
-                attempt["response"] = strict_json_clone(raw_response)
+                attempt_payload_bytes = _store_attempt_payload(
+                    attempt,
+                    "response",
+                    raw_response,
+                    attempt_payload_bytes,
+                )
                 attempt["response_received"] = True
                 document["response"] = strict_json_clone(raw_response)
                 document["response_received"] = True
-                self._accumulate_usage(raw_response, usage_total)
+                self._accumulate_usage(
+                    raw_response,
+                    attempt_number,
+                    usage_total,
+                    document["usage_errors"],
+                )
                 if response_fact["status_code"] < 200 or response_fact["status_code"] >= 300:
                     final_status = "FAILED"
                     final_error = _error(
@@ -233,27 +294,26 @@ class LlmNodeRunner(NodeRunnerBase):
                             f"{provider.protocol} 响应解析失败: {exc}",
                             {"protocol": provider.protocol},
                         )
-                        attempt.update({"status": "SUCCESS", "error": None})
-                        break
-                    try:
-                        outputs = collect_outputs(
-                            node.outputs,
-                            {"response": raw_response, "result": parsed_response},
-                        )
-                    except WorkflowOutputSourceError as exc:
-                        final_status = "FAILED"
-                        final_error = _error(
-                            "LLM_OUTPUT_SOURCE_EVALUATION_ERROR", str(exc)
-                        )
-                        attempt.update({"status": "SUCCESS", "error": None})
-                        break
-                    except WorkflowOutputTypeError as exc:
-                        final_status = "FAILED"
-                        final_error = _error("LLM_OUTPUT_TYPE_MISMATCH", str(exc))
-                        attempt.update({"status": "SUCCESS", "error": None})
-                        break
-                    final_status = "SUCCESS"
-                    final_error = None
+                    else:
+                        try:
+                            outputs = collect_outputs(
+                                node.outputs,
+                                {"response": raw_response, "result": parsed_response},
+                            )
+                        except WorkflowOutputSourceError as exc:
+                            final_status = "FAILED"
+                            final_error = _error(
+                                "LLM_OUTPUT_SOURCE_EVALUATION_ERROR", str(exc)
+                            )
+                            attempt.update({"status": "SUCCESS", "error": None})
+                            break
+                        except WorkflowOutputTypeError as exc:
+                            final_status = "FAILED"
+                            final_error = _error("LLM_OUTPUT_TYPE_MISMATCH", str(exc))
+                            attempt.update({"status": "SUCCESS", "error": None})
+                            break
+                        final_status = "SUCCESS"
+                        final_error = None
             attempt.update({"status": final_status, "error": final_error})
             if final_status == "SUCCESS" or final_status == "INTERRUPTED":
                 break
@@ -263,24 +323,50 @@ class LlmNodeRunner(NodeRunnerBase):
                     seconds_to_milliseconds(node.execution.retry_interval_seconds),
                 ):
                     break
-        document["usage"] = usage_total if any(usage_total.values()) else None
+        document["usage"] = (
+            usage_total if any(value is not None for value in usage_total.values()) else None
+        )
         document["outputs"] = strict_json_clone(outputs) if final_status == "SUCCESS" else {}
         self._finish_node(document, final_status, started, error=final_error)
         return document, outputs if final_status == "SUCCESS" else {}
 
     @staticmethod
-    def _accumulate_usage(response: Any, total: dict[str, int]) -> None:
+    def _accumulate_usage(
+        response: Any,
+        attempt_number: int,
+        total: dict[str, int | None],
+        issues: list[dict[str, Any]],
+    ) -> None:
         if not isinstance(response, dict) or not isinstance(response.get("usage"), dict):
             return
         usage = response["usage"]
-        input_value = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-        output_value = usage.get("completion_tokens", usage.get("output_tokens", 0))
-        if isinstance(input_value, int) and input_value >= 0:
-            total["input_tokens"] += input_value
-        if isinstance(output_value, int) and output_value >= 0:
-            total["output_tokens"] += output_value
-        total_value = usage.get("total_tokens")
-        if isinstance(total_value, int) and total_value >= 0:
-            total["total_tokens"] += total_value
-        else:
-            total["total_tokens"] = total["input_tokens"] + total["output_tokens"]
+        aliases = {
+            "input_tokens": ("prompt_tokens", "input_tokens"),
+            "output_tokens": ("completion_tokens", "output_tokens"),
+            "total_tokens": ("total_tokens",),
+        }
+        values: dict[str, int] = {}
+        for field, candidates in aliases.items():
+            raw_name = next((name for name in candidates if name in usage), None)
+            if raw_name is None:
+                continue
+            value = usage[raw_name]
+            if type(value) is int and value >= 0:
+                values[field] = value
+                continue
+            issues.append(
+                {
+                    "attempt": attempt_number,
+                    "field": field,
+                    "code": "LLM_USAGE_VALUE_INVALID",
+                    "value": strict_json_clone(value),
+                    "message": "必须是大于等于 0 的整数",
+                }
+            )
+        if "total_tokens" not in values and {
+            "input_tokens",
+            "output_tokens",
+        }.issubset(values):
+            values["total_tokens"] = values["input_tokens"] + values["output_tokens"]
+        for field, value in values.items():
+            total[field] = (total[field] or 0) + value

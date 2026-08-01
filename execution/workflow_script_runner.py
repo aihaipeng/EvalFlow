@@ -92,18 +92,31 @@ class ScriptNodeRunner(NodeRunnerBase):
                 attempt.update({"status": final_status, "error": final_error})
             elif not result.get("ok"):
                 final_status = "FAILED"
-                final_error = _error("SCRIPT_RUNTIME_ERROR", result.get("error") or "SCRIPT 执行失败")
+                if result.get("error_code") == "SCRIPT_OUTPUT_SERIALIZATION_ERROR":
+                    final_error = _error(
+                        "SCRIPT_OUTPUT_SERIALIZATION_ERROR",
+                        result.get("error") or "SCRIPT 输出无法严格 JSON 序列化",
+                        {"name": result.get("serialization_variable_name")},
+                    )
+                else:
+                    final_error = _error(
+                        "SCRIPT_RUNTIME_ERROR",
+                        result.get("error") or "SCRIPT 执行失败",
+                    )
                 traceback_text = result.get("traceback")
                 if traceback_text:
                     attempt["traceback"] = self._append_log_text(document["logs"], traceback_text)
                 attempt.update({"status": final_status, "error": final_error})
+                if result.get("error_code") == "SCRIPT_OUTPUT_SERIALIZATION_ERROR":
+                    break
             elif result.get("missing_variable_names"):
-                missing = result["missing_variable_names"][0]
+                missing_names = result["missing_variable_names"]
+                missing = missing_names[0]
                 final_status = "FAILED"
                 final_error = _error(
                     "SCRIPT_OUTPUT_MISSING",
-                    f"Python 顶层变量不存在: {missing}",
-                    {"source": missing},
+                    f"Python 顶层变量不存在: {', '.join(missing_names)}",
+                    {"name": missing, "names": missing_names},
                 )
                 attempt.update({"status": final_status, "error": final_error})
                 break

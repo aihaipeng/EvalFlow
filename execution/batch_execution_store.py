@@ -101,6 +101,7 @@ class BatchExecutionStore:
         self._write_lock = threading.RLock()
         self._case_cache: dict[Path, dict[str, dict[str, Any]]] = {}
         self._case_query_cache: dict[Path, dict[str, Any]] = {}
+        self._recover_replace_transactions()
 
     def batch_root(self, batch_id: str) -> Path:
         return self.root / _uuid(batch_id, "batch_id")
@@ -164,10 +165,20 @@ class BatchExecutionStore:
         root = self.batch_root(batch["id"])
         if not (root / "batch.json").is_file():
             raise BatchExecutionError(f"任务不存在: {batch['id']}")
-        staging = root / f".p-{uuid4().hex[:8]}"
+        transaction_id = uuid4().hex
+        staging = root / f".replace-next-{transaction_id}"
+        journal_path = root / ".replace-current.json"
+        journal = {
+            "transaction_id": transaction_id,
+            "staging": staging.name,
+            "previous_cases": f".replace-prev-cases-{transaction_id}",
+            "previous_input": f".replace-prev-input-{transaction_id}",
+            "execution_round_id": batch.get("execution_round_id"),
+        }
         try:
             (staging / "cases").mkdir(parents=True)
             (staging / "input").mkdir()
+            self._atomic_write(staging / "batch.json", batch)
             self._atomic_write(staging / "input" / "snapshot.json", input_snapshot)
             for case in cases:
                 self._atomic_write(
@@ -177,31 +188,105 @@ class BatchExecutionStore:
             with self._write_lock:
                 if archive_current:
                     self._archive_current(root)
-                previous_cases = root / f".pc-{uuid4().hex[:8]}"
-                previous_input = root / f".pi-{uuid4().hex[:8]}"
-                os.replace(root / "cases", previous_cases)
-                os.replace(root / "input", previous_input)
                 try:
-                    os.replace(staging / "cases", root / "cases")
-                    os.replace(staging / "input", root / "input")
-                    self._atomic_write(root / "batch.json", batch)
-                    case_directory = root / "cases"
-                    self._case_cache[case_directory] = {
-                        case["id"]: deepcopy(case) for case in cases
-                    }
-                    self._case_query_cache.pop(case_directory, None)
+                    self._atomic_write(journal_path, journal)
+                    self._complete_replace_transaction(root, journal)
                 except Exception:
-                    remove_execution_tree(root / "cases")
-                    remove_execution_tree(root / "input")
-                    os.replace(previous_cases, root / "cases")
-                    os.replace(previous_input, root / "input")
-                    raise
-                finally:
-                    remove_execution_tree(previous_cases)
-                    remove_execution_tree(previous_input)
+                    # 短暂的文件占用可在当前进程内重放；持续失败时保留 journal，
+                    # 下次进程启动会从同一事务继续前向收敛。
+                    self._complete_replace_transaction(root, journal)
+                case_directory = root / "cases"
+                self._case_cache[case_directory] = {
+                    case["id"]: deepcopy(case) for case in cases
+                }
+                self._case_query_cache.pop(case_directory, None)
         finally:
-            if staging.exists():
+            if staging.exists() and not journal_path.exists():
                 shutil.rmtree(staging)
+
+    def _complete_replace_transaction(
+        self, root: Path, journal: dict[str, Any]
+    ) -> None:
+        transaction_id = journal.get("transaction_id")
+        if not isinstance(transaction_id, str) or not transaction_id:
+            raise BatchExecutionError("Batch 替换事务 journal 无效")
+
+        def child(field: str, prefix: str) -> Path:
+            name = journal.get(field)
+            if (
+                not isinstance(name, str)
+                or Path(name).name != name
+                or not name.startswith(prefix)
+            ):
+                raise BatchExecutionError("Batch 替换事务路径无效")
+            return root / name
+
+        staging = child("staging", ".replace-next-")
+        previous_cases = child("previous_cases", ".replace-prev-cases-")
+        previous_input = child("previous_input", ".replace-prev-input-")
+        for name, previous in (("cases", previous_cases), ("input", previous_input)):
+            source = staging / name
+            target = root / name
+            if source.exists():
+                if target.exists() and not previous.exists():
+                    os.replace(target, previous)
+                if target.exists():
+                    raise BatchExecutionError(f"Batch 替换事务的 {name} 状态冲突")
+                os.replace(source, target)
+            elif not target.exists():
+                raise BatchExecutionError(f"Batch 替换事务缺少 {name}")
+
+        staged_batch = staging / "batch.json"
+        if staged_batch.is_file():
+            os.replace(staged_batch, root / "batch.json")
+        current = self._read(root / "batch.json")
+        if current.get("execution_round_id") != journal.get("execution_round_id"):
+            raise BatchExecutionError("Batch 替换事务未提交预期执行轮次")
+
+        for path in (previous_cases, previous_input, staging):
+            if path.is_dir():
+                remove_execution_tree(path)
+        (root / ".replace-current.json").unlink(missing_ok=True)
+
+    def _recover_replace_transactions(self) -> int:
+        recovered = 0
+        for root in self.root.iterdir():
+            if not root.is_dir() or root.name.startswith("."):
+                continue
+            journal_path = root / ".replace-current.json"
+            if journal_path.is_file():
+                journal = self._read(journal_path)
+                with self._write_lock:
+                    self._complete_replace_transaction(root, journal)
+                recovered += 1
+                continue
+            recovered += self._recover_legacy_replace(root)
+        return recovered
+
+    @staticmethod
+    def _recover_legacy_replace(root: Path) -> int:
+        """收敛旧版两目录交换留下的 .pc/.pi/.p 临时目录。"""
+
+        changed = 0
+        for name, pattern in (("cases", ".pc-*"), ("input", ".pi-*")):
+            target = root / name
+            backups = sorted(
+                (path for path in root.glob(pattern) if path.is_dir()),
+                key=lambda path: path.stat().st_mtime_ns,
+                reverse=True,
+            )
+            if not target.exists() and backups:
+                os.replace(backups.pop(0), target)
+                changed = 1
+            for backup in backups:
+                remove_execution_tree(backup)
+                changed = 1
+        if (root / "cases").is_dir() and (root / "input").is_dir():
+            for staging in root.glob(".p-*"):
+                if staging.is_dir():
+                    remove_execution_tree(staging)
+                    changed = 1
+        return changed
 
     def _archive_current(self, root: Path) -> None:
         current = self._read(root / "batch.json")
@@ -450,6 +535,7 @@ class BatchExecutionStore:
         return batch
 
     def recover_incomplete(self) -> int:
+        self._recover_replace_transactions()
         recovered = 0
         for batch in self.list():
             if batch.get("status") not in {"RUNNING", "STOPPING"}:

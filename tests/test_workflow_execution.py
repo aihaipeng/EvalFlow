@@ -13,6 +13,7 @@ import pytest
 import execution.workflow_execution as workflow_execution_module
 import execution.workflow_execution_control as workflow_execution_control_module
 import execution.workflow_execution_store as workflow_execution_store_module
+import execution.workflow_llm_runner as workflow_llm_runner_module
 import execution.workflow_node_runner_base as workflow_node_runner_base_module
 
 from execution.model_providers import ModelProviderRecord, ModelProviderRepository
@@ -24,6 +25,7 @@ from execution.workflow_execution import (
     WorkflowExecutionStore,
 )
 from execution.workflow_node_executor import WorkflowNodeExecutor
+from execution.workflow_http_runner import HttpNodeRunner
 from execution.workflow_structural_models import (
     WorkflowStructuralModel,
     WorkflowStructuralRepository,
@@ -434,6 +436,74 @@ def test_missing_script_output_fails_fast_and_never_creates_end_execution(tmp_pa
     }
 
 
+def test_script_reports_every_missing_output_name_in_structured_details(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node("START")
+    script = make_node(
+        "SCRIPT",
+        script="print('done')",
+        outputs=[
+            {"name": "first", "type": "string", "source": "missing_first"},
+            {"name": "second", "type": "string", "source": "missing_second"},
+        ],
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    started = manager.start(workflow_id)
+    wait_for_terminal(store, workflow_id, started["id"])
+    failed = next(
+        item
+        for item in store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "SCRIPT"
+    )
+
+    assert failed["error"] == {
+        "code": "SCRIPT_OUTPUT_MISSING",
+        "message": "Python 顶层变量不存在: missing_first, missing_second",
+        "details": {
+            "name": "missing_first",
+            "names": ["missing_first", "missing_second"],
+        },
+    }
+
+
+def test_script_serialization_failure_uses_output_contract_error_without_retry(tmp_path):
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node("START")
+    script = make_node(
+        "SCRIPT",
+        script="result = object()",
+        execution={
+            "timeout_seconds": 5,
+            "max_attempts": 2,
+            "retry_interval_seconds": 0,
+            "delay_seconds": 0,
+        },
+        outputs=[{"name": "answer", "type": "object", "source": "result"}],
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    started = manager.start(workflow_id)
+    wait_for_terminal(store, workflow_id, started["id"])
+    failed = next(
+        item
+        for item in store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "SCRIPT"
+    )
+
+    assert failed["error"]["code"] == "SCRIPT_OUTPUT_SERIALIZATION_ERROR"
+    assert failed["error"]["details"] == {"name": "result"}
+    assert failed["attempt_count"] == 1
+
+
 @pytest.mark.parametrize(
     ("node_type", "expected_code", "expected_fields"),
     [
@@ -571,6 +641,83 @@ def test_same_round_ready_scripts_are_observably_running_in_parallel(tmp_path):
     assert finished["context"]["final"] == {"left": "L", "right": "R"}
 
 
+def test_fail_fast_reconciles_every_started_parallel_node(tmp_path):
+    database = tmp_path / "fail-fast-reconcile.sqlite3"
+    start = make_node("START")
+    failing = make_node(
+        "SCRIPT",
+        name="failing",
+        script="finished_without_output = True",
+        outputs=[{"name": "required", "type": "string", "source": "required"}],
+    )
+    delayed = make_node(
+        "SCRIPT",
+        name="delayed",
+        script="value = 'late'",
+        execution={
+            "timeout_seconds": 5,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0,
+            "delay_seconds": 2,
+        },
+        outputs=[{"name": "late", "type": "string", "source": "value"}],
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database,
+        [start, failing, delayed, end],
+        [(start, failing), (start, delayed), (failing, end), (delayed, end)],
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+    executions = {
+        item["node_id"]: item
+        for item in store.get_nodes(workflow_id, started["id"])
+    }
+    entries = {item["node_id"]: item for item in finished["nodes"]}
+
+    assert finished["status"] == "FAILED"
+    assert executions[failing.id]["status"] == "FAILED"
+    assert executions[delayed.id]["status"] == "INTERRUPTED"
+    assert executions[delayed.id]["started_at"] is None
+    assert executions[delayed.id]["duration_ms"] is None
+    assert entries[failing.id]["state"] == "FINISHED"
+    assert entries[delayed.id] == {
+        "node_id": delayed.id,
+        "node_execution_id": executions[delayed.id]["node_execution_id"],
+        "state": "FINISHED",
+        "reason": None,
+    }
+    assert entries[end.id]["state"] == "NOT_STARTED"
+
+
+def test_scheduler_logic_error_is_not_misreported_as_persistence_failure(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "scheduler-error.sqlite3"
+    start = make_node("START")
+    script = make_node("SCRIPT")
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, script, end], [(start, script), (script, end)]
+    )
+    manager, store = make_manager(tmp_path, repository)
+
+    def fail_scheduler(*_args, **_kwargs):
+        raise ValueError("scheduler invariant broke")
+
+    monkeypatch.setattr(manager, "_workflow_node", fail_scheduler)
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+
+    assert finished["status"] == "FAILED"
+    assert finished["error"]["code"] == "NODE_FAILED"
+    assert finished["error"]["details"]["phase"] == "SCHEDULER"
+    assert "scheduler invariant broke" in finished["error"]["message"]
+
+
 def test_script_stays_pending_during_fractional_initial_delay(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node("START")
@@ -611,7 +758,7 @@ def test_script_stays_pending_during_fractional_initial_delay(tmp_path):
     script_entry = next(
         item for item in workflow_pending["nodes"] if item["node_id"] == script.id
     )
-    assert script_entry["state"] == "PENDING"
+    assert script_entry["state"] == "RUNNING"
 
     finished = wait_for_terminal(store, workflow_id, started["id"])
     final_script = next(
@@ -853,6 +1000,7 @@ def test_global_cancel_interrupts_initial_delay_before_first_attempt(tmp_path):
     assert finished["status"] == "INTERRUPTED"
     assert script_execution["status"] == "INTERRUPTED"
     assert script_execution["started_at"] is None
+    assert script_execution["duration_ms"] is None
     assert script_execution["attempt_count"] == 0
     assert script_execution["logs"]["attempts"] == []
 
@@ -1690,6 +1838,244 @@ def test_llm_node_rejects_cross_protocol_parameters_before_request(
     assert requests == []
     assert llm_execution["error"]["code"] == "LLM_EXECUTION_ERROR"
     assert "response_format" in llm_execution["error"]["message"]
+
+
+def _llm_retry_fixture(tmp_path, *, max_attempts=1):
+    database = tmp_path / f"llm-retry-{uuid4()}.sqlite3"
+    model_repository = ModelProviderRepository(database)
+    provider = model_repository.create(
+        ModelProviderRecord(
+            name="LLM retry fixture",
+            api_key="test-key",
+            base_url="https://example.invalid/v1",
+            protocol="OPENAI_COMPATIBLE",
+            proxy_mode="DIRECT",
+            verify_ssl=True,
+            models=["fixture-model"],
+        )
+    )
+    start = make_node("START")
+    llm = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "LLM",
+            "name": "LLM retry fixture",
+            "description": "",
+            "model": {"provider_id": provider.id, "model_name": "fixture-model"},
+            "context": {
+                "messages": [
+                    {"role": "SYSTEM", "content": ""},
+                    {"role": "USER", "content": "hello"},
+                ]
+            },
+            "generation": {"parameters": {}},
+            "execution": {
+                "timeout_seconds": 5,
+                "max_attempts": max_attempts,
+                "retry_interval_seconds": 0,
+                "delay_seconds": 0,
+            },
+            "outputs": [
+                {"name": "answer", "type": "string", "source": "result.output"}
+            ],
+        }
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, llm, end], [(start, llm), (llm, end)]
+    )
+    manager = WorkflowExecutionManager(
+        repository,
+        model_repository,
+        WorkflowExecutionStore(tmp_path / f"llm-runs-{uuid4()}"),
+    )
+    return workflow_id, manager
+
+
+def test_llm_response_parse_error_retries_and_preserves_attempt_facts(tmp_path):
+    workflow_id, manager = _llm_retry_fixture(tmp_path)
+    responses = iter(
+        [
+            {"unexpected": True},
+            {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "recovered"},
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        ]
+    )
+    manager.node_executor.runners["LLM"].stream_worker = lambda *_args, **_kwargs: {
+        "ok": True,
+        "response": {"response": {"status_code": 200, "body": next(responses)}},
+    }
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(manager.store, workflow_id, started["id"])
+    execution = next(
+        item
+        for item in manager.store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "LLM"
+    )
+
+    assert finished["status"] == "SUCCESS"
+    assert execution["attempt_count"] == 2
+    assert [item["status"] for item in execution["attempts"]] == ["FAILED", "SUCCESS"]
+    assert execution["attempts"][0]["error"]["code"] == "LLM_RESPONSE_PARSE_ERROR"
+    assert execution["outputs"] == {"answer": "recovered"}
+
+
+def test_llm_usage_records_invalid_values_and_derives_valid_total(tmp_path):
+    workflow_id, manager = _llm_retry_fixture(tmp_path, max_attempts=0)
+    response = {
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 3,
+            "total_tokens": "5",
+        },
+    }
+    manager.node_executor.runners["LLM"].stream_worker = lambda *_args, **_kwargs: {
+        "ok": True,
+        "response": {"response": {"status_code": 200, "body": response}},
+    }
+
+    started = manager.start(workflow_id)
+    wait_for_terminal(manager.store, workflow_id, started["id"])
+    execution = next(
+        item
+        for item in manager.store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "LLM"
+    )
+
+    assert execution["usage"] == {
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "total_tokens": 5,
+    }
+    assert execution["usage_errors"] == [
+        {
+            "attempt": 1,
+            "field": "total_tokens",
+            "code": "LLM_USAGE_VALUE_INVALID",
+            "value": "5",
+            "message": "必须是大于等于 0 的整数",
+        }
+    ]
+
+
+def test_llm_attempt_payload_budget_omits_whole_response_only(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        workflow_llm_runner_module, "LLM_ATTEMPT_PAYLOAD_BUDGET_BYTES", 512
+    )
+    workflow_id, manager = _llm_retry_fixture(tmp_path, max_attempts=0)
+    response = {
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "x" * 1024},
+                "finish_reason": "stop",
+            }
+        ]
+    }
+    manager.node_executor.runners["LLM"].stream_worker = lambda *_args, **_kwargs: {
+        "ok": True,
+        "response": {"response": {"status_code": 200, "body": response}},
+    }
+
+    started = manager.start(workflow_id)
+    wait_for_terminal(manager.store, workflow_id, started["id"])
+    execution = next(
+        item
+        for item in manager.store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "LLM"
+    )
+
+    attempt = execution["attempts"][0]
+    assert attempt["request"] is not None
+    assert attempt["response"] is None
+    assert attempt["response_received"] is True
+    assert attempt["truncated_fields"] == ["response"]
+    assert execution["response"] == response
+    assert execution["status"] == "SUCCESS"
+
+
+def test_http_retry_after_overrides_configured_retry_interval(tmp_path):
+    database = tmp_path / "http-retry-after.sqlite3"
+    start = make_node("START")
+    http_node = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "HTTP",
+            "name": "Retry-After",
+            "description": "",
+            "request": {"method": "GET", "url": "https://example.invalid"},
+            "execution": {
+                "timeout_seconds": 5,
+                "max_attempts": 1,
+                "retry_interval_seconds": 0.25,
+                "delay_seconds": 0,
+                "retry_non_idempotent": False,
+                "retry_statuses": [503],
+            },
+            "response": {"mode": "AUTO", "success_statuses": [200]},
+            "outputs": [],
+        }
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database,
+        [start, http_node, end],
+        [(start, http_node), (http_node, end)],
+    )
+    manager, store = make_manager(tmp_path, repository)
+    statuses = iter([503, 200])
+
+    def fake_worker(*_args, **_kwargs):
+        status = next(statuses)
+        return {
+            "ok": True,
+            "response": {
+                "request": {"method": "GET", "url": "https://example.invalid"},
+                "redirects": [],
+                "response": {
+                    "status_code": status,
+                    "headers": (
+                        [{"key": "Retry-After", "value": "7"}]
+                        if status == 503
+                        else []
+                    ),
+                    "body": {},
+                },
+            },
+        }
+
+    waits = []
+    runner = manager.node_executor.runners["HTTP"]
+    runner.stream_worker = fake_worker
+    runner._wait_interruptibly = lambda _controller, delay: waits.append(delay) or False
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+
+    assert finished["status"] == "SUCCESS"
+    assert waits[-1] == 7000
+    assert HttpNodeRunner._retry_after_milliseconds(
+        {
+            "headers": [
+                {"key": "Retry-After", "value": "7"},
+                {"key": "retry-after", "value": "8"},
+            ]
+        }
+    ) is None
 
 
 @pytest.mark.parametrize(

@@ -41,7 +41,7 @@
 }
 
 .management-page-description {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.4;
     white-space: nowrap;
@@ -230,6 +230,10 @@
 .batch-row-actions .btn-icon.is-scheduled {
     background: color-mix(in srgb, var(--color-accent) 12%, var(--surface));
     color: var(--color-accent);
+}
+
+.execution-modal.is-batch-config {
+    width: min(1180px, calc(100vw - 48px));
 }
 
 .execution-modal.is-batch-history {
@@ -835,6 +839,18 @@
     white-space: nowrap;
 }
 
+.batch-field-error {
+    grid-column: 2;
+    color: var(--color-danger);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.batch-create-grid [aria-invalid="true"] {
+    border-color: var(--color-danger);
+}
+
 .batch-config-card {
     padding: 18px;
     border: 1px solid var(--border);
@@ -873,7 +889,7 @@
 
 .batch-section-heading span {
     overflow: hidden;
-    color: var(--text-subtle);
+    color: var(--text-secondary);
     font-size: 11px;
     font-weight: 500;
     text-overflow: ellipsis;
@@ -946,7 +962,7 @@
 .batch-variable-row .btn-icon,
 .batch-evaluation-rule .btn-icon { align-self: center; }
 .batch-variable-empty,
-.batch-evaluation-empty { padding: 20px 12px; color: var(--text-subtle); font-size: 11px; text-align: center; }
+.batch-evaluation-empty { padding: 20px 12px; color: var(--text-secondary); font-size: 11px; text-align: center; }
 .batch-mobile-label { display: none; margin-bottom: 4px; color: var(--text-subtle); font-size: 10px; }
 .batch-evaluation-head,
 .batch-evaluation-rule { grid-template-columns: 40px minmax(140px, .75fr) minmax(220px, 1.2fr) 110px minmax(160px, .9fr) 110px 34px; }
@@ -981,7 +997,7 @@
     max-width: 260px;
     margin-top: 4px;
     overflow: hidden;
-    color: #be123c;
+    color: var(--color-danger);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1782,7 +1798,7 @@
 }
 
 .run-template-status.is-invalid {
-    color: #be123c;
+    color: var(--color-danger);
 }
 
 .run-create-footer {
@@ -1964,7 +1980,7 @@
 .run-error-cell {
     max-width: 220px;
     overflow: hidden;
-    color: #be123c;
+    color: var(--color-danger);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2079,7 +2095,7 @@
 
 .workflow-validation-title {
     margin-bottom: 6px;
-    color: #be123c;
+    color: var(--color-danger);
     font-size: 11px;
     font-weight: 750;
 }
@@ -2102,7 +2118,7 @@
 
 .workflow-validation li code {
     flex: 0 0 auto;
-    color: #be123c;
+    color: var(--color-danger);
 }
 
 .workflow-validation li span {
@@ -2637,7 +2653,7 @@
 
 .execution-form-error {
     padding: 9px 10px;
-    border-left: 3px solid #dc2626;
+    border-left: 3px solid var(--color-danger);
     background: #fff1f2;
     color: #9f1239;
     font-size: 12px;

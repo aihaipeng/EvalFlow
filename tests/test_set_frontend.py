@@ -7,10 +7,11 @@ STATIC_DIR = Path(__file__).parents[1] / "web" / "static"
 def test_test_set_modals_and_edit_controls_are_keyboard_accessible():
     source = (Path(__file__).parents[1] / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
 
-    assert "function useModalAccessibility(onClose)" in source
-    assert source.count('role="dialog" aria-modal="true"') == 3
-    assert 'if (event.key === "Escape")' in source
-    assert "returnFocus?.isConnected" in source
+    assert 'from "@radix-ui/react-dialog"' in source
+    assert 'from "@radix-ui/react-alert-dialog"' in source
+    assert source.count("<Dialog.Root") == 2
+    assert source.count("<AlertDialog.Root") == 1
+    assert "function useModalAccessibility" not in source
     assert 'title="编辑测试集名称"' in source
     assert 'title="编辑测试集说明"' in source
     assert "onDoubleClick" not in source[source.index('return <section className="ts-page"><div className="ts-detail-heading"'):]
@@ -26,7 +27,7 @@ def test_test_set_destructive_confirmations_use_application_modals():
     assert "function ConfirmModal(" in source
     assert 'title="删除测试集"' in source
     assert 'title="删除字段"' in source
-    assert "useModalAccessibility(onClose)" in source
+    assert "<AlertDialog.Content" in source
     assert ".ts-confirm-modal-layer" in styles
     assert ".ts-btn.danger" in styles
 
@@ -202,7 +203,8 @@ def test_management_lists_use_names_as_the_only_edit_entry():
     workflows = (root / "web" / "static" / "execution.js").read_text(encoding="utf-8")
 
     list_row = test_sets[test_sets.index("state.items.map((item)"):test_sets.index("<PageControls management total={state.total}")]
-    provider_row = providers[providers.index("rows.map((provider)"):providers.index("<Pagination total={filtered.length}")]
+    provider_start = providers.index("rows.map((provider)")
+    provider_row = providers[provider_start:providers.index("<Pagination", provider_start)]
     workflow_row = workflows[workflows.index("body.innerHTML = pagination.items.map"):workflows.index("body.querySelectorAll('[data-workflow-open]')")]
 
     assert list_row.count('onOpen(item.id)') == 1

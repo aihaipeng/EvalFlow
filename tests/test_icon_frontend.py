@@ -10,8 +10,9 @@ def test_shared_lucide_registry_loads_before_frontend_modules():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     icons = (STATIC / "assets" / "icons.js").read_text(encoding="utf-8")
 
-    assert html.index('/assets/icons.js') < html.index('/model-providers.js')
     assert html.index('/assets/icons.js') < html.index('/app.js')
+    assert 'data-feature-js="__VITE_MODEL_PROVIDERS_JS__"' in html
+    assert 'data-feature-js="__VITE_BATCH_RUNS_JS__"' in html
     for name in ("plus", "refresh", "pencil", "trash", "eye", "save", "search", "settings"):
         assert f'"{name}"' in icons
     assert "global.AppIcons" in icons
@@ -37,10 +38,10 @@ def test_same_actions_use_same_semantic_icons_across_modules():
     providers = (FRONTEND / "model-providers.jsx").read_text(encoding="utf-8")
     test_sets = (FRONTEND / "test-sets.jsx").read_text(encoding="utf-8")
 
-    assert "icon('add')" in execution and '<Icon name="add"/>' in providers
-    assert "icon('refresh')" in execution and '<Icon name="refresh"/>' in providers
-    assert "icon('trash')" in execution and '<Icon name="trash"/>' in providers
-    assert "icon('save')" in execution and '<Icon name="save"/>' in providers
+    assert "icon('add')" in execution and '<Icon name="add" />' in providers
+    assert "icon('refresh')" in execution and '<Icon name="refresh" />' in providers
+    assert "icon('trash')" in execution and '<Icon name="trash" />' in providers
+    assert "icon('save')" in execution and '<Icon name="save" />' in providers
     assert "<Plus className=\"ui-icon\" />" in test_sets
     assert "<RefreshCw className=\"ui-icon\" />" in test_sets
     assert "<Trash2 className=\"ui-icon\" />" in test_sets

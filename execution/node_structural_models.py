@@ -19,11 +19,14 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
+from execution.database_schema import node_structural_models as node_models_table
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
@@ -698,25 +701,16 @@ class NodeStructuralRepository:
         validated = NODE_STRUCTURAL_ADAPTER.validate_python(node)
         now = timestamp or utc_now_iso()
         try:
-            with self._connect() as connection:
-                connection.execute(
-                    """
-                    INSERT INTO node_structural_models(
-                        id, type, name, description, definition_json,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        validated.id,
-                        validated.type,
-                        validated.name,
-                        validated.description,
-                        dump_node_definition(validated),
-                        now,
-                        now,
-                    ),
-                )
-                connection.commit()
+            with self._transaction() as connection:
+                connection.execute(insert(node_models_table).values(
+                    id=validated.id,
+                    type=validated.type,
+                    name=validated.name,
+                    description=validated.description,
+                    definition_json=dump_node_definition(validated),
+                    created_at=now,
+                    updated_at=now,
+                ))
         except IntegrityError as exc:
             raise NodeStructuralRepositoryError(f"写入节点 Structural Model 失败: {exc}") from exc
         return NodeStructuralRecord(node=validated, created_at=now, updated_at=now)
@@ -724,29 +718,22 @@ class NodeStructuralRepository:
     def get(self, node_id: str) -> NodeStructuralRecord | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM node_structural_models WHERE id = ?", (node_id,)
-            ).fetchone()
+                select(node_models_table).where(node_models_table.c.id == node_id)
+            ).mappings().first()
         return self._from_row(row) if row else None
 
     def list(self, *, node_type: str | None = None) -> list[NodeStructuralRecord]:
         with self._connect() as connection:
-            if node_type is None:
-                rows = connection.execute(
-                    """
-                    SELECT * FROM node_structural_models
-                    ORDER BY updated_at DESC, id DESC
-                    """
-                ).fetchall()
-            else:
+            statement = select(node_models_table)
+            if node_type is not None:
                 if node_type not in NODE_TYPES:
                     raise NodeStructuralRepositoryError(f"节点类型无效: {node_type}")
-                rows = connection.execute(
-                    """
-                    SELECT * FROM node_structural_models WHERE type = ?
-                    ORDER BY updated_at DESC, id DESC
-                    """,
-                    (node_type,),
-                ).fetchall()
+                statement = statement.where(node_models_table.c.type == node_type)
+            rows = connection.execute(
+                statement.order_by(
+                    node_models_table.c.updated_at.desc(), node_models_table.c.id.desc()
+                )
+            ).mappings().all()
         return [self._from_row(row) for row in rows]
 
     def update(
@@ -754,11 +741,12 @@ class NodeStructuralRepository:
     ) -> NodeStructuralRecord:
         validated = NODE_STRUCTURAL_ADAPTER.validate_python(node)
         now = timestamp or utc_now_iso()
-        with self._connect() as connection:
+        with self._transaction() as connection:
             current = connection.execute(
-                "SELECT type, created_at FROM node_structural_models WHERE id = ?",
-                (validated.id,),
-            ).fetchone()
+                select(node_models_table.c.type, node_models_table.c.created_at).where(
+                    node_models_table.c.id == validated.id
+                )
+            ).mappings().first()
             if current is None:
                 raise NodeStructuralRepositoryError(f"节点不存在: {validated.id}")
             if current["type"] != validated.type:
@@ -766,39 +754,38 @@ class NodeStructuralRepository:
                     f"节点 type 创建后不可修改: {current['type']} -> {validated.type}"
                 )
             connection.execute(
-                """
-                UPDATE node_structural_models
-                SET type = ?, name = ?, description = ?, definition_json = ?,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    validated.type,
-                    validated.name,
-                    validated.description,
-                    dump_node_definition(validated),
-                    now,
-                    validated.id,
-                ),
+                update(node_models_table)
+                .where(node_models_table.c.id == validated.id)
+                .values(
+                    type=validated.type,
+                    name=validated.name,
+                    description=validated.description,
+                    definition_json=dump_node_definition(validated),
+                    updated_at=now,
+                )
             )
-            connection.commit()
         return NodeStructuralRecord(
             node=validated, created_at=current["created_at"], updated_at=now
         )
 
     def delete(self, node_id: str) -> bool:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM node_structural_models WHERE id = ?", (node_id,)
+                delete(node_models_table).where(node_models_table.c.id == node_id)
             )
-            connection.commit()
         return cursor.rowcount > 0
 
     @contextmanager
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self):
+        self.initialize()
+        with database_transaction(self.database_path, initialize=False) as connection:
             yield connection
 
     @staticmethod

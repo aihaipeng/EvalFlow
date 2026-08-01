@@ -301,9 +301,21 @@ class WorkflowExecutionManager:
                 if entry["state"] == "WAITING":
                     entry.update({"state": "NOT_STARTED", "reason": not_started_reason})
             workflow["status"] = status
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, WorkflowExecutionError) as exc:
             workflow["status"] = "FAILED"
             workflow["error"] = _error("PERSISTENCE_FAILED", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            workflow["status"] = "FAILED"
+            workflow["error"] = _error(
+                "NODE_FAILED",
+                f"Workflow 调度失败: {exc}",
+                {
+                    "node_id": None,
+                    "node_execution_id": None,
+                    "phase": "SCHEDULER",
+                    "error_type": type(exc).__name__,
+                },
+            )
         finally:
             workflow["finished_at"] = utc_execution_time()
             workflow["duration_ms"] = max(0, round((time.monotonic() - started_clock) * 1000))

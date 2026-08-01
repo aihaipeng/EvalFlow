@@ -7,10 +7,14 @@ from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
 
+from sqlalchemy import and_, delete, insert, select
+
+from execution.database_schema import batch_execution_history
+
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    CoreConnection,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
@@ -53,7 +57,7 @@ class BatchExecutionHistoryRepository:
             raise ValueError("任务历史缺少工作流 ID")
         executed_cases = max(0, int(summary.get("success") or 0)) + max(
             0, int(summary.get("failed") or 0)
-        )
+        ) + max(0, int(summary.get("interrupted") or 0))
         record = {
             "id": str(uuid4()),
             "batch_id": str(batch["id"]),
@@ -68,66 +72,82 @@ class BatchExecutionHistoryRepository:
             "finished_at": finished_at,
             "created_at": utc_execution_time(),
         }
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self._transaction(immediate=True) as connection:
             if deduplicate:
-                existing = connection.execute(
-                    "SELECT * FROM batch_execution_history WHERE batch_id = ? AND execution_round_id = ? LIMIT 1",
-                    (record["batch_id"], record["execution_round_id"]),
-                ).fetchone()
-                if existing is not None:
-                    connection.commit()
-                    return dict(existing)
-            connection.execute(
-                """
-                INSERT INTO batch_execution_history (
-                    id, batch_id, execution_round_id, workflow_id,
-                    test_set_name, workflow_name, total_cases, executed_cases,
-                    passed_cases, started_at, finished_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                tuple(record.values()),
-            )
-            connection.execute(
-                """
-                DELETE FROM batch_execution_history
-                WHERE batch_id = ? AND id NOT IN (
-                    SELECT id FROM batch_execution_history
-                    WHERE batch_id = ?
-                    ORDER BY finished_at DESC, created_at DESC, id DESC
-                    LIMIT 10
+                same_round = (
+                    batch_execution_history.c.execution_round_id.is_(None)
+                    if record["execution_round_id"] is None
+                    else batch_execution_history.c.execution_round_id
+                    == record["execution_round_id"]
                 )
-                """,
-                (record["batch_id"], record["batch_id"]),
+                existing = connection.execute(
+                    select(batch_execution_history)
+                    .where(
+                        and_(
+                            batch_execution_history.c.batch_id == record["batch_id"],
+                            same_round,
+                        )
+                    )
+                    .limit(1)
+                ).mappings().first()
+                if existing is not None:
+                    return dict(existing)
+            connection.execute(insert(batch_execution_history).values(**record))
+            retained_ids = (
+                select(batch_execution_history.c.id)
+                .where(batch_execution_history.c.batch_id == record["batch_id"])
+                .order_by(
+                    batch_execution_history.c.finished_at.desc(),
+                    batch_execution_history.c.created_at.desc(),
+                    batch_execution_history.c.id.desc(),
+                )
+                .limit(10)
             )
-            connection.commit()
+            connection.execute(
+                delete(batch_execution_history).where(
+                    and_(
+                        batch_execution_history.c.batch_id == record["batch_id"],
+                        batch_execution_history.c.id.not_in(retained_ids),
+                    )
+                )
+            )
         return record
 
     def list_recent(self, batch_id: str, *, limit: int = 10) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 10))
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT * FROM batch_execution_history
-                WHERE batch_id = ?
-                ORDER BY finished_at DESC, created_at DESC, id DESC
-                LIMIT ?
-                """,
-                (batch_id, safe_limit),
-            ).fetchall()
+                select(batch_execution_history)
+                .where(batch_execution_history.c.batch_id == batch_id)
+                .order_by(
+                    batch_execution_history.c.finished_at.desc(),
+                    batch_execution_history.c.created_at.desc(),
+                    batch_execution_history.c.id.desc(),
+                )
+                .limit(safe_limit)
+            ).mappings().all()
         return [dict(row) for row in rows]
 
     def delete_batch(self, batch_id: str) -> int:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM batch_execution_history WHERE batch_id = ?", (batch_id,)
+                delete(batch_execution_history).where(
+                    batch_execution_history.c.batch_id == batch_id
+                )
             )
-            connection.commit()
         return cursor.rowcount
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[Any]:
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self, *, immediate: bool = False) -> Iterator[Any]:
+        self.initialize()
+        with database_transaction(
+            self.database_path, initialize=False, immediate=immediate
+        ) as connection:
             yield connection

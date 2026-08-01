@@ -23,6 +23,19 @@ TERMINAL_WORKFLOW_STATUSES = {"SUCCESS", "FAILED", "INTERRUPTED"}
 TERMINAL_NODE_STATUSES = {"SUCCESS", "FAILED", "TIMEOUT", "INTERRUPTED"}
 
 
+def filesystem_path(path: Path) -> Path:
+    """Return a Windows extended-length path for deep execution artifacts."""
+
+    if os.name != "nt":
+        return path
+    resolved = str(path.resolve())
+    if resolved.startswith("\\\\?\\"):
+        return Path(resolved)
+    if resolved.startswith("\\\\"):
+        return Path(f"\\\\?\\UNC\\{resolved[2:]}")
+    return Path(f"\\\\?\\{resolved}")
+
+
 def remove_execution_tree(path: Path) -> None:
     """Remove deep execution trees without Windows MAX_PATH truncation."""
 
@@ -306,7 +319,7 @@ class WorkflowExecutionStore:
                 if path in referenced_archives:
                     continue
                 try:
-                    with zipfile.ZipFile(path) as archive:
+                    with zipfile.ZipFile(filesystem_path(path)) as archive:
                         execution_ids = {
                             name.split("/", maxsplit=1)[0]
                             for name in archive.namelist()
@@ -409,24 +422,27 @@ class WorkflowExecutionStore:
         executions: list[tuple[Path, dict[str, Any]]],
     ) -> int:
         target = self.archive_root / workflow_id / f"date={date}" / f"batch={batch_id}"
-        archive_id = uuid4().hex
+        archive_id = uuid4().hex[:16]
         archive_name = f"executions-{archive_id}.zip"
         temporary = target / f".{archive_name}.tmp"
         archive_path = target / archive_name
         manifest_path = target / f"manifest-{archive_id}.json"
-        target.mkdir(parents=True, exist_ok=True)
+        filesystem_path(target).mkdir(parents=True, exist_ok=True)
         with self._write_lock:
             try:
                 with zipfile.ZipFile(
-                    temporary,
+                    filesystem_path(temporary),
                     mode="w",
                     compression=zipfile.ZIP_DEFLATED,
                     compresslevel=6,
                 ) as archive:
                     for root, document in executions:
                         for source in root.rglob("*.json"):
-                            archive.write(source, source.relative_to(root.parent).as_posix())
-                os.replace(temporary, archive_path)
+                            archive.write(
+                                filesystem_path(source),
+                                source.relative_to(root.parent).as_posix(),
+                            )
+                os.replace(filesystem_path(temporary), filesystem_path(archive_path))
                 manifest = {
                     "version": 2,
                     "archive": archive_name,
@@ -451,7 +467,7 @@ class WorkflowExecutionStore:
                 for root, _document in executions:
                     remove_execution_tree(root)
             finally:
-                temporary.unlink(missing_ok=True)
+                filesystem_path(temporary).unlink(missing_ok=True)
         return len(executions)
 
     def _read_archived_document(
@@ -468,7 +484,7 @@ class WorkflowExecutionStore:
     ) -> dict[str, Any] | None:
         name = f"{_uuid(execution_id, 'execution_id')}/{suffix}"
         try:
-            with zipfile.ZipFile(archive_path) as archive:
+            with zipfile.ZipFile(filesystem_path(archive_path)) as archive:
                 raw = archive.read(name).decode("utf-8")
         except KeyError:
             return None
@@ -481,7 +497,7 @@ class WorkflowExecutionStore:
         if archive_path is None:
             return []
         prefix = f"{_uuid(execution_id, 'execution_id')}/nodes/"
-        with zipfile.ZipFile(archive_path) as archive:
+        with zipfile.ZipFile(filesystem_path(archive_path)) as archive:
             return [
                 self._parse_document(archive.read(name).decode("utf-8"), archive_path / name)
                 for name in archive.namelist()
@@ -553,7 +569,7 @@ class WorkflowExecutionStore:
         if not isinstance(executions, list):
             raise WorkflowExecutionError("归档 manifest 的 executions 非法")
         execution_ids = [_uuid(item["id"], "execution_id") for item in executions]
-        with zipfile.ZipFile(archive_path) as archive:
+        with zipfile.ZipFile(filesystem_path(archive_path)) as archive:
             for execution_id in execution_ids:
                 document = WorkflowExecutionStore._parse_document(
                     archive.read(f"{execution_id}/workflow.json").decode("utf-8"),
@@ -583,7 +599,7 @@ class WorkflowExecutionStore:
     def _read(path: Path) -> dict[str, Any]:
         for attempt in range(6):
             try:
-                raw = path.read_text(encoding="utf-8")
+                raw = filesystem_path(path).read_text(encoding="utf-8")
                 break
             except PermissionError:
                 if attempt == 5:
@@ -600,14 +616,15 @@ class WorkflowExecutionStore:
 
     @staticmethod
     def _atomic_write(path: Path, document: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        target = filesystem_path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
         serialized = json.dumps(
             strict_json_clone(document),
             ensure_ascii=False,
             allow_nan=False,
             separators=(",", ":"),
         ) + "\n"
-        temporary = path.with_name(f".{uuid4().hex}.tmp")
+        temporary = target.with_name(f".{uuid4().hex}.tmp")
         try:
             with temporary.open("w", encoding="utf-8", newline="\n") as stream:
                 stream.write(serialized)
@@ -615,7 +632,7 @@ class WorkflowExecutionStore:
                 os.fsync(stream.fileno())
             for attempt in range(6):
                 try:
-                    os.replace(temporary, path)
+                    os.replace(temporary, target)
                     break
                 except PermissionError:
                     if attempt == 5:

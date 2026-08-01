@@ -5,8 +5,7 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from collections.abc import Mapping
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator
 
 from alembic import command
 from alembic.config import Config
@@ -62,6 +61,44 @@ def database_engine_for(database_path: str | Path) -> Engine:
         return engine
 
 
+@contextmanager
+def database_read_connection(
+    database_path: str | Path = DEFAULT_DATABASE_PATH, *, initialize: bool = True
+) -> Iterator[Connection]:
+    """Yield a native SQLAlchemy connection for Core read statements."""
+
+    if initialize:
+        upgrade_database(database_path)
+    with database_engine_for(database_path).connect() as connection:
+        yield connection
+
+
+@contextmanager
+def database_transaction(
+    database_path: str | Path = DEFAULT_DATABASE_PATH,
+    *,
+    initialize: bool = True,
+    immediate: bool = False,
+) -> Iterator[Connection]:
+    """Commit a Core transaction on success and roll it back on failure."""
+
+    if initialize:
+        upgrade_database(database_path)
+    with database_engine_for(database_path).connect() as connection:
+        if immediate:
+            # SQLite has no Core expression for its writer-locking transaction mode.
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        else:
+            connection.begin()
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+
+
 def upgrade_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
     """Upgrade a database to the latest application schema through Alembic."""
 
@@ -76,83 +113,3 @@ def upgrade_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
             command.upgrade(config, "head")
             connection.exec_driver_sql("PRAGMA foreign_keys = ON")
             connection.commit()
-
-
-class CoreRow(Mapping[str, Any]):
-    """Mapping-compatible result row that also retains sqlite3 positional access."""
-
-    def __init__(self, row: Any) -> None:
-        self._row = row
-
-    def __getitem__(self, key: str | int) -> Any:
-        if isinstance(key, int):
-            return self._row[key]
-        return self._row._mapping[key]
-
-    def __iter__(self):
-        return iter(self._row._mapping)
-
-    def __len__(self) -> int:
-        return len(self._row)
-
-
-class CoreRows:
-    def __init__(self, result: Any) -> None:
-        self._result = result
-
-    def fetchone(self) -> CoreRow | None:
-        row = self._result.fetchone()
-        return CoreRow(row) if row is not None else None
-
-    def fetchall(self) -> list[CoreRow]:
-        return [CoreRow(row) for row in self._result.fetchall()]
-
-    def __iter__(self):
-        return (CoreRow(row) for row in self._result)
-
-
-class CoreConnection:
-    """Small sqlite3-compatible facade backed by a SQLAlchemy Core connection."""
-
-    def __init__(self, connection: Connection) -> None:
-        self._connection = connection
-
-    @property
-    def in_transaction(self) -> bool:
-        return self._connection.in_transaction()
-
-    def execute(self, statement: str, parameters: Sequence[Any] | None = None):
-        normalized = tuple(parameters) if parameters is not None else ()
-        result = self._connection.exec_driver_sql(statement, normalized)
-        return CoreRows(result) if result.returns_rows else result
-
-    def executemany(self, statement: str, parameters: Any):
-        normalized = [tuple(item) for item in parameters]
-        if not normalized:
-            return None
-        return self._connection.exec_driver_sql(statement, normalized)
-
-    def commit(self) -> None:
-        self._connection.commit()
-
-    def rollback(self) -> None:
-        self._connection.rollback()
-
-
-@contextmanager
-def database_connection(
-    database_path: str | Path = DEFAULT_DATABASE_PATH, *, initialize: bool = True
-) -> Iterator[CoreConnection]:
-    """Yield a configured SQLAlchemy Core connection for repository operations."""
-
-    if initialize:
-        upgrade_database(database_path)
-    engine = database_engine_for(database_path)
-    with engine.connect() as connection:
-        facade = CoreConnection(connection)
-        try:
-            yield facade
-        except Exception:
-            if facade.in_transaction:
-                facade.rollback()
-            raise

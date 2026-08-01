@@ -2,6 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import { createRoot } from "react-dom/client";
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, Eraser, FileText, FileUp, Info, LayoutGrid, Pencil, Plus, RefreshCw, Save, Search, Settings2, Trash2, X } from "lucide-react";
 import { Workbook } from "@fortune-sheet/react";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import * as Dialog from "@radix-ui/react-dialog";
 import * as XLSX from "xlsx";
 import "@fortune-sheet/react/dist/index.css";
 import "./test-sets.css";
@@ -30,41 +32,6 @@ async function request(url, options = {}) {
 
 function toast(message, type = "success") {
   if (typeof window.showToast === "function") window.showToast(message, type);
-}
-
-const MODAL_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function useModalAccessibility(onClose) {
-  const dialogRef = useRef(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    const returnFocus = document.activeElement;
-    if (!dialog) return undefined;
-    const focusable = () => Array.from(dialog.querySelectorAll(MODAL_FOCUSABLE)).filter((element) => element.offsetParent !== null);
-    (focusable()[0] || dialog).focus();
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const elements = focusable();
-      if (!elements.length) { event.preventDefault(); dialog.focus(); return; }
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    }
-    dialog.addEventListener("keydown", handleKeyDown);
-    return () => {
-      dialog.removeEventListener("keydown", handleKeyDown);
-      if (returnFocus?.isConnected) returnFocus.focus();
-    };
-  }, []);
-  return dialogRef;
 }
 
 function makeId(prefix) {
@@ -228,20 +195,20 @@ function PageControls({ total, unit, page, pages, pageSize, onPageChange, onPage
 
 function ConfirmModal({ title, message, detail, confirmLabel = "确认", danger = false, onClose, onConfirm }) {
   const [submitting, setSubmitting] = useState(false);
-  const dialogRef = useModalAccessibility(onClose);
 
-  async function confirm() {
+  async function confirm(event) {
+    event.preventDefault();
     setSubmitting(true);
     const shouldClose = await onConfirm();
     if (shouldClose !== false) onClose();
     else setSubmitting(false);
   }
 
-  return <div className="ts-modal-layer ts-confirm-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={submitting ? undefined : onClose} /><div className="ts-modal ts-confirm-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-confirm-modal-title" tabIndex={-1}>
-    <header><h2 id="ts-confirm-modal-title">{title}</h2><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" disabled={submitting} onClick={onClose}><X className="ui-icon" /></button></header>
-    <div className="ts-modal-body"><p>{message}</p>{detail && <p className="ts-confirm-detail">{detail}</p>}</div>
-    <footer><button className="ts-btn secondary" disabled={submitting} onClick={onClose}>取消</button><button className={`ts-btn ${danger ? "danger" : "primary"}`} disabled={submitting} onClick={confirm}>{danger && <Trash2 className="ui-icon" />}{submitting ? "处理中…" : confirmLabel}</button></footer>
-  </div></div>;
+  return <AlertDialog.Root open onOpenChange={(open) => !open && !submitting && onClose()}><AlertDialog.Portal><div className="ts-modal-layer ts-confirm-modal-layer"><AlertDialog.Overlay className="ts-modal-backdrop" /><AlertDialog.Content className="ts-modal ts-confirm-modal">
+    <header><AlertDialog.Title asChild><h2 id="ts-confirm-modal-title">{title}</h2></AlertDialog.Title><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" disabled={submitting} onClick={onClose}><X className="ui-icon" /></button></header>
+    <AlertDialog.Description asChild><div className="ts-modal-body"><p>{message}</p>{detail && <p className="ts-confirm-detail">{detail}</p>}</div></AlertDialog.Description>
+    <footer><AlertDialog.Cancel asChild><button className="ts-btn secondary" disabled={submitting}>取消</button></AlertDialog.Cancel><AlertDialog.Action asChild><button className={`ts-btn ${danger ? "danger" : "primary"}`} disabled={submitting} onClick={confirm}>{danger && <Trash2 className="ui-icon" />}{submitting ? "处理中…" : confirmLabel}</button></AlertDialog.Action></footer>
+  </AlertDialog.Content></div></AlertDialog.Portal></AlertDialog.Root>;
 }
 
 function ListView({ onCreate, onOpen }) {
@@ -313,7 +280,6 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const appending = mode === "append";
-  const dialogRef = useModalAccessibility(onClose);
 
   async function save() {
     if (!appending && !name.trim()) return toast("请填写测试集名称", "error");
@@ -331,13 +297,13 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
     finally { setSaving(false); }
   }
 
-  return <div className="ts-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={onClose} /><div className="ts-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-save-modal-title" tabIndex={-1}>
-    <header><div>{!appending && <span>步骤 3 / 3</span>}<h2 id="ts-save-modal-title">{appending ? "添加 Excel 用例" : "保存测试集"}</h2></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
+  return <Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal" aria-describedby={undefined}>
+    <header><div>{!appending && <span>步骤 3 / 3</span>}<Dialog.Title asChild><h2 id="ts-save-modal-title">{appending ? "添加 Excel 用例" : "保存测试集"}</h2></Dialog.Title></div><Dialog.Close asChild><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
     <div className="ts-modal-body"><div className="ts-preview"><b><CircleCheck className="ui-icon" /></b><div><strong>选区已转换为数据库用例</strong><span>{dataset.cases.length} 条用例 · {dataset.columns.length} 个字段 · {sourceCount} 个 Excel · {sheetCount} 个 Sheet</span></div></div>
       {!appending && <><label className="ts-field"><span>测试集名称 <b>*</b></span><input maxLength="120" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="ts-field"><span>测试集说明</span><textarea maxLength="1000" rows="4" value={description} onChange={(event) => setDescription(event.target.value)} /><small>{description.length}/1000</small></label></>}
       <div className="ts-schema"><div><strong>字段映射预览</strong><span>字段默认按选中位置生成</span></div>{dataset.columns.map((column, index) => <p key={column}><code>{appending ? target.columns[index] : column}</code><span>第 {index + 1} 个选中列</span></p>)}</div>
     </div><footer><button className="ts-btn secondary" onClick={onClose}>返回调整</button><button className="ts-btn primary" disabled={saving} onClick={save}>{saving ? "处理中…" : appending ? "添加到测试集" : "保存并查看详情"}</button></footer>
-  </div></div>;
+  </Dialog.Content></div></Dialog.Portal></Dialog.Root>;
 }
 
 function ImportView({ mode, target, onBack, onComplete }) {
@@ -437,7 +403,6 @@ function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const remainingCount = entries.filter((entry) => !entry.deleted).length;
-  const dialogRef = useModalAccessibility(onClose);
 
   async function saveColumns(kept, columns) {
     const cases = filterBlankCases(draft.cases.map((item) => ({
@@ -484,13 +449,13 @@ function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
     await saveColumns(kept, columns);
   }
 
-  return <><div className="ts-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={onClose} /><div className="ts-modal ts-column-settings-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-column-settings-title" tabIndex={-1}>
-    <header><div><h2 id="ts-column-settings-title">字段设置</h2><span>批量修改字段名称，或选择需要删除的字段</span></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
+  return <><Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal ts-column-settings-modal" aria-describedby={undefined}>
+    <header><div><Dialog.Title asChild><h2 id="ts-column-settings-title">字段设置</h2></Dialog.Title><span>批量修改字段名称，或选择需要删除的字段</span></div><Dialog.Close asChild><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
     <div className="ts-modal-body"><div className="ts-column-settings-head"><span>字段名称</span><span>删除</span></div><div className="ts-column-settings-list">
       {entries.map((entry, index) => <div className={entry.deleted ? "deleted" : ""} key={entry.original}><b>{index + 1}</b><input maxLength="120" aria-label={`字段 ${index + 1} 名称`} disabled={entry.deleted} value={entry.name} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, name: event.target.value } : item))} /><label><input type="checkbox" checked={entry.deleted} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, deleted: event.target.checked } : item))} /><span>删除</span></label></div>)}
     </div><p className="ts-column-settings-tip">保存后立即写入数据库；删除默认字段时，剩余的 <code>col_x</code> 会按顺序重新编号。</p></div>
     <footer><span className="ts-column-settings-count">保留 {remainingCount} 个字段</span><button className="ts-btn secondary" onClick={onClose}><X className="ui-icon" />取消</button><button className="ts-btn primary" disabled={saving || !remainingCount} onClick={persist}><Save className="ui-icon" />{saving ? "保存中…" : "保存并立即生效"}</button></footer>
-  </div></div>{pendingDeletion && <ConfirmModal title="删除字段" message={`确定删除选中的 ${pendingDeletion.deletedCount} 个字段吗？`} detail="对应字段数据将从全部用例中删除，此操作不可恢复。" confirmLabel="删除字段" danger onClose={() => setPendingDeletion(null)} onConfirm={() => saveColumns(pendingDeletion.kept, pendingDeletion.columns)} />}</>;
+  </Dialog.Content></div></Dialog.Portal></Dialog.Root>{pendingDeletion && <ConfirmModal title="删除字段" message={`确定删除选中的 ${pendingDeletion.deletedCount} 个字段吗？`} detail="对应字段数据将从全部用例中删除，此操作不可恢复。" confirmLabel="删除字段" danger onClose={() => setPendingDeletion(null)} onConfirm={() => saveColumns(pendingDeletion.kept, pendingDeletion.columns)} />}</>;
 }
 
 function DetailView({ testSetId, initial, onBack, onImport }) {

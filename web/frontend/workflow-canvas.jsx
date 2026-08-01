@@ -5,6 +5,7 @@ import {EditorState} from '@codemirror/state';
 import {EditorView} from '@codemirror/view';
 import {oneDark} from '@codemirror/theme-one-dark';
 import dagre from '@dagrejs/dagre';
+import * as Dialog from '@radix-ui/react-dialog';
 import {basicSetup} from 'codemirror';
 import parseCurl from 'parse-curl';
 import {Rnd} from 'react-rnd';
@@ -79,51 +80,6 @@ const NODE_TYPES = {
 };
 
 const INSERTABLE_TYPES = ['HTTP', 'LLM', 'SCRIPT'];
-const DIALOG_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function useDialogAccessibility(onClose, active = true) {
-    const dialogRef = useRef(null);
-    const closeRef = useRef(onClose);
-    closeRef.current = onClose;
-    useEffect(() => {
-        if (!active) return undefined;
-        const dialog = dialogRef.current;
-        const returnFocus = document.activeElement;
-        if (!dialog) return undefined;
-        const focusable = () => Array.from(dialog.querySelectorAll(DIALOG_FOCUSABLE))
-            .filter((element) => element.offsetParent !== null);
-        (focusable()[0] || dialog).focus();
-        const handleKeyDown = (event) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                closeRef.current();
-                return;
-            }
-            if (event.key !== 'Tab') return;
-            const elements = focusable();
-            if (!elements.length) {
-                event.preventDefault();
-                dialog.focus();
-                return;
-            }
-            const first = elements[0];
-            const last = elements[elements.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        };
-        dialog.addEventListener('keydown', handleKeyDown);
-        return () => {
-            dialog.removeEventListener('keydown', handleKeyDown);
-            if (returnFocus?.isConnected) returnFocus.focus();
-        };
-    }, [active]);
-    return dialogRef;
-}
 const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'INTERRUPTED'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw'];
@@ -951,7 +907,7 @@ function serializableEdge(edge) {
     };
 }
 
-function WorkflowNode({data, selected}) {
+const WorkflowNode = React.memo(function WorkflowNode({data, selected}) {
     const meta = NODE_TYPES[data.nodeType] || NODE_TYPES.SCRIPT;
     const Icon = meta.icon;
     const status = NODE_STATUSES.includes(data.status) ? data.status : 'PENDING';
@@ -984,7 +940,7 @@ function WorkflowNode({data, selected}) {
             {data.nodeType !== 'END' && <Handle type="source" position={Position.Right} className="wf-handle" />}
         </article>
     );
-}
+});
 
 function NodePicker({onSelect, compact = false, includeSystem = false, excludeType = null}) {
     const types = (includeSystem ? ['START', 'END', ...INSERTABLE_TYPES] : INSERTABLE_TYPES)
@@ -1103,7 +1059,6 @@ function AlignmentGuides({guides}) {
 }
 
 function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
-    const dialogRef = useDialogAccessibility(onCancel, Boolean(dialog));
     if (!dialog) return null;
     const updateRow = (id, patch) => onRowsChange(dialog.rows.map((row) => (
         row.id === id ? {...row, ...patch} : row
@@ -1113,13 +1068,13 @@ function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
         id: rowId(), name: '', type: 'string', valueText: '',
     }));
     return (
-        <div className="wf-node-test-overlay" role="presentation" onMouseDown={(event) => {
-            if (event.target === event.currentTarget) onCancel();
-        }}>
-            <section ref={dialogRef} className="wf-node-test-dialog" role="dialog" aria-modal="true" aria-labelledby="wf-node-test-title" tabIndex={-1}>
+        <Dialog.Root open onOpenChange={(open) => !open && onCancel()}>
+            <Dialog.Portal>
+                <Dialog.Overlay className="wf-node-test-overlay" />
+                <Dialog.Content className="wf-node-test-dialog" aria-describedby={undefined}>
                 <header>
-                    <div><strong id="wf-node-test-title">临时测试变量</strong><span>{dialog.nodeLabel}</span></div>
-                    <button type="button" onClick={onCancel} title="关闭" aria-label="关闭临时测试变量"><X size={16} /></button>
+                    <div><Dialog.Title asChild><strong id="wf-node-test-title">临时测试变量</strong></Dialog.Title><span>{dialog.nodeLabel}</span></div>
+                    <Dialog.Close asChild><button type="button" title="关闭" aria-label="关闭临时测试变量"><X size={16} /></button></Dialog.Close>
                 </header>
                 <div className="wf-node-test-variable-heading"><span>变量名</span><span>类型</span><span>值</span><span /></div>
                 <div className="wf-node-test-variable-list">
@@ -1144,8 +1099,9 @@ function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
                     <button type="button" onClick={onCancel}><X size={14} />取消</button>
                     <button type="button" className="is-primary" onClick={onSubmit}><Play size={14} />运行</button>
                 </footer>
-            </section>
-        </div>
+                </Dialog.Content>
+            </Dialog.Portal>
+        </Dialog.Root>
     );
 }
 
@@ -1398,7 +1354,7 @@ function HttpToggle({label, checked, onChange}) {
     );
 }
 
-function Inspector({
+const Inspector = React.memo(function Inspector({
     node,
     providers,
     providerLoadState,
@@ -2034,7 +1990,7 @@ function Inspector({
             </div>
         </Rnd>
     );
-}
+});
 
 function WorkflowStudio({options}) {
     const theme = useDocumentTheme();
@@ -2063,7 +2019,7 @@ function WorkflowStudio({options}) {
     const [nameEditing, setNameEditing] = useState(false);
     const [descriptionEditing, setDescriptionEditing] = useState(false);
     const [workflowId, setWorkflowId] = useState(options.id || null);
-    const [, setSaveState] = useState(options.id ? '已保存' : '未保存');
+    const [saveState, setSaveState] = useState(options.id ? '已保存' : '未保存');
     const [modelProviders, setModelProviders] = useState([]);
     const [providerLoadState, setProviderLoadState] = useState('loading');
     const [providerLoadError, setProviderLoadError] = useState('');
@@ -2268,6 +2224,11 @@ function WorkflowStudio({options}) {
         redoStack.current = [];
         setHistoryTick((value) => value + 1);
     }, [edges, nodes]);
+
+    const onNodesChangeSafe = useCallback((changes) => {
+        if (changes.some((change) => change.type === 'remove')) recordHistory();
+        onNodesChange(changes);
+    }, [onNodesChange, recordHistory]);
 
     const undo = useCallback(() => {
         const previous = undoStack.current.pop();
@@ -2738,8 +2699,9 @@ function WorkflowStudio({options}) {
             if (!startedResponse.ok) throw new Error(startedPayload.detail || `HTTP ${startedResponse.status}`);
             workflowState.runId = startedPayload.execution.id;
             let run = startedPayload.execution;
+            let pollDelayMs = 250;
             while (!['SUCCESS', 'FAILED', 'INTERRUPTED'].includes(run.status)) {
-                await new Promise((resolve) => window.setTimeout(resolve, 250));
+                await new Promise((resolve) => window.setTimeout(resolve, pollDelayMs));
                 if (studioClosedRef.current) return;
                 const [runResponse, nodesResponse] = await Promise.all([
                     fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}`, {headers: {accept: 'application/json'}}),
@@ -2750,6 +2712,7 @@ function WorkflowStudio({options}) {
                 if (!runResponse.ok) throw new Error(runPayload.detail || `HTTP ${runResponse.status}`);
                 run = runPayload.execution;
                 if (nodesResponse.ok) applyWorkflowNodeRuns(nodesPayload.executions || []);
+                pollDelayMs = Math.min(2000, Math.round(pollDelayMs * 1.5));
             }
             let finalNodeExecutions = [];
             const finalNodesResponse = await fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}/nodes`, {headers: {accept: 'application/json'}});
@@ -3095,7 +3058,21 @@ function WorkflowStudio({options}) {
         }
     }, [persistDraft]);
 
+    useEffect(() => {
+        const onStudioKeyDown = (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                event.preventDefault();
+                void save();
+            }
+        };
+        window.addEventListener('keydown', onStudioKeyDown);
+        return () => window.removeEventListener('keydown', onStudioKeyDown);
+    }, [save]);
+
     const close = useCallback(() => {
+        if (saveState === '未保存' || saveState === '保存失败') {
+            if (!window.confirm('工作流有尚未保存的修改，确定离开吗？')) return;
+        }
         studioClosedRef.current = true;
         nodeTestSourcesRef.current.forEach((_active, nodeId) => {
             hiddenNodeTestsRef.current.add(nodeId);
@@ -3107,7 +3084,7 @@ function WorkflowStudio({options}) {
         });
         if (options.onClose) options.onClose();
         if (workflowElapsedTimer.current !== null) window.clearInterval(workflowElapsedTimer.current);
-    }, [interruptNodeTest, options]);
+    }, [interruptNodeTest, options, saveState]);
 
     const closeInspector = useCallback(() => {
         if (editorNodeId) {
@@ -3242,7 +3219,7 @@ function WorkflowStudio({options}) {
                     edges={decoratedEdges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
-                    onNodesChange={onNodesChange}
+                    onNodesChange={onNodesChangeSafe}
                     onEdgesChange={onEdgesChange}
                     onConnect={(connection) => {
                         recordHistory();
@@ -3330,7 +3307,7 @@ function WorkflowStudio({options}) {
                     multiSelectionKeyCode="Control"
                     panOnScroll
                     zoomOnDoubleClick={false}
-                    deleteKeyCode={null}
+                    deleteKeyCode="Backspace"
                     proOptions={{hideAttribution: true}}
                 >
                     <Background color={theme === 'dark' ? '#3a4656' : '#c8d1de'} gap={20} size={1.2} />

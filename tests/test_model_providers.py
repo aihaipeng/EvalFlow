@@ -8,7 +8,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from fastapi.testclient import TestClient
 
-from execution import ModelProviderRecord, ModelProviderRepository
+from execution import (
+    ModelProviderRecord,
+    ModelProviderRepository,
+    ModelProviderRepositoryError,
+)
 from web import routes_model_providers
 from web.app import app, create_app
 
@@ -34,6 +38,29 @@ def _isolated_app(tmp_path):
         execution_root=tmp_path / "workflow-executions",
     )
     return database_path, application
+
+
+def test_repository_maps_corrupt_provider_json_to_domain_error(tmp_path):
+    database = tmp_path / "corrupt-provider.sqlite3"
+    repository = ModelProviderRepository(database)
+    provider = repository.create(
+        ModelProviderRecord(
+            name="Corrupt fixture",
+            api_key="secret",
+            base_url="https://example.invalid/v1",
+            protocol="OPENAI_COMPATIBLE",
+            models=["model"],
+        )
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE model_providers SET models_json = ? WHERE id = ?",
+            ("{not-json", provider.id),
+        )
+        connection.commit()
+
+    with pytest.raises(ModelProviderRepositoryError, match="JSON 数据损坏"):
+        repository.get(provider.id)
 
 
 def test_model_provider_repository_restart_round_trip(tmp_path):

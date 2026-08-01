@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+import execution.batch_execution_store as batch_store_module
 from execution.batch_execution_store import BatchExecutionError, BatchExecutionStore
 
 
@@ -116,6 +117,50 @@ def test_batch_store_recovers_stopping_batch_as_stopped(tmp_path: Path) -> None:
     assert recovered["summary"]["queued"] == 1
     assert cases["C-1"]["status"] == "INTERRUPTED"
     assert cases["C-2"]["status"] == "QUEUED"
+
+
+def test_batch_store_recovers_interrupted_current_round_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    batch, case = _documents()
+    batch["execution_round_id"] = str(uuid4())
+    store = BatchExecutionStore(tmp_path / "batch")
+    store.create(batch, [case], {"round": 1})
+    replacement_batch = {
+        **batch,
+        "execution_round_id": str(uuid4()),
+        "execution_round_number": 2,
+    }
+    replacement_case = {**case, "id": str(uuid4()), "case_id": "C-2"}
+    actual_replace = batch_store_module.os.replace
+
+    def crash_after_input_backup(source, target):
+        actual_replace(source, target)
+        if Path(source).name == "input" and Path(target).name.startswith(
+            ".replace-prev-input-"
+        ):
+            raise SystemExit("simulated process crash")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(batch_store_module.os, "replace", crash_after_input_backup)
+        with pytest.raises(SystemExit, match="simulated process crash"):
+            store.replace_current(
+                replacement_batch,
+                [replacement_case],
+                {"round": 2},
+                archive_current=False,
+            )
+
+    recovered = BatchExecutionStore(tmp_path / "batch")
+    root = recovered.batch_root(batch["id"])
+
+    assert recovered.get(batch["id"])["execution_round_id"] == replacement_batch[
+        "execution_round_id"
+    ]
+    assert [item["case_id"] for item in recovered.list_cases(batch["id"])] == ["C-2"]
+    assert BatchExecutionStore._read(root / "input" / "snapshot.json") == {"round": 2}
+    assert not (root / ".replace-current.json").exists()
+    assert not list(root.glob(".replace-*-*"))
 
 
 def test_batch_store_sorts_cases_by_frozen_call_number(tmp_path: Path) -> None:

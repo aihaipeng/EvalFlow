@@ -8,40 +8,43 @@ from web.app import app
 ROOT = Path(__file__).parents[1]
 STATIC_DIR = ROOT / "web" / "static"
 SOURCE = ROOT / "web" / "frontend" / "model-providers.jsx"
+API_SOURCE = ROOT / "web" / "frontend" / "model-provider-api.ts"
+DIALOG_SOURCE = ROOT / "web" / "frontend" / "components" / "dialog.jsx"
 
 
 def test_model_provider_react_bundle_is_registered_and_served():
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     source = SOURCE.read_text(encoding="utf-8")
+    rendered = TestClient(app).get("/").text
 
     assert 'data-view="models"' in index_html
     assert '<span>供应商管理</span>' in index_html
     assert '<link rel="stylesheet" href="/model-providers.css" />' in index_html
-    assert '/assets/model-providers.js?v=' in index_html
+    assert 'data-feature-js="__VITE_MODEL_PROVIDERS_JS__"' in index_html
+    assert "/assets/vite/model-providers-" in rendered
     assert 'from "react"' in source
     assert 'from "@tanstack/react-query"' in source
     assert "QueryClientProvider" in source
     assert "useQuery" in source and "useMutation" in source
-    for asset in ("/model-providers.css", "/assets/model-providers.js"):
-        response = TestClient(app).get(asset)
-        assert response.status_code == 200
-        if asset.endswith(".css"):
-            assert response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
-        else:
-            assert response.headers["content-type"].startswith("text/javascript")
+    response = TestClient(app).get("/model-providers.css")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
 
 
 def test_model_provider_react_page_preserves_management_and_connection_contracts():
     source = SOURCE.read_text(encoding="utf-8")
+    api = API_SOURCE.read_text(encoding="utf-8")
 
     for endpoint in (
-        'api.get("/api/model-providers")',
-        'api.post("/api/model-providers",body)',
-        'api.post("/api/model-providers/latency"',
-        'api.post("/api/model-providers/models"',
-        'api.post("/api/model-providers/test-model"',
+        'http.GET("/api/model-providers")',
+        'http.POST("/api/model-providers", { body })',
+        'http.POST("/api/model-providers/latency"',
+        'http.POST("/api/model-providers/models"',
+        'http.POST("/api/model-providers/test-model"',
     ):
-        assert endpoint in source
+        assert endpoint in api
+    assert 'from "openapi-fetch"' in api
+    assert 'import type { components, paths } from "./generated/openapi"' in api
     for field in (
         'id="btn-model-provider-add"',
         'id="model-provider-api-key"',
@@ -59,26 +62,29 @@ def test_model_provider_react_page_preserves_management_and_connection_contracts
         "OpenAI Chat Completions",
         "OpenAI Responses API",
         "Anthropic Claude Messages",
-        "SYSTEM",
-        "DIRECT",
-        "CUSTOM",
-        "SSL Verify",
+        'value="SYSTEM"',
+        'value="DIRECT"',
+        'value="CUSTOM"',
+        "SSL 证书校验",
     ):
         assert value in source
     assert "verify_ssl: form.verify_ssl" in source
     assert "skip_ssl_verify" not in source
-    assert "model_endpoint:endpoint" in source
-    assert "model_configs:changed?{}" in source
+    assert "model_endpoint: endpoint" in source
+    assert "model_configs: changed ? {}" in source
 
 
 def test_model_provider_config_dialog_keeps_keyboard_and_focus_contract():
     source = SOURCE.read_text(encoding="utf-8")
+    dialog = DIALOG_SOURCE.read_text(encoding="utf-8")
 
-    assert 'role="dialog" aria-modal="true"' in source
-    assert 'aria-labelledby="model-provider-config-title" tabIndex="-1"' in source
-    assert 'event.key === "Escape"' in source
-    assert 'event.key !== "Tab"' in source
-    assert "returnFocus.current?.isConnected" in source
+    assert 'import { ConfirmDialog, ModalDialog } from "./components/dialog"' in source
+    assert "<ModalDialog" in source
+    assert "<ConfirmDialog" in source
+    assert 'from "@radix-ui/react-dialog"' in dialog
+    assert 'from "@radix-ui/react-alert-dialog"' in dialog
+    assert 'event.key === "Escape"' not in source
+    assert 'event.key !== "Tab"' not in source
     assert 'id="model-config-default-body-beautify"' in source
     assert "默认 Body 不是合法 JSON" in source
 
@@ -104,5 +110,5 @@ def test_model_provider_list_uses_shared_management_visual_contract():
     assert 'className="management-list-actions-head"' in source
     assert 'className="management-list-time"' in source
     assert 'id="model-provider-pagination"' in source
-    assert "[10,20,50,100]" in source
-    assert "window.ModelProviderManagement={mount,unmount}" in source
+    assert "[10, 20, 50, 100]" in source
+    assert "window.ModelProviderManagement = { mount, unmount }" in source

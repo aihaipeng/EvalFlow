@@ -12,11 +12,15 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
+
+from execution.database_schema import model_providers
 
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
@@ -251,29 +255,22 @@ class ModelProviderRepository:
     def create(self, record: ModelProviderRecord) -> ModelProviderRecord:
         values = record.model_dump(mode="json")
         try:
-            with self._connect() as connection:
-                connection.execute(
-                    """
-                    INSERT INTO model_providers(
-                        id, name, website_url, api_key, base_url, protocol,
-                        proxy_mode, proxy_url, proxy_username, proxy_password,
-                        verify_ssl, model_endpoint, models_json,
-                        model_configs_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        values["id"], values["name"], values["website_url"],
-                        values["api_key"], values["base_url"], values["protocol"],
-                        values["proxy_mode"], values["proxy_url"],
-                        values["proxy_username"], values["proxy_password"],
-                        int(values["verify_ssl"]),
-                        values["model_endpoint"],
-                        json.dumps(values["models"], ensure_ascii=False),
-                        json.dumps(values["model_configs"], ensure_ascii=False),
-                        values["created_at"], values["updated_at"],
+            with self._transaction() as connection:
+                connection.execute(insert(model_providers).values(
+                    id=values["id"], name=values["name"],
+                    website_url=values["website_url"], api_key=values["api_key"],
+                    base_url=values["base_url"], protocol=values["protocol"],
+                    proxy_mode=values["proxy_mode"], proxy_url=values["proxy_url"],
+                    proxy_username=values["proxy_username"],
+                    proxy_password=values["proxy_password"],
+                    verify_ssl=int(values["verify_ssl"]),
+                    model_endpoint=values["model_endpoint"],
+                    models_json=json.dumps(values["models"], ensure_ascii=False),
+                    model_configs_json=json.dumps(
+                        values["model_configs"], ensure_ascii=False
                     ),
-                )
-                connection.commit()
+                    created_at=values["created_at"], updated_at=values["updated_at"],
+                ))
         except IntegrityError as exc:
             raise ModelProviderRepositoryError(f"写入模型供应商失败: {exc}") from exc
         return record
@@ -281,62 +278,74 @@ class ModelProviderRepository:
     def get(self, provider_id: str) -> ModelProviderRecord | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM model_providers WHERE id = ?", (provider_id,)
-            ).fetchone()
+                select(model_providers).where(model_providers.c.id == provider_id)
+            ).mappings().first()
         return self._from_row(row) if row else None
 
     def list(self) -> list[ModelProviderRecord]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM model_providers ORDER BY updated_at DESC, id DESC"
-            ).fetchall()
+                select(model_providers).order_by(
+                    model_providers.c.updated_at.desc(), model_providers.c.id.desc()
+                )
+            ).mappings().all()
         return [self._from_row(row) for row in rows]
 
     def update(self, record: ModelProviderRecord) -> ModelProviderRecord:
         values = record.model_dump(mode="json")
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                """
-                UPDATE model_providers
-                SET name = ?, website_url = ?, api_key = ?, base_url = ?,
-                    protocol = ?, proxy_mode = ?, proxy_url = ?, model_endpoint = ?,
-                    proxy_username = ?, proxy_password = ?, verify_ssl = ?,
-                    models_json = ?, model_configs_json = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    values["name"], values["website_url"], values["api_key"],
-                    values["base_url"], values["protocol"], values["proxy_mode"],
-                    values["proxy_url"], values["model_endpoint"],
-                    values["proxy_username"], values["proxy_password"],
-                    int(values["verify_ssl"]),
-                    json.dumps(values["models"], ensure_ascii=False),
-                    json.dumps(values["model_configs"], ensure_ascii=False),
-                    values["updated_at"], values["id"],
-                ),
+                update(model_providers)
+                .where(model_providers.c.id == values["id"])
+                .values(
+                    name=values["name"], website_url=values["website_url"],
+                    api_key=values["api_key"], base_url=values["base_url"],
+                    protocol=values["protocol"], proxy_mode=values["proxy_mode"],
+                    proxy_url=values["proxy_url"],
+                    model_endpoint=values["model_endpoint"],
+                    proxy_username=values["proxy_username"],
+                    proxy_password=values["proxy_password"],
+                    verify_ssl=int(values["verify_ssl"]),
+                    models_json=json.dumps(values["models"], ensure_ascii=False),
+                    model_configs_json=json.dumps(
+                        values["model_configs"], ensure_ascii=False
+                    ),
+                    updated_at=values["updated_at"],
+                )
             )
-            connection.commit()
         if cursor.rowcount == 0:
             raise ModelProviderRepositoryError(f"模型供应商不存在: {record.id}")
         return record
 
     def delete(self, provider_id: str) -> bool:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM model_providers WHERE id = ?", (provider_id,)
+                delete(model_providers).where(model_providers.c.id == provider_id)
             )
-            connection.commit()
         return cursor.rowcount > 0
 
     @contextmanager
     def _connect(self, *, initialize: bool = True):
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self):
+        self.initialize()
+        with database_transaction(self.database_path, initialize=False) as connection:
             yield connection
 
     @staticmethod
     def _from_row(row: Any) -> ModelProviderRecord:
+        try:
+            models = json.loads(row["models_json"])
+            model_configs = json.loads(row["model_configs_json"])
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ModelProviderRepositoryError(
+                f"模型供应商 JSON 数据损坏: {row['id']}"
+            ) from exc
         return ModelProviderRecord(
             id=row["id"], name=row["name"], website_url=row["website_url"],
             api_key=row["api_key"], base_url=row["base_url"],
@@ -345,7 +354,7 @@ class ModelProviderRepository:
             proxy_password=row["proxy_password"],
             verify_ssl=bool(row["verify_ssl"]),
             model_endpoint=row["model_endpoint"],
-            models=json.loads(row["models_json"]), created_at=row["created_at"],
-            model_configs=json.loads(row["model_configs_json"]),
+            models=models, created_at=row["created_at"],
+            model_configs=model_configs,
             updated_at=row["updated_at"],
         )

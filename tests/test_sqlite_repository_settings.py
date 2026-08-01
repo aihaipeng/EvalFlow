@@ -31,7 +31,7 @@ def test_repositories_initialize_sqlite_for_concurrent_read_write(
     with sqlite3.connect(database) as connection:
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
     with repository._connect() as connection:
-        synchronous = connection.execute("PRAGMA synchronous").fetchone()[0]
+        synchronous = connection.exec_driver_sql("PRAGMA synchronous").scalar_one()
 
     assert journal_mode == "wal"
     assert synchronous == 1

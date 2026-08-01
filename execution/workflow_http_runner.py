@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from execution.workflow_execution_store import (
@@ -12,6 +14,7 @@ from execution.workflow_execution_store import (
 )
 from execution.workflow_node_runner_base import NodeRunnerBase
 from execution.workflow_values import (
+    ContextVariableNotFoundError,
     WorkflowOutputSourceError,
     WorkflowOutputTypeError,
     WorkflowValueError,
@@ -45,9 +48,6 @@ class HttpNodeRunner(NodeRunnerBase):
             )
             self._fail_pending_configuration(document, error)
             return document, {}
-        started = self._begin_business_node(document, node, controller, on_running)
-        if started is None:
-            return document, {}
         try:
             resolved_url, url_inputs = resolve_template(node.request.url, context)
             headers = []
@@ -70,9 +70,21 @@ class HttpNodeRunner(NodeRunnerBase):
                 body, body_inputs = resolve_template(structural_body, context)
             inputs.update(body_inputs)
             document["inputs"] = inputs
+        except ContextVariableNotFoundError as exc:
+            error = _error(
+                "CONTEXT_VARIABLE_NOT_FOUND",
+                str(exc),
+                {"name": exc.name, "path": exc.path},
+            )
+            self._finish_pending_node(document, "FAILED", error)
+            return document, {}
         except WorkflowValueError as exc:
-            error = _error("HTTP_CONTEXT_RESOLUTION_ERROR", str(exc))
-            self._finish_node(document, "FAILED", started, error=error)
+            error = _error("HTTP_EXECUTION_ERROR", str(exc))
+            self._finish_pending_node(document, "FAILED", error)
+            return document, {}
+
+        started = self._begin_business_node(document, node, controller, on_running)
+        if started is None:
             return document, {}
 
         body_mode = {
@@ -221,9 +233,18 @@ class HttpNodeRunner(NodeRunnerBase):
                 or node.execution.retry_non_idempotent
             ) and retryable_failure
             if attempt_number <= node.execution.max_attempts and can_retry:
+                retry_after_ms = self._retry_after_milliseconds(
+                    attempt.get("response")
+                )
                 if self._wait_interruptibly(
                     controller,
-                    seconds_to_milliseconds(node.execution.retry_interval_seconds),
+                    (
+                        retry_after_ms
+                        if retry_after_ms is not None
+                        else seconds_to_milliseconds(
+                            node.execution.retry_interval_seconds
+                        )
+                    ),
                 ):
                     break
             else:
@@ -231,6 +252,34 @@ class HttpNodeRunner(NodeRunnerBase):
         document["outputs"] = strict_json_clone(outputs) if final_status == "SUCCESS" else {}
         self._finish_node(document, final_status, started, error=final_error)
         return document, outputs if final_status == "SUCCESS" else {}
+
+    @staticmethod
+    def _retry_after_milliseconds(response: Any) -> int | None:
+        if not isinstance(response, dict) or not isinstance(response.get("headers"), list):
+            return None
+        values = [
+            header.get("value")
+            for header in response["headers"]
+            if isinstance(header, dict)
+            and isinstance(header.get("key"), str)
+            and header["key"].lower() == "retry-after"
+        ]
+        if len(values) != 1 or not isinstance(values[0], str):
+            return None
+        value = values[0].strip()
+        if value.isascii() and value.isdigit():
+            return seconds_to_milliseconds(int(value))
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            return None
+        delay_seconds = max(
+            0.0,
+            (retry_at.astimezone(timezone.utc) - datetime.now(timezone.utc)).total_seconds(),
+        )
+        return seconds_to_milliseconds(delay_seconds)
 
     @staticmethod
     def _status_success(status: int, declarations: list[int | str]) -> bool:

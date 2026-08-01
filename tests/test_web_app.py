@@ -1,4 +1,5 @@
 import ast
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,19 +36,26 @@ def test_large_feature_bundles_load_only_when_their_directory_is_opened():
     javascript = (root / "web" / "static" / "app.js").read_text(encoding="utf-8")
     test_sets = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
 
-    assert 'data-feature-css="/assets/test-sets.css?v=' in html
-    assert 'data-feature-js="/assets/test-sets.js?v=' in html
-    assert 'data-feature-css="/assets/workflow-canvas.css?v=' in html
-    assert 'data-feature-js="/assets/workflow-canvas.js?v=' in html
-    assert '<link rel="stylesheet" href="/assets/test-sets.css' not in html
-    assert '<link rel="stylesheet" href="/assets/workflow-canvas.css' not in html
-    assert '<script src="/assets/test-sets.js' not in html
-    assert '<script src="/assets/workflow-canvas.js' not in html
+    rendered = TestClient(app).get("/").text
+    for token in (
+        "__VITE_TEST_SETS_JS__",
+        "__VITE_MODEL_PROVIDERS_JS__",
+        "__VITE_WORKFLOW_CANVAS_JS__",
+        "__VITE_BATCH_RUNS_JS__",
+    ):
+        assert token in html
+        assert token not in rendered
+    for entry in ("test-sets", "model-providers", "workflow-canvas", "batch-runs"):
+        assert re.search(rf'data-feature-js="/assets/vite/{entry}-[^\"]+\.js"', rendered)
+        assert f'<script src="/assets/vite/{entry}-' not in rendered
     assert "function ensureFeatureAssets(view)" in javascript
-    assert "loadFeatureStylesheet(view, stylesheet)" in javascript
+    assert "script.type = 'module';" in javascript
+    assert "stylesheet ? loadFeatureStylesheet(view, stylesheet) : Promise.resolve()" in javascript
     assert ".then(function () { return loadFeatureScript(view, script); })" in javascript
     assert "delete featureAssetLoads[view];" in javascript
     assert "viewWorkflowsWithAssets();" in javascript
+    assert "viewModelProvidersWithAssets();" in javascript
+    assert "viewBatchRunsWithAssets();" in javascript
     assert "document.querySelector('.sidebar-item.active" not in test_sets
 
 
@@ -136,8 +144,8 @@ def test_index_loads_new_workflow_structural_studio():
     assert response.status_code == 200
     assert 'data-view="targets"' not in response.text
     assert 'data-view="workflows"' in response.text
-    assert "/assets/workflow-canvas.js" in response.text
-    assert "/assets/workflow-canvas.css" in response.text
+    assert re.search(r"/assets/vite/workflow-canvas-[^\"]+\.js", response.text)
+    assert re.search(r"/assets/vite/workflow-canvas-[^\"]+\.css", response.text)
 
 
 def test_frontend_no_longer_exposes_target_management():

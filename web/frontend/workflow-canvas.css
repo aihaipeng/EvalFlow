@@ -52,6 +52,10 @@
     --wf-variable-value: #4d5a6e;
 }
 
+:root[data-theme="dark"] {
+    --wf-blue: var(--color-accent);
+}
+
 body.workflow-studio-open {
     overflow: hidden;
 }
@@ -303,10 +307,10 @@ body.workflow-studio-open {
     gap: 7px;
     padding: 0 13px;
     border: 1px solid var(--wf-border);
-    border-radius: 5px;
+    border-radius: var(--radius);
     background: var(--wf-surface);
     color: var(--wf-text);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 650;
     white-space: nowrap;
 }
@@ -506,7 +510,7 @@ body.workflow-studio-open {
 }
 
 .wf-execution-history-summary strong {
-    color: #16803c;
+    color: var(--color-success);
     font-size: 10px;
 }
 
@@ -583,7 +587,7 @@ body.workflow-studio-open {
 }
 
 .wf-run-log-list strong {
-    color: #16803c;
+    color: var(--color-success);
     font-size: 9px;
 }
 
@@ -685,7 +689,7 @@ body.workflow-studio-open {
 }
 
 .wf-node-actions button.is-danger:not(:disabled) {
-    color: #c62828;
+    color: var(--color-danger);
 }
 
 .wf-node-save-toast {
@@ -761,7 +765,7 @@ body.workflow-studio-open {
 }
 
 .wf-node-status.is-success {
-    color: #16803c;
+    color: var(--color-success);
 }
 
 .wf-node-status.is-success i {
@@ -769,11 +773,11 @@ body.workflow-studio-open {
 }
 
 .wf-node-status.is-failed {
-    color: #c62828;
+    color: var(--color-danger);
 }
 
 .wf-node-status.is-failed i {
-    background: #dc2626;
+    background: var(--color-danger);
 }
 
 .wf-node-status.is-interrupted {
@@ -822,12 +826,12 @@ body.workflow-studio-open {
 
 .wf-node-execution.is-success,
 .wf-node-execution.is-success .wf-execution-spinner {
-    color: #16803c;
+    color: var(--color-success);
 }
 
 .wf-node-execution.is-failed,
 .wf-node-execution.is-failed .wf-execution-spinner {
-    color: #c62828;
+    color: var(--color-danger);
 }
 
 .wf-node-execution.is-interrupted,
@@ -845,7 +849,7 @@ body.workflow-studio-open {
 
 .wf-node-saved-state {
     gap: 2px;
-    color: #16803c;
+    color: var(--color-success);
     font-size: 9px;
     white-space: nowrap;
 }
@@ -1138,7 +1142,7 @@ body.workflow-studio-open {
 
 .wf-inspector-actions button.is-saved {
     background: #edf8f0;
-    color: #16803c;
+    color: var(--color-success);
 }
 
 .wf-inspector-tabs {
@@ -1626,7 +1630,7 @@ body.workflow-studio-open {
 
 .wf-model-invalid,
 .wf-model-parameters-error {
-    color: #c72e4e;
+    color: var(--color-danger);
     font-size: 10px;
 }
 
@@ -1780,7 +1784,7 @@ body.workflow-studio-open {
 }
 
 .wf-model-picker-empty.is-error {
-    color: #c72e4e;
+    color: var(--color-danger);
 }
 
 .wf-model-picker-empty .is-spinning {
@@ -1940,7 +1944,7 @@ body.workflow-studio-open {
 }
 
 .wf-node-variable-empty.is-error {
-    color: #c72e4e;
+    color: var(--color-danger);
 }
 
 .wf-node-variable-empty .is-spinning {
@@ -2760,7 +2764,7 @@ body.workflow-studio-open {
 
 .wf-inline-icon-button.is-danger {
     border-color: #fecdd3;
-    color: #c72e4e;
+    color: var(--color-danger);
 }
 
 .wf-embedded-code-editor {
@@ -3019,7 +3023,7 @@ body.workflow-studio-open {
 }
 
 .wf-node-log-panel strong {
-    color: #16803c;
+    color: var(--color-success);
     font-size: 9px;
 }
 
@@ -3079,7 +3083,7 @@ body.workflow-studio-open {
     border: 1px solid #9cc5ae;
     border-radius: 4px;
     background: #edf8f1;
-    color: #16803c;
+    color: var(--color-success);
     font-size: 10px;
     font-weight: 700;
 }
@@ -3118,12 +3122,12 @@ body.workflow-studio-open {
 }
 
 .wf-llm-run-summary strong {
-    color: #16803c;
+    color: var(--color-success);
     font-size: 9px;
 }
 
 .wf-llm-run.is-failed .wf-llm-run-summary strong {
-    color: #c72e4e;
+    color: var(--color-danger);
 }
 
 .wf-llm-run.is-interrupted .wf-llm-run-summary strong {
@@ -3502,13 +3506,15 @@ textarea.wf-script-console {
     position: fixed;
     z-index: 1200;
     inset: 0;
-    display: grid;
-    place-items: center;
-    padding: 28px;
     background: rgba(18, 25, 37, 0.42);
 }
 
 .wf-node-test-dialog {
+    position: fixed;
+    z-index: 1201;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: grid;
     width: min(760px, calc(100vw - 56px));
     max-height: calc(100vh - 80px);
@@ -3581,12 +3587,12 @@ textarea.wf-script-console {
 }
 
 .wf-node-test-dialog button.is-danger {
-    color: #c72e4e;
+    color: var(--color-danger);
 }
 
 .wf-node-test-dialog button.is-primary {
-    border-color: #16803c;
-    background: #16803c;
+    border-color: var(--color-success);
+    background: var(--color-success);
     color: #fff;
 }
 

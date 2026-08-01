@@ -1,0 +1,5283 @@
+{
+  "components": {
+    "schemas": {
+      "BatchCaseListEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "additionalProperties": true,
+            "title": "Batch",
+            "type": "object"
+          },
+          "cases": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Summary",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_all": {
+            "title": "Total All",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch",
+          "cases",
+          "total",
+          "page",
+          "page_size",
+          "total_all",
+          "summary"
+        ],
+        "title": "BatchCaseListEnvelope",
+        "type": "object"
+      },
+      "BatchCopyNameEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BatchCopyNameEnvelope",
+        "type": "object"
+      },
+      "BatchCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "call_order": {
+            "default": "SEQUENTIAL",
+            "enum": [
+              "SEQUENTIAL",
+              "REVERSE",
+              "RANDOM"
+            ],
+            "title": "Call Order",
+            "type": "string"
+          },
+          "case_concurrency": {
+            "default": 1,
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Case Concurrency",
+            "type": "integer"
+          },
+          "case_display_column": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Display Column"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "evaluation_rules": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRule"
+            },
+            "maxItems": 50,
+            "title": "Evaluation Rules",
+            "type": "array"
+          },
+          "failure_retry_count": {
+            "default": 0,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Failure Retry Count",
+            "type": "integer"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "rule_display_column": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Display Column"
+          },
+          "test_set_id": {
+            "minLength": 1,
+            "title": "Test Set Id",
+            "type": "string"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/BatchVariable"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Variables",
+            "type": "array"
+          },
+          "workflow_id": {
+            "minLength": 1,
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_set_id",
+          "workflow_id",
+          "variables"
+        ],
+        "title": "BatchCreateRequest",
+        "type": "object"
+      },
+      "BatchEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "additionalProperties": true,
+            "title": "Batch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "batch"
+        ],
+        "title": "BatchEnvelope",
+        "type": "object"
+      },
+      "BatchHistoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "executed_cases": {
+            "title": "Executed Cases",
+            "type": "integer"
+          },
+          "execution_round_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Round Id"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "passed_cases": {
+            "title": "Passed Cases",
+            "type": "integer"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "test_set_name": {
+            "title": "Test Set Name",
+            "type": "string"
+          },
+          "total_cases": {
+            "title": "Total Cases",
+            "type": "integer"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "batch_id",
+          "execution_round_id",
+          "workflow_id",
+          "test_set_name",
+          "workflow_name",
+          "total_cases",
+          "executed_cases",
+          "passed_cases",
+          "started_at",
+          "finished_at",
+          "created_at"
+        ],
+        "title": "BatchHistoryItem",
+        "type": "object"
+      },
+      "BatchHistoryListEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/BatchHistoryItem"
+            },
+            "title": "History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "history"
+        ],
+        "title": "BatchHistoryListEnvelope",
+        "type": "object"
+      },
+      "BatchListEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Batches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batches"
+        ],
+        "title": "BatchListEnvelope",
+        "type": "object"
+      },
+      "BatchPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "test_set_id": {
+            "minLength": 1,
+            "title": "Test Set Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_set_id"
+        ],
+        "title": "BatchPreviewRequest",
+        "type": "object"
+      },
+      "BatchPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "sample_rows": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPreviewSample"
+            },
+            "title": "Sample Rows",
+            "type": "array"
+          },
+          "test_set_id": {
+            "title": "Test Set Id",
+            "type": "string"
+          },
+          "test_set_name": {
+            "title": "Test Set Name",
+            "type": "string"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "test_set_id",
+          "test_set_name",
+          "headers",
+          "total_rows",
+          "sample_rows"
+        ],
+        "title": "BatchPreviewResponse",
+        "type": "object"
+      },
+      "BatchPreviewSample": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "row_number": {
+            "title": "Row Number",
+            "type": "integer"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "case_id",
+          "row_number",
+          "values"
+        ],
+        "title": "BatchPreviewSample",
+        "type": "object"
+      },
+      "BatchResumeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "retry_failed": {
+            "default": false,
+            "title": "Retry Failed",
+            "type": "boolean"
+          }
+        },
+        "title": "BatchResumeRequest",
+        "type": "object"
+      },
+      "BatchRoundListEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "rounds": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rounds"
+        ],
+        "title": "BatchRoundListEnvelope",
+        "type": "object"
+      },
+      "BatchScheduleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cadence": {
+            "default": "DAILY",
+            "enum": [
+              "ONCE",
+              "DAILY",
+              "WEEKLY",
+              "MONTHLY"
+            ],
+            "title": "Cadence",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "month_day": {
+            "default": 1,
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Month Day",
+            "type": "integer"
+          },
+          "overlap_policy": {
+            "default": "SKIP",
+            "enum": [
+              "SKIP",
+              "QUEUE"
+            ],
+            "title": "Overlap Policy",
+            "type": "string"
+          },
+          "run_at": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Run At",
+            "type": "string"
+          },
+          "run_time": {
+            "default": "09:00",
+            "maxLength": 16,
+            "title": "Run Time",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "Asia/Shanghai",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "weekdays": {
+            "items": {
+              "enum": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              "type": "string"
+            },
+            "maxItems": 7,
+            "title": "Weekdays",
+            "type": "array"
+          }
+        },
+        "title": "BatchScheduleRequest",
+        "type": "object"
+      },
+      "BatchStartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "FULL",
+            "enum": [
+              "FULL",
+              "RESUME",
+              "RETRY_FAILED"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "BatchStartRequest",
+        "type": "object"
+      },
+      "BatchVariable": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "CUSTOM",
+              "TEST_SET"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "object",
+              "array",
+              "null"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "key",
+          "type"
+        ],
+        "title": "BatchVariable",
+        "type": "object"
+      },
+      "ClipboardRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 5242880,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ClipboardRequest",
+        "type": "object"
+      },
+      "EndNodeStructuralModel": {
+        "additionalProperties": false,
+        "description": "END 节点结构模型，只作为 Workflow 的结构终点。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "节点用途说明，允许为空。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "description": "节点全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "用户可见节点名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "END",
+            "default": "END",
+            "description": "固定节点类型 END。",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "EndNodeStructuralModel",
+        "type": "object"
+      },
+      "EvaluationRule": {
+        "additionalProperties": false,
+        "description": "One typed assertion over the final Workflow Context.",
+        "properties": {
+          "expected_value": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Expected Value",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "EQ",
+              "NE",
+              "CONTAINS",
+              "REGEX",
+              "EXISTS",
+              "NOT_EMPTY",
+              "GT",
+              "GTE",
+              "LT",
+              "LTE",
+              "JSON_EQUAL"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "result_path": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Result Path",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "object",
+              "array",
+              "null"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_path",
+          "operator",
+          "type"
+        ],
+        "title": "EvaluationRule",
+        "type": "object"
+      },
+      "ExecutionDirectoryResponse": {
+        "additionalProperties": false,
+        "description": "打开本地 Execution 根目录的结果。",
+        "properties": {
+          "ok": {
+            "description": "资源管理器调用是否成功。",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "已打开的绝对目录路径。",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "path"
+        ],
+        "title": "ExecutionDirectoryResponse",
+        "type": "object"
+      },
+      "GenerationDefinition": {
+        "additionalProperties": false,
+        "description": "LLM 节点覆盖模型默认 Body 的供应商原生高级参数。",
+        "properties": {
+          "parameters": {
+            "additionalProperties": true,
+            "description": "用户覆盖的供应商原生高级参数 JSON 对象。",
+            "title": "Parameters",
+            "type": "object"
+          },
+          "parameters_text": {
+            "default": "",
+            "description": "高级参数编辑器的草稿文本；允许暂存非 JSON 内容，执行前再校验。",
+            "maxLength": 20000,
+            "title": "Parameters Text",
+            "type": "string"
+          }
+        },
+        "title": "GenerationDefinition",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HttpBody": {
+        "additionalProperties": false,
+        "description": "Context 解析前的 HTTP Body 编码类型和内容模板。",
+        "properties": {
+          "content": {
+            "description": "Body 模板；结构由 type 决定并支持 Context 引用。",
+            "title": "Content"
+          },
+          "template_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "raw Body 的原始 JSON 模板文本。",
+            "title": "Template Text"
+          },
+          "type": {
+            "default": "none",
+            "description": "请求 Body 编码方式。",
+            "enum": [
+              "none",
+              "raw",
+              "form_data",
+              "form_urlencoded"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "HttpBody",
+        "type": "object"
+      },
+      "HttpExecution": {
+        "additionalProperties": false,
+        "description": "HTTP 执行约束，在公共超时重试字段上增加方法和状态码重试策略。",
+        "properties": {
+          "delay_seconds": {
+            "default": 0,
+            "description": "首次实际尝试前只执行一次的等待时间，单位秒；默认 0，允许小数秒。",
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "title": "Delay Seconds",
+            "type": "number"
+          },
+          "max_attempts": {
+            "default": 0,
+            "description": "最大重试次数，默认 0，不包含首次尝试。",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "retry_interval_seconds": {
+            "default": 0,
+            "description": "两次尝试之间的等待时间，单位秒；默认 0，允许小数秒。",
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "title": "Retry Interval Seconds",
+            "type": "number"
+          },
+          "retry_non_idempotent": {
+            "default": false,
+            "description": "是否允许 POST/PATCH 自动重试。",
+            "title": "Retry Non Idempotent",
+            "type": "boolean"
+          },
+          "retry_statuses": {
+            "description": "允许触发自动重试的 HTTP 失败状态码。",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Retry Statuses",
+            "type": "array"
+          },
+          "timeout_seconds": {
+            "default": 600,
+            "description": "单次实际尝试的总超时，单位秒；默认 600，允许小数秒。",
+            "minimum": 0.001,
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "title": "HttpExecution",
+        "type": "object"
+      },
+      "HttpHeader": {
+        "additionalProperties": false,
+        "description": "HTTP 请求的一项用户 Header；Header 值可在执行时引用 Context。",
+        "properties": {
+          "key": {
+            "description": "不含 Context 引用的 HTTP Header 名。",
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "支持 Context 引用的 HTTP Header 值模板。",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "HttpHeader",
+        "type": "object"
+      },
+      "HttpNetwork": {
+        "additionalProperties": false,
+        "description": "HTTP 请求的网络策略，独立组合代理路由和 TLS 证书验证。",
+        "properties": {
+          "proxy": {
+            "$ref": "#/components/schemas/HttpProxy",
+            "description": "Proxy 路由与凭据。"
+          },
+          "verify_ssl": {
+            "default": true,
+            "description": "是否验证目标及 HTTPS Proxy 证书。",
+            "title": "Verify Ssl",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpNetwork",
+        "type": "object"
+      },
+      "HttpNodeStructuralModel": {
+        "additionalProperties": false,
+        "description": "HTTP 节点结构模型，面向内网 API 请求并保存请求、网络、响应、重试和输出配置。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "节点用途说明，允许为空。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/HttpExecution",
+            "description": "HTTP 总超时与重试策略；省略时使用平台默认执行策略。"
+          },
+          "id": {
+            "description": "节点全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "用户可见节点名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "network": {
+            "$ref": "#/components/schemas/HttpNetwork",
+            "description": "Proxy 与 SSL 验证配置；CUSTOM 允许暂缺 URL 保存。"
+          },
+          "outputs": {
+            "description": "从最终 request/response 提取的输出绑定。",
+            "items": {
+              "$ref": "#/components/schemas/NodeOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "request": {
+            "$ref": "#/components/schemas/HttpRequest",
+            "description": "业务 HTTP 请求模板；允许空 URL 保存。"
+          },
+          "response": {
+            "$ref": "#/components/schemas/HttpResponseDefinition",
+            "description": "响应解析和成功判定配置。"
+          },
+          "type": {
+            "const": "HTTP",
+            "default": "HTTP",
+            "description": "固定节点类型 HTTP。",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "HttpNodeStructuralModel",
+        "type": "object"
+      },
+      "HttpParameter": {
+        "additionalProperties": false,
+        "description": "HTTP 请求的一项有序 Query 参数；同名参数可按数组顺序重复出现。",
+        "properties": {
+          "key": {
+            "description": "Query 参数名。",
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "支持 Context 引用的 JSON 标量参数值。",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "HttpParameter",
+        "type": "object"
+      },
+      "HttpProxy": {
+        "additionalProperties": false,
+        "description": "HTTP 节点显式选择的 SYSTEM、DIRECT 或 CUSTOM 代理路由及可选认证信息。",
+        "properties": {
+          "mode": {
+            "default": "SYSTEM",
+            "description": "请求使用的 Proxy 路由模式。",
+            "enum": [
+              "SYSTEM",
+              "DIRECT",
+              "CUSTOM"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSTOM Proxy 密码。",
+            "title": "Password"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSTOM 模式的 HTTP/HTTPS Proxy URL。",
+            "title": "Url"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSTOM Proxy 用户名。",
+            "title": "Username"
+          }
+        },
+        "title": "HttpProxy",
+        "type": "object"
+      },
+      "HttpRequest": {
+        "additionalProperties": false,
+        "description": "HTTP 节点的业务请求声明，包含方法、URL、Header、Query、重定向和 Body。",
+        "properties": {
+          "body": {
+            "$ref": "#/components/schemas/HttpBody",
+            "description": "请求 Body 定义。"
+          },
+          "follow_redirects": {
+            "default": true,
+            "description": "是否由底层 HTTP 客户端跟随重定向。",
+            "title": "Follow Redirects",
+            "type": "boolean"
+          },
+          "headers": {
+            "description": "保持用户声明顺序的请求 Header。",
+            "items": {
+              "$ref": "#/components/schemas/HttpHeader"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "method": {
+            "default": "POST",
+            "description": "HTTP 请求方法。",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "params": {
+            "description": "保持用户声明顺序的 Query 参数。",
+            "items": {
+              "$ref": "#/components/schemas/HttpParameter"
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "url": {
+            "default": "",
+            "description": "支持 Context 引用的 HTTP/HTTPS URL；允许空值保存。",
+            "maxLength": 8000,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "title": "HttpRequest",
+        "type": "object"
+      },
+      "HttpResponseDefinition": {
+        "additionalProperties": false,
+        "description": "HTTP 最终响应的 Body 表示方式和业务成功状态码声明。",
+        "properties": {
+          "mode": {
+            "default": "AUTO",
+            "description": "最终响应 Body 的表示方式。",
+            "enum": [
+              "AUTO",
+              "JSON",
+              "TEXT",
+              "BINARY"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "success_statuses": {
+            "description": "视为成功的状态码或闭区间数组。",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Success Statuses",
+            "type": "array"
+          }
+        },
+        "title": "HttpResponseDefinition",
+        "type": "object"
+      },
+      "JsonVariableInput": {
+        "additionalProperties": false,
+        "description": "START 的一项初始变量声明，执行成功时按原名称和值提交到 Context。",
+        "properties": {
+          "name": {
+            "description": "写入 Context 的大小写敏感变量名。",
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "description": "用户声明的严格 JSON 类型。",
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "object",
+              "array",
+              "null"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "description": "与 type 精确匹配的严格 JSON 值。",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "value"
+        ],
+        "title": "JsonVariableInput",
+        "type": "object"
+      },
+      "LlmContextDefinition": {
+        "additionalProperties": false,
+        "description": "LLM 阻塞调用使用的有序上下文消息序列。",
+        "properties": {
+          "messages": {
+            "description": "固定以 SYSTEM、USER 开始并按 ASSISTANT、USER 交替追加的消息模板；允许空内容和暂时停在 ASSISTANT 的草稿。",
+            "items": {
+              "$ref": "#/components/schemas/LlmContextMessage"
+            },
+            "minItems": 2,
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "title": "LlmContextDefinition",
+        "type": "object"
+      },
+      "LlmContextMessage": {
+        "additionalProperties": false,
+        "description": "LLM 上下文中的一条有序消息模板。",
+        "properties": {
+          "content": {
+            "default": "",
+            "description": "支持 Context 变量引用的消息模板；允许空值保存。",
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "description": "消息角色；结构定义使用固定的大写枚举。",
+            "enum": [
+              "SYSTEM",
+              "USER",
+              "ASSISTANT"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "LlmContextMessage",
+        "type": "object"
+      },
+      "LlmNodeStructuralModel": {
+        "additionalProperties": false,
+        "description": "LLM 节点结构模型，保存模型引用、上下文、生成参数、执行约束和输出绑定。",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/LlmContextDefinition",
+            "description": "有序上下文消息模板；消息内容允许空值保存。"
+          },
+          "description": {
+            "default": "",
+            "description": "节点用途说明，允许为空。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/RetryExecution",
+            "description": "模型调用超时与重试配置；省略时使用平台默认执行策略。"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/GenerationDefinition",
+            "description": "节点级高级模型参数。"
+          },
+          "id": {
+            "description": "节点全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelReference",
+            "description": "模型管理中的供应商和模型引用；允许空值保存。"
+          },
+          "name": {
+            "description": "用户可见节点名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "outputs": {
+            "description": "从协议解析结果 result 或供应商原始 response 提取的输出绑定。",
+            "items": {
+              "$ref": "#/components/schemas/NodeOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "type": {
+            "const": "LLM",
+            "default": "LLM",
+            "description": "固定节点类型 LLM。",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LlmNodeStructuralModel",
+        "type": "object"
+      },
+      "ModelAvailabilityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "default_body": {
+            "additionalProperties": true,
+            "title": "Default Body",
+            "type": "object"
+          },
+          "model_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model Name",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ModelProviderProtocol",
+            "default": "OPENAI_COMPATIBLE"
+          },
+          "proxy_mode": {
+            "$ref": "#/components/schemas/ModelProviderProxyMode",
+            "default": "SYSTEM"
+          },
+          "proxy_password": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Password"
+          },
+          "proxy_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Url"
+          },
+          "proxy_username": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Username"
+          },
+          "verify_ssl": {
+            "default": true,
+            "title": "Verify Ssl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "base_url",
+          "api_key",
+          "model_name"
+        ],
+        "title": "ModelAvailabilityRequest",
+        "type": "object"
+      },
+      "ModelAvailabilityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output"
+          },
+          "response_body": {
+            "title": "Response Body",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "available",
+          "latency_ms",
+          "status_code",
+          "response_body",
+          "error"
+        ],
+        "title": "ModelAvailabilityResponse",
+        "type": "object"
+      },
+      "ModelProviderConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "model_configs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelRuntimeConfiguration"
+            },
+            "title": "Model Configs",
+            "type": "object"
+          },
+          "model_endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Endpoint"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ModelProviderProtocol"
+          },
+          "proxy_mode": {
+            "$ref": "#/components/schemas/ModelProviderProxyMode",
+            "default": "SYSTEM"
+          },
+          "proxy_password": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Password"
+          },
+          "proxy_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Url"
+          },
+          "proxy_username": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Username"
+          },
+          "verify_ssl": {
+            "default": true,
+            "title": "Verify Ssl",
+            "type": "boolean"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "api_key",
+          "base_url",
+          "protocol",
+          "models"
+        ],
+        "title": "ModelProviderConfiguration",
+        "type": "object"
+      },
+      "ModelProviderProtocol": {
+        "enum": [
+          "OPENAI_COMPATIBLE",
+          "OPENAI_RESPONSES",
+          "ANTHROPIC",
+          "MANUAL"
+        ],
+        "title": "ModelProviderProtocol",
+        "type": "string"
+      },
+      "ModelProviderProxyMode": {
+        "enum": [
+          "SYSTEM",
+          "DIRECT",
+          "CUSTOM"
+        ],
+        "title": "ModelProviderProxyMode",
+        "type": "string"
+      },
+      "ModelProviderRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "model_configs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelRuntimeConfiguration"
+            },
+            "title": "Model Configs",
+            "type": "object"
+          },
+          "model_endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Endpoint"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ModelProviderProtocol"
+          },
+          "proxy_mode": {
+            "$ref": "#/components/schemas/ModelProviderProxyMode",
+            "default": "SYSTEM"
+          },
+          "proxy_password": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Password"
+          },
+          "proxy_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Url"
+          },
+          "proxy_username": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Username"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verify_ssl": {
+            "default": true,
+            "title": "Verify Ssl",
+            "type": "boolean"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "api_key",
+          "base_url",
+          "protocol",
+          "models"
+        ],
+        "title": "ModelProviderRecord",
+        "type": "object"
+      },
+      "ModelProviderSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Endpoint"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ModelProviderProtocol"
+          },
+          "proxy_mode": {
+            "$ref": "#/components/schemas/ModelProviderProxyMode"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "website_url",
+          "base_url",
+          "protocol",
+          "proxy_mode",
+          "model_endpoint",
+          "models",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ModelProviderSummary",
+        "type": "object"
+      },
+      "ModelReference": {
+        "additionalProperties": false,
+        "description": "LLM 节点对模型管理中一个供应商及其模型的稳定引用。",
+        "properties": {
+          "model_name": {
+            "default": "",
+            "description": "供应商下已添加的模型名称；允许空值保存。",
+            "maxLength": 200,
+            "title": "Model Name",
+            "type": "string"
+          },
+          "provider_id": {
+            "default": "",
+            "description": "模型供应商配置 ID；允许空值保存。",
+            "maxLength": 200,
+            "title": "Provider Id",
+            "type": "string"
+          }
+        },
+        "title": "ModelReference",
+        "type": "object"
+      },
+      "ModelRuntimeConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "context_window": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "default_body": {
+            "additionalProperties": true,
+            "title": "Default Body",
+            "type": "object"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output Tokens"
+          }
+        },
+        "title": "ModelRuntimeConfiguration",
+        "type": "object"
+      },
+      "NodeExecutionListResponse": {
+        "additionalProperties": false,
+        "description": "一次 Workflow Execution 的全部 Node Execution JSON 响应。",
+        "properties": {
+          "executions": {
+            "description": "本次执行已经创建的 Node Execution。",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Executions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "executions"
+        ],
+        "title": "NodeExecutionListResponse",
+        "type": "object"
+      },
+      "NodeOutput": {
+        "additionalProperties": false,
+        "description": "业务节点的一项输出绑定，声明 Context 变量名、目标类型和取值来源。",
+        "properties": {
+          "name": {
+            "description": "成功后写入 Context 的大小写敏感变量名。",
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "从节点实际结果读取值的类型专属表达式。",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "description": "输出值的目标 JSON 类型。",
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "object",
+              "array",
+              "null"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "source"
+        ],
+        "title": "NodeOutput",
+        "type": "object"
+      },
+      "NodeTestCancelResponse": {
+        "additionalProperties": false,
+        "description": "单节点临时测试中断请求结果。",
+        "properties": {
+          "interrupted": {
+            "description": "是否找到并通知了活动 Worker。",
+            "title": "Interrupted",
+            "type": "boolean"
+          },
+          "test_id": {
+            "description": "被请求中断的临时测试 ID。",
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id",
+          "interrupted"
+        ],
+        "title": "NodeTestCancelResponse",
+        "type": "object"
+      },
+      "NodeTestEnvelope": {
+        "additionalProperties": false,
+        "description": "单节点临时测试身份和当前前端快照。",
+        "properties": {
+          "node_id": {
+            "description": "被测试的节点 ID。",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "description": "不含 Execution 身份或结构快照的临时事实。",
+            "title": "Snapshot",
+            "type": "object"
+          },
+          "status": {
+            "description": "当前临时状态。",
+            "title": "Status",
+            "type": "string"
+          },
+          "test_id": {
+            "description": "仅用于本次事件连接和中断的临时 UUID。",
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id",
+          "node_id",
+          "status",
+          "snapshot"
+        ],
+        "title": "NodeTestEnvelope",
+        "type": "object"
+      },
+      "NodeTestRequest": {
+        "additionalProperties": false,
+        "description": "使用当前未保存节点草稿和本次临时 Context 启动测试。",
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "description": "只对本次测试有效、大小写敏感的严格 JSON 变量池。",
+            "title": "Context",
+            "type": "object"
+          },
+          "node": {
+            "description": "当前前端节点草稿，不要求已经保存。",
+            "discriminator": {
+              "mapping": {
+                "END": "#/components/schemas/EndNodeStructuralModel",
+                "HTTP": "#/components/schemas/HttpNodeStructuralModel",
+                "LLM": "#/components/schemas/LlmNodeStructuralModel",
+                "SCRIPT": "#/components/schemas/ScriptNodeStructuralModel",
+                "START": "#/components/schemas/StartNodeStructuralModel"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StartNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/ScriptNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/LlmNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/HttpNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/EndNodeStructuralModel"
+              }
+            ],
+            "title": "Node"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "title": "NodeTestRequest",
+        "type": "object"
+      },
+      "ProviderConnectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ModelProviderProtocol",
+            "default": "OPENAI_COMPATIBLE"
+          },
+          "proxy_mode": {
+            "$ref": "#/components/schemas/ModelProviderProxyMode",
+            "default": "SYSTEM"
+          },
+          "proxy_password": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Password"
+          },
+          "proxy_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Url"
+          },
+          "proxy_username": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Username"
+          },
+          "verify_ssl": {
+            "default": true,
+            "title": "Verify Ssl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "base_url",
+          "api_key"
+        ],
+        "title": "ProviderConnectionRequest",
+        "type": "object"
+      },
+      "ProviderDiscoveredModel": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owned_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owned By"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ProviderDiscoveredModel",
+        "type": "object"
+      },
+      "ProviderEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/ModelProviderRecord"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "ProviderEnvelope",
+        "type": "object"
+      },
+      "ProviderLatencyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reachable",
+          "latency_ms",
+          "status_code"
+        ],
+        "title": "ProviderLatencyResponse",
+        "type": "object"
+      },
+      "ProviderListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ModelProviderSummary"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "ProviderListResponse",
+        "type": "object"
+      },
+      "ProviderModelsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderDiscoveredModel"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "endpoint",
+          "latency_ms",
+          "models"
+        ],
+        "title": "ProviderModelsResponse",
+        "type": "object"
+      },
+      "ProviderSummaryEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/ModelProviderSummary"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "ProviderSummaryEnvelope",
+        "type": "object"
+      },
+      "RetryExecution": {
+        "additionalProperties": false,
+        "description": "SCRIPT、LLM 和 HTTP 共用的首次延迟、单次超时与自动重试声明。",
+        "properties": {
+          "delay_seconds": {
+            "default": 0,
+            "description": "首次实际尝试前只执行一次的等待时间，单位秒；默认 0，允许小数秒。",
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "title": "Delay Seconds",
+            "type": "number"
+          },
+          "max_attempts": {
+            "default": 0,
+            "description": "最大重试次数，默认 0，不包含首次尝试。",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "retry_interval_seconds": {
+            "default": 0,
+            "description": "两次尝试之间的等待时间，单位秒；默认 0，允许小数秒。",
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "title": "Retry Interval Seconds",
+            "type": "number"
+          },
+          "timeout_seconds": {
+            "default": 600,
+            "description": "单次实际尝试的总超时，单位秒；默认 600，允许小数秒。",
+            "minimum": 0.001,
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "title": "RetryExecution",
+        "type": "object"
+      },
+      "ScriptNodeStructuralModel": {
+        "additionalProperties": false,
+        "description": "SCRIPT 节点结构模型，保存完整 Python 源码、执行约束和顶层变量输出绑定。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "节点用途说明，允许为空。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/RetryExecution",
+            "description": "脚本超时与重试配置；省略时使用平台默认执行策略。"
+          },
+          "id": {
+            "description": "节点全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "用户可见节点名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "outputs": {
+            "description": "从顶层 Python 变量读取的输出绑定。",
+            "items": {
+              "$ref": "#/components/schemas/NodeOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "script": {
+            "default": "",
+            "description": "用户编写的完整 Python 源码文本；允许空值保存。",
+            "title": "Script",
+            "type": "string"
+          },
+          "type": {
+            "const": "SCRIPT",
+            "default": "SCRIPT",
+            "description": "固定节点类型 SCRIPT。",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ScriptNodeStructuralModel",
+        "type": "object"
+      },
+      "StartNodeStructuralModel": {
+        "additionalProperties": false,
+        "description": "START 节点结构模型，只声明工作流开始时写入 Context 的初始变量。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "节点用途说明，允许为空。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "description": "节点全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "description": "按声明顺序原子提交到 Context 的输入数组。",
+            "items": {
+              "$ref": "#/components/schemas/JsonVariableInput"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "name": {
+            "description": "用户可见节点名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "START",
+            "default": "START",
+            "description": "固定节点类型 START。",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "StartNodeStructuralModel",
+        "type": "object"
+      },
+      "TestCaseWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "TestCaseWrite",
+        "type": "object"
+      },
+      "TestSetCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/TestCaseWrite"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "columns"
+        ],
+        "title": "TestSetCreateRequest",
+        "type": "object"
+      },
+      "TestSetMetadataUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TestSetMetadataUpdateRequest",
+        "type": "object"
+      },
+      "TestSetUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/TestCaseWrite"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "columns"
+        ],
+        "title": "TestSetUpdateRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkflowEdge": {
+        "additionalProperties": false,
+        "description": "同一 Workflow 内从一个 Node 指向另一个 Node 的调度依赖。",
+        "properties": {
+          "id": {
+            "description": "Edge 全局唯一的 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "source_node_id": {
+            "description": "上游 Node UUIDv4。",
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "target_node_id": {
+            "description": "下游 Node UUIDv4。",
+            "title": "Target Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_node_id",
+          "target_node_id"
+        ],
+        "title": "WorkflowEdge",
+        "type": "object"
+      },
+      "WorkflowEnvelope": {
+        "additionalProperties": false,
+        "description": "单个完整 Workflow Structural Record 响应。",
+        "properties": {
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowStructuralRecord",
+            "description": "完整 Workflow Structural Record。"
+          }
+        },
+        "required": [
+          "workflow"
+        ],
+        "title": "WorkflowEnvelope",
+        "type": "object"
+      },
+      "WorkflowExecutionEnvelope": {
+        "additionalProperties": false,
+        "description": "单个 Workflow Execution JSON 响应。",
+        "properties": {
+          "execution": {
+            "additionalProperties": true,
+            "description": "完整 Workflow Execution JSON。",
+            "title": "Execution",
+            "type": "object"
+          }
+        },
+        "required": [
+          "execution"
+        ],
+        "title": "WorkflowExecutionEnvelope",
+        "type": "object"
+      },
+      "WorkflowExecutionListResponse": {
+        "additionalProperties": false,
+        "description": "最近 Workflow Execution JSON 列表响应。",
+        "properties": {
+          "executions": {
+            "description": "按创建时间倒序的最近执行。",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Executions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "executions"
+        ],
+        "title": "WorkflowExecutionListResponse",
+        "type": "object"
+      },
+      "WorkflowListResponse": {
+        "additionalProperties": false,
+        "description": "Workflow 一级列表摘要响应。",
+        "properties": {
+          "workflows": {
+            "description": "按更新时间倒序的 Workflow 摘要。",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStructuralSummary"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workflows"
+        ],
+        "title": "WorkflowListResponse",
+        "type": "object"
+      },
+      "WorkflowMetadataRequest": {
+        "additionalProperties": false,
+        "description": "只修改既有 Workflow 名称和说明的请求。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "Workflow 用途说明。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "description": "保留原文的 Workflow 名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WorkflowMetadataRequest",
+        "type": "object"
+      },
+      "WorkflowNodeBinding": {
+        "additionalProperties": false,
+        "description": "一个 Workflow 对独立 Node Structural Model 的引用和画布坐标。",
+        "properties": {
+          "node_id": {
+            "description": "被当前 Workflow 引用的 Node UUIDv4。",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "position_x": {
+            "description": "Node 在画布中的有限 X 坐标。",
+            "title": "Position X",
+            "type": "number"
+          },
+          "position_y": {
+            "description": "Node 在画布中的有限 Y 坐标。",
+            "title": "Position Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node_id",
+          "position_x",
+          "position_y"
+        ],
+        "title": "WorkflowNodeBinding",
+        "type": "object"
+      },
+      "WorkflowNodeWrite": {
+        "additionalProperties": false,
+        "description": "一次完整保存中的 Node Structural Model 及其画布坐标。",
+        "properties": {
+          "node": {
+            "description": "完整 Node Structural Model。",
+            "discriminator": {
+              "mapping": {
+                "END": "#/components/schemas/EndNodeStructuralModel",
+                "HTTP": "#/components/schemas/HttpNodeStructuralModel",
+                "LLM": "#/components/schemas/LlmNodeStructuralModel",
+                "SCRIPT": "#/components/schemas/ScriptNodeStructuralModel",
+                "START": "#/components/schemas/StartNodeStructuralModel"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StartNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/ScriptNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/LlmNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/HttpNodeStructuralModel"
+              },
+              {
+                "$ref": "#/components/schemas/EndNodeStructuralModel"
+              }
+            ],
+            "title": "Node"
+          },
+          "position_x": {
+            "description": "Node 画布 X 坐标。",
+            "title": "Position X",
+            "type": "number"
+          },
+          "position_y": {
+            "description": "Node 画布 Y 坐标。",
+            "title": "Position Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "position_x",
+          "position_y"
+        ],
+        "title": "WorkflowNodeWrite",
+        "type": "object"
+      },
+      "WorkflowStructuralModel": {
+        "additionalProperties": false,
+        "description": "Workflow 当前权威结构，只保存身份、展示信息、Node 引用坐标和 Edge。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "Workflow 用途说明。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "edges": {
+            "description": "有向调度依赖数组。",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "id": {
+            "description": "Workflow 全局唯一的规范 UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "保留原文的用户可见名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "nodes": {
+            "description": "Node 引用和画布坐标数组。",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodeBinding"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nodes",
+          "edges"
+        ],
+        "title": "WorkflowStructuralModel",
+        "type": "object"
+      },
+      "WorkflowStructuralRecord": {
+        "additionalProperties": false,
+        "description": "Repository 返回对象，组合完整 Workflow 结构和数据库管理时间。",
+        "properties": {
+          "created_at": {
+            "description": "首次持久化时间，UTC ISO-8601。",
+            "title": "Created At",
+            "type": "string"
+          },
+          "node_models": {
+            "description": "Workflow bindings 所引用的完整 Node Structural Model 数组。",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "END": "#/components/schemas/EndNodeStructuralModel",
+                  "HTTP": "#/components/schemas/HttpNodeStructuralModel",
+                  "LLM": "#/components/schemas/LlmNodeStructuralModel",
+                  "SCRIPT": "#/components/schemas/ScriptNodeStructuralModel",
+                  "START": "#/components/schemas/StartNodeStructuralModel"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/StartNodeStructuralModel"
+                },
+                {
+                  "$ref": "#/components/schemas/ScriptNodeStructuralModel"
+                },
+                {
+                  "$ref": "#/components/schemas/LlmNodeStructuralModel"
+                },
+                {
+                  "$ref": "#/components/schemas/HttpNodeStructuralModel"
+                },
+                {
+                  "$ref": "#/components/schemas/EndNodeStructuralModel"
+                }
+              ]
+            },
+            "title": "Node Models",
+            "type": "array"
+          },
+          "updated_at": {
+            "description": "最近结构保存时间，UTC ISO-8601。",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowStructuralModel",
+            "description": "完整且已校验的 Workflow Structural Model。"
+          }
+        },
+        "required": [
+          "workflow",
+          "node_models",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkflowStructuralRecord",
+        "type": "object"
+      },
+      "WorkflowStructuralSummary": {
+        "additionalProperties": false,
+        "description": "Workflow 一级列表使用的最小只读摘要。",
+        "properties": {
+          "description": {
+            "description": "用户可见说明。",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "description": "Workflow UUIDv4。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "用户可见名称。",
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "最近结构保存时间，UTC ISO-8601。",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "updated_at"
+        ],
+        "title": "WorkflowStructuralSummary",
+        "type": "object"
+      },
+      "WorkflowWriteRequest": {
+        "additionalProperties": false,
+        "description": "创建或完整替换 Workflow 当前结构的请求。",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "Workflow 用途说明。",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "edges": {
+            "description": "有向调度依赖数组。",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "name": {
+            "description": "保留原文的 Workflow 名称。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "nodes": {
+            "description": "完整 Node 结构和画布坐标。",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodeWrite"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "nodes",
+          "edges"
+        ],
+        "title": "WorkflowWriteRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "EvalFlow",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "description": "返回首页 HTML。",
+        "operationId": "index__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Index"
+      }
+    },
+    "/api/batch-runs": {
+      "get": {
+        "operationId": "list_batches_api_batch_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchListEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Batches",
+        "tags": [
+          "batch-runs"
+        ]
+      },
+      "post": {
+        "operationId": "create_batch_api_batch_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/preview": {
+      "post": {
+        "operationId": "preview_batch_input_api_batch_runs_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Batch Input",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}": {
+      "delete": {
+        "operationId": "delete_batch_api_batch_runs__batch_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      },
+      "get": {
+        "operationId": "get_batch_api_batch_runs__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "round_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Round Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      },
+      "put": {
+        "operationId": "update_batch_api_batch_runs__batch_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/cancel": {
+      "post": {
+        "operationId": "cancel_batch_api_batch_runs__batch_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/cases": {
+      "get": {
+        "operationId": "list_batch_cases_api_batch_runs__batch_id__cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "round_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Round Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "Pass",
+                    "Failed",
+                    "Error"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "Running",
+                    "Pending"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCaseListEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Batch Cases",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/cases/{case_run_id}": {
+      "get": {
+        "operationId": "get_batch_case_api_batch_runs__batch_id__cases__case_run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_run_id",
+            "required": true,
+            "schema": {
+              "title": "Case Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "round_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Round Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Batch Case Api Batch Runs  Batch Id  Cases  Case Run Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Batch Case",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/cases/{case_run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_batch_case_api_batch_runs__batch_id__cases__case_run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_run_id",
+            "required": true,
+            "schema": {
+              "title": "Case Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Batch Case Api Batch Runs  Batch Id  Cases  Case Run Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Batch Case",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/cases/{case_run_id}/start": {
+      "post": {
+        "operationId": "start_batch_case_api_batch_runs__batch_id__cases__case_run_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_run_id",
+            "required": true,
+            "schema": {
+              "title": "Case Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Batch Case Api Batch Runs  Batch Id  Cases  Case Run Id  Start Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Batch Case",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/copy-name": {
+      "get": {
+        "description": "按全部已保存任务名称计算可用的拷贝任务名称。",
+        "operationId": "get_batch_copy_name_api_batch_runs__batch_id__copy_name_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCopyNameEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Batch Copy Name",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/history": {
+      "get": {
+        "operationId": "list_batch_history_api_batch_runs__batch_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchHistoryListEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Batch History",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/resume": {
+      "post": {
+        "operationId": "resume_batch_api_batch_runs__batch_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/rounds": {
+      "get": {
+        "operationId": "list_batch_rounds_api_batch_runs__batch_id__rounds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchRoundListEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Batch Rounds",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/schedule": {
+      "get": {
+        "operationId": "get_batch_schedule_api_batch_runs__batch_id__schedule_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Batch Schedule Api Batch Runs  Batch Id  Schedule Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Batch Schedule",
+        "tags": [
+          "batch-runs"
+        ]
+      },
+      "put": {
+        "operationId": "save_batch_schedule_api_batch_runs__batch_id__schedule_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Batch Schedule Api Batch Runs  Batch Id  Schedule Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Batch Schedule",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/batch-runs/{batch_id}/start": {
+      "post": {
+        "operationId": "start_batch_api_batch_runs__batch_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BatchStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Batch",
+        "tags": [
+          "batch-runs"
+        ]
+      }
+    },
+    "/api/local/clipboard": {
+      "post": {
+        "operationId": "copy_to_clipboard_api_local_clipboard_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClipboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Copy To Clipboard Api Local Clipboard Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Copy To Clipboard",
+        "tags": [
+          "local"
+        ]
+      }
+    },
+    "/api/model-providers": {
+      "get": {
+        "operationId": "list_providers_api_model_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "model-providers"
+        ]
+      },
+      "post": {
+        "operationId": "create_provider_api_model_providers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProviderConfiguration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Provider",
+        "tags": [
+          "model-providers"
+        ]
+      }
+    },
+    "/api/model-providers/latency": {
+      "post": {
+        "operationId": "test_latency_api_model_providers_latency_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLatencyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Latency",
+        "tags": [
+          "model-providers"
+        ]
+      }
+    },
+    "/api/model-providers/models": {
+      "post": {
+        "operationId": "fetch_models_api_model_providers_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch Models",
+        "tags": [
+          "model-providers"
+        ]
+      }
+    },
+    "/api/model-providers/test-model": {
+      "post": {
+        "operationId": "test_model_availability_api_model_providers_test_model_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelAvailabilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAvailabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Model Availability",
+        "tags": [
+          "model-providers"
+        ]
+      }
+    },
+    "/api/model-providers/{provider_id}": {
+      "delete": {
+        "operationId": "delete_provider_api_model_providers__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSummaryEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Provider",
+        "tags": [
+          "model-providers"
+        ]
+      },
+      "get": {
+        "operationId": "get_provider_api_model_providers__provider_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Provider",
+        "tags": [
+          "model-providers"
+        ]
+      },
+      "put": {
+        "operationId": "update_provider_api_model_providers__provider_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProviderConfiguration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Provider",
+        "tags": [
+          "model-providers"
+        ]
+      }
+    },
+    "/api/test-sets": {
+      "get": {
+        "operationId": "list_test_sets_api_test_sets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name_query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Name Query",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Test Sets Api Test Sets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Test Sets",
+        "tags": [
+          "test-sets"
+        ]
+      },
+      "post": {
+        "operationId": "create_test_set_api_test_sets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSetCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Test Set Api Test Sets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Test Set",
+        "tags": [
+          "test-sets"
+        ]
+      }
+    },
+    "/api/test-sets/{test_set_id}": {
+      "delete": {
+        "operationId": "delete_test_set_api_test_sets__test_set_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_set_id",
+            "required": true,
+            "schema": {
+              "title": "Test Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Test Set Api Test Sets  Test Set Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Test Set",
+        "tags": [
+          "test-sets"
+        ]
+      },
+      "get": {
+        "operationId": "get_test_set_api_test_sets__test_set_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_set_id",
+            "required": true,
+            "schema": {
+              "title": "Test Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Test Set Api Test Sets  Test Set Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Test Set",
+        "tags": [
+          "test-sets"
+        ]
+      },
+      "put": {
+        "operationId": "update_test_set_api_test_sets__test_set_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_set_id",
+            "required": true,
+            "schema": {
+              "title": "Test Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSetUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Test Set Api Test Sets  Test Set Id  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Test Set",
+        "tags": [
+          "test-sets"
+        ]
+      }
+    },
+    "/api/test-sets/{test_set_id}/metadata": {
+      "put": {
+        "operationId": "update_test_set_metadata_api_test_sets__test_set_id__metadata_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_set_id",
+            "required": true,
+            "schema": {
+              "title": "Test Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSetMetadataUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Test Set Metadata Api Test Sets  Test Set Id  Metadata Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Test Set Metadata",
+        "tags": [
+          "test-sets"
+        ]
+      }
+    },
+    "/api/workflows": {
+      "get": {
+        "description": "列出 Workflow 管理页所需的名称、说明和更新时间摘要。",
+        "operationId": "list_workflows_api_workflows_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Workflows",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "description": "完整校验并原子创建 Workflow、Node、binding 和 Edge。",
+        "operationId": "create_workflow_api_workflows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}": {
+      "delete": {
+        "description": "删除 Workflow 及其当前 Node、binding 和 Edge，并返回删除前快照。",
+        "operationId": "delete_workflow_api_workflows__workflow_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workflow",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "get": {
+        "description": "读取可完整还原画布的 Workflow Structural Record。",
+        "operationId": "get_workflow_api_workflows__workflow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "put": {
+        "description": "完整校验并原子替换既有 Workflow 当前结构。",
+        "operationId": "update_workflow_api_workflows__workflow_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/copy": {
+      "post": {
+        "description": "复制 Workflow 的当前完整结构并生成独立身份。",
+        "operationId": "copy_workflow_api_workflows__workflow_id__copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Copy Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/execution-directory": {
+      "post": {
+        "description": "打开当前 Workflow 固定的 Execution 根目录。",
+        "operationId": "open_workflow_execution_directory_api_workflows__workflow_id__execution_directory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDirectoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Workflow Execution Directory",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/metadata": {
+      "put": {
+        "description": "复用当前合法图，只更新 Workflow 名称和说明。",
+        "operationId": "update_workflow_metadata_api_workflows__workflow_id__metadata_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workflow Metadata",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/node-tests": {
+      "post": {
+        "description": "测试当前节点草稿，不校验整图、不执行上下游且不创建持久化事实。",
+        "operationId": "start_node_test_api_workflows__workflow_id__node_tests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTestEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Node Test",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/node-tests/{test_id}/cancel": {
+      "post": {
+        "description": "幂等中断单节点临时测试，不影响活动 Workflow Execution。",
+        "operationId": "cancel_node_test_api_workflows__workflow_id__node_tests__test_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTestCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Node Test",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/node-tests/{test_id}/events": {
+      "get": {
+        "description": "以 SSE 交付实时临时快照；终态交付后服务端立即释放会话。",
+        "operationId": "stream_node_test_events_api_workflows__workflow_id__node_tests__test_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "title": "Test Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Node Test Events",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/runs": {
+      "get": {
+        "description": "读取最近 10 次 Workflow Execution，全部事实来自本地 JSON。",
+        "operationId": "list_workflow_executions_api_workflows__workflow_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflow Executions",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "description": "使用当前 Structural Snapshot 异步启动一次手动 Workflow Execution。",
+        "operationId": "start_workflow_execution_api_workflows__workflow_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Workflow Execution",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/runs/{execution_id}": {
+      "get": {
+        "description": "读取一次完整 Workflow Execution JSON。",
+        "operationId": "get_workflow_execution_api_workflows__workflow_id__runs__execution_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Execution",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/runs/{execution_id}/cancel": {
+      "post": {
+        "description": "幂等全局中断一次活动 Workflow Execution。",
+        "operationId": "cancel_workflow_execution_api_workflows__workflow_id__runs__execution_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Workflow Execution",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/runs/{execution_id}/nodes": {
+      "get": {
+        "description": "读取一次 Workflow Execution 已创建的全部 Node Execution JSON。",
+        "operationId": "list_node_executions_api_workflows__workflow_id__runs__execution_id__nodes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeExecutionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Node Executions",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/app.js": {
+      "get": {
+        "description": "返回前端 JS。",
+        "operationId": "app_js_app_js_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "App Js"
+      }
+    },
+    "/execution.css": {
+      "get": {
+        "description": "返回运行编排样式表。",
+        "operationId": "execution_css_execution_css_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Execution Css"
+      }
+    },
+    "/execution.js": {
+      "get": {
+        "description": "返回运行编排前端逻辑。",
+        "operationId": "execution_js_execution_js_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Execution Js"
+      }
+    },
+    "/model-providers.css": {
+      "get": {
+        "description": "返回模型管理样式。",
+        "operationId": "model_providers_css_model_providers_css_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Providers Css"
+      }
+    },
+    "/style.css": {
+      "get": {
+        "description": "返回样式表。",
+        "operationId": "style_css_style_css_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Style Css"
+      }
+    }
+  }
+}

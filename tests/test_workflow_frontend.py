@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -419,8 +420,11 @@ def test_end_node_is_only_a_user_visible_workflow_marker():
 
 
 def test_built_workflow_assets_exist_and_are_nonempty():
-    script = ROOT / "web/static/assets/workflow-canvas.js"
-    styles = ROOT / "web/static/assets/workflow-canvas.css"
+    output = ROOT / "web" / "static" / "assets" / "vite"
+    manifest = json.loads((output / ".vite" / "manifest.json").read_text(encoding="utf-8"))
+    entry = manifest["web/frontend/workflow-canvas.jsx"]
+    script = output / entry["file"]
+    styles = output / entry["css"][0]
 
     assert script.stat().st_size > 500_000
     assert styles.stat().st_size > 20_000
@@ -428,14 +432,17 @@ def test_built_workflow_assets_exist_and_are_nonempty():
 
 def test_workflow_bundle_uses_cache_busting_version():
     html = read("web/static/index.html")
-    build_script = read("scripts/build-workflow.mjs")
+    vite = read("vite.config.mjs")
+    app = read("web/app.py")
 
-    assert re.search(r'/assets/workflow-canvas\.css\?v=[0-9a-f]{12}', html)
-    assert re.search(r'/assets/workflow-canvas\.js\?v=[0-9a-f]{12}', html)
+    assert 'data-feature-css="__VITE_WORKFLOW_CANVAS_CSS__"' in html
+    assert 'data-feature-js="__VITE_WORKFLOW_CANVAS_JS__"' in html
     assert re.search(r'/execution\.js\?v=[0-9a-f]{12}', html)
-    assert 'createHash("sha256")' in build_script
-    assert 'indexContent.replace(' in build_script
-    assert 'versionedWorkflowIndex.replace(' in build_script
+    assert 'entryFileNames: "[name]-[hash].js"' in vite
+    assert 'assetFileNames: "[name]-[hash][extname]"' in vite
+    assert '"workflow-canvas": resolve("web/frontend/workflow-canvas.jsx")' in vite
+    assert "VITE_MANIFEST_PATH" in app
+    assert "_render_index_html" in app
 
 
 def test_llm_advanced_parameters_are_protocol_specific():
@@ -474,5 +481,7 @@ def test_workflow_editing_has_explicit_keyboard_reachable_entries():
     assert 'aria-label={`配置 ${data.label}`}' in source
     assert "data.onConfigure?.();" in source
     assert "onConfigure: () =>" in source
-    assert "function useDialogAccessibility(onClose, active = true)" in source
-    assert 'className="wf-node-test-dialog" role="dialog"' in source
+    assert "import * as Dialog from '@radix-ui/react-dialog';" in source
+    assert "<Dialog.Root open onOpenChange={(open) => !open && onCancel()}>" in source
+    assert "<Dialog.Content" in source
+    assert "function useDialogAccessibility" not in source

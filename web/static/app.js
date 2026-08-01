@@ -122,6 +122,7 @@ function loadFeatureScript(view, url) {
     return new Promise(function (resolve, reject) {
         var script = document.createElement('script');
         script.id = id;
+        script.type = 'module';
         script.src = url;
         script.onload = resolve;
         script.onerror = function () {
@@ -137,8 +138,8 @@ function ensureFeatureAssets(view) {
     var item = featureNavigationItem(view);
     var stylesheet = item && item.getAttribute('data-feature-css');
     var script = item && item.getAttribute('data-feature-js');
-    if (!stylesheet || !script) return Promise.resolve();
-    featureAssetLoads[view] = loadFeatureStylesheet(view, stylesheet)
+    if (!script) return Promise.resolve();
+    featureAssetLoads[view] = (stylesheet ? loadFeatureStylesheet(view, stylesheet) : Promise.resolve())
         .then(function () { return loadFeatureScript(view, script); })
         .catch(function (error) {
             delete featureAssetLoads[view];
@@ -235,6 +236,32 @@ async function viewWorkflowsWithAssets() {
     }
 }
 
+async function viewModelProvidersWithAssets() {
+    currentView = 'models';
+    contentArea.innerHTML = '<div class="loading">正在加载供应商管理…</div>';
+    try {
+        await ensureFeatureAssets('models');
+        if (currentView !== 'models') return;
+        if (!window.ModelProviderManagement) throw new Error('供应商管理资源未注册');
+        window.ModelProviderManagement.mount();
+    } catch (error) {
+        if (currentView === 'models') renderFeatureLoadError('供应商管理', viewModelProvidersWithAssets);
+    }
+}
+
+async function viewBatchRunsWithAssets() {
+    currentView = 'batch-runs';
+    contentArea.innerHTML = '<div class="loading">正在加载任务调度…</div>';
+    try {
+        await ensureFeatureAssets('batch-runs');
+        if (currentView !== 'batch-runs') return;
+        if (!window.BatchRunManagement) throw new Error('任务调度资源未注册');
+        window.BatchRunManagement.mount();
+    } catch (error) {
+        if (currentView === 'batch-runs') renderFeatureLoadError('任务调度', viewBatchRunsWithAssets);
+    }
+}
+
 function init() {
     initTheme();
     viewSets();
@@ -258,11 +285,11 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     if (view === 'sets') {
         viewSets();
     } else if (view === 'models') {
-        viewModelProviders();
+        viewModelProvidersWithAssets();
     } else if (view === 'workflows') {
         viewWorkflowsWithAssets();
     } else if (view === 'batch-runs') {
-        viewBatchRuns();
+        viewBatchRunsWithAssets();
     }
 });
 

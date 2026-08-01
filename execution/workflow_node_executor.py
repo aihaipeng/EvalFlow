@@ -71,9 +71,8 @@ class WorkflowNodeExecutor:
     ) -> tuple[str, str]:
         node_execution_id = str(uuid4())
         entry = self._workflow_node(workflow, node.id)
-        initial_state = "PENDING" if node.type in self.runners else "RUNNING"
         entry.update(
-            {"node_execution_id": node_execution_id, "state": initial_state, "reason": None}
+            {"node_execution_id": node_execution_id, "state": "RUNNING", "reason": None}
         )
         self.store.write_workflow(workflow)
 

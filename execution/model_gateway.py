@@ -244,6 +244,49 @@ def anthropic_headers(api_key: str) -> dict[str, str]:
     return model_protocol_headers(ANTHROPIC_CLAUDE_MESSAGES, api_key)
 
 
+async def _invoke_endpoint(
+    protocol: str,
+    *,
+    base_url: str,
+    api_key: str,
+    request_body: Mapping[str, Any],
+    timeout_seconds: float,
+    proxy_mode: str,
+    proxy_url: str | None,
+    proxy_username: str | None,
+    proxy_password: str | None,
+    verify_ssl: bool,
+    client: httpx.AsyncClient | None,
+) -> httpx.Response:
+    if protocol not in {
+        OPENAI_CHAT_COMPLETIONS,
+        OPENAI_RESPONSES,
+        ANTHROPIC_CLAUDE_MESSAGES,
+    }:
+        raise ValueError(f"不支持的模型协议: {protocol}")
+    owns_client = client is None
+    active_client = client or httpx.AsyncClient(
+        **model_http_client_options(
+            base_url,
+            timeout_seconds=timeout_seconds,
+            proxy_mode=proxy_mode,
+            proxy_url=proxy_url,
+            proxy_username=proxy_username,
+            proxy_password=proxy_password,
+            verify_ssl=verify_ssl,
+        ),
+    )
+    try:
+        return await active_client.post(
+            model_inference_url(protocol, base_url),
+            headers=model_protocol_headers(protocol, api_key),
+            json=deepcopy(dict(request_body)),
+        )
+    finally:
+        if owns_client:
+            await active_client.aclose()
+
+
 async def invoke_openai_compatible(
     *,
     base_url: str,
@@ -259,27 +302,19 @@ async def invoke_openai_compatible(
 ) -> httpx.Response:
     """Send a prepared request without translating provider-specific parameters."""
 
-    owns_client = client is None
-    active_client = client or httpx.AsyncClient(
-        **model_http_client_options(
-            base_url,
-            timeout_seconds=timeout_seconds,
-            proxy_mode=proxy_mode,
-            proxy_url=proxy_url,
-            proxy_username=proxy_username,
-            proxy_password=proxy_password,
-            verify_ssl=verify_ssl,
-        ),
+    return await _invoke_endpoint(
+        OPENAI_CHAT_COMPLETIONS,
+        base_url=base_url,
+        api_key=api_key,
+        request_body=request_body,
+        timeout_seconds=timeout_seconds,
+        proxy_mode=proxy_mode,
+        proxy_url=proxy_url,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
+        verify_ssl=verify_ssl,
+        client=client,
     )
-    try:
-        return await active_client.post(
-            chat_completions_url(base_url),
-            headers=model_protocol_headers(OPENAI_CHAT_COMPLETIONS, api_key),
-            json=deepcopy(dict(request_body)),
-        )
-    finally:
-        if owns_client:
-            await active_client.aclose()
 
 
 async def invoke_openai_responses(
@@ -297,27 +332,19 @@ async def invoke_openai_responses(
 ) -> httpx.Response:
     """Send a prepared native OpenAI Responses API request."""
 
-    owns_client = client is None
-    active_client = client or httpx.AsyncClient(
-        **model_http_client_options(
-            base_url,
-            timeout_seconds=timeout_seconds,
-            proxy_mode=proxy_mode,
-            proxy_url=proxy_url,
-            proxy_username=proxy_username,
-            proxy_password=proxy_password,
-            verify_ssl=verify_ssl,
-        ),
+    return await _invoke_endpoint(
+        OPENAI_RESPONSES,
+        base_url=base_url,
+        api_key=api_key,
+        request_body=request_body,
+        timeout_seconds=timeout_seconds,
+        proxy_mode=proxy_mode,
+        proxy_url=proxy_url,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
+        verify_ssl=verify_ssl,
+        client=client,
     )
-    try:
-        return await active_client.post(
-            responses_url(base_url),
-            headers=model_protocol_headers(OPENAI_RESPONSES, api_key),
-            json=deepcopy(dict(request_body)),
-        )
-    finally:
-        if owns_client:
-            await active_client.aclose()
 
 
 async def invoke_anthropic(
@@ -335,27 +362,19 @@ async def invoke_anthropic(
 ) -> httpx.Response:
     """Send a prepared native Anthropic Messages request."""
 
-    owns_client = client is None
-    active_client = client or httpx.AsyncClient(
-        **model_http_client_options(
-            base_url,
-            timeout_seconds=timeout_seconds,
-            proxy_mode=proxy_mode,
-            proxy_url=proxy_url,
-            proxy_username=proxy_username,
-            proxy_password=proxy_password,
-            verify_ssl=verify_ssl,
-        ),
+    return await _invoke_endpoint(
+        ANTHROPIC_CLAUDE_MESSAGES,
+        base_url=base_url,
+        api_key=api_key,
+        request_body=request_body,
+        timeout_seconds=timeout_seconds,
+        proxy_mode=proxy_mode,
+        proxy_url=proxy_url,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
+        verify_ssl=verify_ssl,
+        client=client,
     )
-    try:
-        return await active_client.post(
-            anthropic_messages_url(base_url),
-            headers=anthropic_headers(api_key),
-            json=deepcopy(dict(request_body)),
-        )
-    finally:
-        if owns_client:
-            await active_client.aclose()
 
 
 async def invoke_model_protocol(
@@ -372,14 +391,8 @@ async def invoke_model_protocol(
     verify_ssl: bool = True,
     client: httpx.AsyncClient | None = None,
 ) -> httpx.Response:
-    invoke = {
-        OPENAI_CHAT_COMPLETIONS: invoke_openai_compatible,
-        OPENAI_RESPONSES: invoke_openai_responses,
-        ANTHROPIC_CLAUDE_MESSAGES: invoke_anthropic,
-    }.get(protocol)
-    if invoke is None:
-        raise ValueError(f"不支持的模型协议: {protocol}")
-    return await invoke(
+    return await _invoke_endpoint(
+        protocol,
         base_url=base_url,
         api_key=api_key,
         request_body=request_body,

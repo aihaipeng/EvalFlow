@@ -1,5 +1,6 @@
 import inspect
 import sqlite3
+from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
@@ -286,3 +287,136 @@ def test_copy_duplicates_structure_with_independent_ids_and_recursive_name(tmp_p
         )
         for index in range(len(first.workflow.nodes) - 1)
     }
+
+
+def _llm_reference_node(reference: str):
+    return NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "LLM",
+            "name": "引用校验",
+            "description": "",
+            "context": {
+                "messages": [
+                    {"role": "SYSTEM", "content": ""},
+                    {"role": "USER", "content": reference},
+                ]
+            },
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("start_input", "reference", "message"),
+    [
+        (None, "${missing}", "变量不存在"),
+        (
+            {"name": "question", "type": "string", "value": "hello"},
+            "${question.value}",
+            "object 或 array",
+        ),
+    ],
+)
+def test_repository_rejects_invalid_static_context_references(
+    tmp_path, start_input, reference, message
+):
+    start = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "START",
+            "name": "开始",
+            "description": "",
+            "inputs": [] if start_input is None else [start_input],
+        }
+    )
+    llm = _llm_reference_node(reference)
+    end = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {"id": str(uuid4()), "type": "END", "name": "结束", "description": ""}
+    )
+    nodes = [start, llm, end]
+    workflow = WorkflowStructuralModel(
+        id=str(uuid4()),
+        name="静态引用失败",
+        nodes=[
+            {"node_id": node.id, "position_x": index * 200, "position_y": 0}
+            for index, node in enumerate(nodes)
+        ],
+        edges=[
+            {
+                "id": str(uuid4()),
+                "source_node_id": start.id,
+                "target_node_id": llm.id,
+            },
+            {
+                "id": str(uuid4()),
+                "source_node_id": llm.id,
+                "target_node_id": end.id,
+            },
+        ],
+    )
+
+    with pytest.raises(WorkflowStructuralRepositoryError, match=message):
+        WorkflowStructuralRepository(tmp_path / "static-invalid.sqlite3").create(
+            workflow, nodes
+        )
+
+
+@pytest.mark.parametrize("producer_is_upstream", [False, True])
+def test_static_context_reference_requires_a_directed_upstream_path(
+    tmp_path, producer_is_upstream
+):
+    start = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "START",
+            "name": "开始",
+            "description": "",
+            "inputs": [],
+        }
+    )
+    producer = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "SCRIPT",
+            "name": "生产对象",
+            "description": "",
+            "script": "payload = {'name': 'ok'}",
+            "outputs": [{"name": "payload", "type": "object", "source": "payload"}],
+        }
+    )
+    consumer = _llm_reference_node("${payload.name}")
+    end = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {"id": str(uuid4()), "type": "END", "name": "结束", "description": ""}
+    )
+    nodes = [start, producer, consumer, end]
+    edge_pairs = (
+        [(start, producer), (producer, consumer), (consumer, end)]
+        if producer_is_upstream
+        else [(start, producer), (start, consumer), (producer, end), (consumer, end)]
+    )
+    workflow = WorkflowStructuralModel(
+        id=str(uuid4()),
+        name=f"静态引用路径-{producer_is_upstream}",
+        nodes=[
+            {"node_id": node.id, "position_x": index * 200, "position_y": 0}
+            for index, node in enumerate(nodes)
+        ],
+        edges=[
+            {
+                "id": str(uuid4()),
+                "source_node_id": source.id,
+                "target_node_id": target.id,
+            }
+            for source, target in edge_pairs
+        ],
+    )
+    repository = WorkflowStructuralRepository(
+        tmp_path / f"static-path-{producer_is_upstream}.sqlite3"
+    )
+
+    if producer_is_upstream:
+        saved = repository.create(workflow, nodes)
+        assert saved.workflow.id == workflow.id
+    else:
+        with pytest.raises(WorkflowStructuralRepositoryError, match="可达上游"):
+            repository.create(workflow, nodes)

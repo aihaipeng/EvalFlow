@@ -28,6 +28,20 @@ class BatchPreviewRequest(_BatchApiModel):
     test_set_id: str = Field(min_length=1)
 
 
+class BatchPreviewSample(_BatchApiModel):
+    case_id: str
+    row_number: int
+    values: dict[str, str]
+
+
+class BatchPreviewResponse(_BatchApiModel):
+    test_set_id: str
+    test_set_name: str
+    headers: list[str]
+    total_rows: int
+    sample_rows: list[BatchPreviewSample]
+
+
 class BatchVariable(_BatchApiModel):
     source: Literal["CUSTOM", "TEST_SET"]
     key: str = Field(min_length=1, max_length=200)
@@ -92,8 +106,23 @@ class BatchRoundListEnvelope(_BatchApiModel):
     rounds: list[dict[str, Any]]
 
 
+class BatchHistoryItem(_BatchApiModel):
+    id: str
+    batch_id: str
+    execution_round_id: str | None
+    workflow_id: str
+    test_set_name: str
+    workflow_name: str
+    total_cases: int
+    executed_cases: int
+    passed_cases: int
+    started_at: str
+    finished_at: str
+    created_at: str
+
+
 class BatchHistoryListEnvelope(_BatchApiModel):
-    history: list[dict[str, Any]]
+    history: list[BatchHistoryItem]
 
 
 class BatchCopyNameEnvelope(_BatchApiModel):
@@ -166,7 +195,7 @@ def _batch_case_list_summary(batch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.post("/preview")
+@router.post("/preview", response_model=BatchPreviewResponse)
 def preview_batch_input(
     body: BatchPreviewRequest, services: WorkflowServicesDependency
 ) -> dict[str, Any]:
@@ -428,7 +457,7 @@ def cancel_batch(batch_id: str, services: WorkflowServicesDependency) -> BatchEn
         if batch is None:
             raise HTTPException(404, f"Batch Execution 不存在: {batch_id}")
         if not services.batch_scheduler.cancel(batch_id):
-            raise BatchExecutionError("只有整批运行中的任务可以停止")
+            raise BatchExecutionError("只有运行中的任务可以停止")
         return BatchEnvelope(batch=services.batch_store.get(batch_id) or batch)
     except BatchExecutionError as exc:
         _error(exc)

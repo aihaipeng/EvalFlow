@@ -69,6 +69,36 @@ def test_top_level_relative_path_reads_the_same_context_key():
     assert evaluation["rules"][0]["actual"] is True
 
 
+@pytest.mark.parametrize(
+    ("operator", "expected_status"), [("EQ", "PASS"), ("NE", "FAIL")]
+)
+def test_numeric_equality_treats_integer_and_float_as_the_same_json_number(
+    operator, expected_status
+):
+    evaluation = evaluate_case(
+        {"score": 1.0},
+        [
+            rule(
+                result_path="score",
+                operator=operator,
+                expected_value="1.0",
+                type="number",
+            )
+        ],
+    )
+
+    assert evaluation["rules"][0]["status"] == expected_status
+
+
+def test_numeric_equality_does_not_treat_boolean_as_one():
+    evaluation = evaluate_case(
+        {"score": True},
+        [rule(result_path="score", operator="EQ", expected_value="1", type="number")],
+    )
+
+    assert evaluation["rules"][0]["status"] == "FAIL"
+
+
 def test_evaluator_marks_any_failed_rule_and_missing_context_path():
     evaluation = evaluate_case(
         {"final_answer": {"status": "FAIL"}},

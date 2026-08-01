@@ -7,10 +7,12 @@
     --gray: #404040;
     --gray-bg: #D9E1F2;
     --border: #d7deea;
-    --radius: 6px;
+    --radius: 8px;
     --sidebar-w: 200px;
     --color-accent: #2457d6;
     --color-accent-hover: #1d4ed8;
+    --color-success: #047857;
+    --color-danger: #dc2626;
     --color-purple: #7c3aed;
     --color-teal: #0f766e;
     --color-orange: #ea580c;
@@ -50,6 +52,8 @@
     --strong-row-border: #3b4149;
     --color-accent: #5b8cff;
     --color-accent-hover: #4778e7;
+    --color-success: #34d399;
+    --color-danger: #f87171;
     --color-teal: #2dd4bf;
     --icon-button-text: #ffffff;
     --icon-button-hover-bg: rgba(255, 255, 255, 0.10);
@@ -461,7 +465,7 @@ body {
 
 .btn-icon[data-action="delete"]:not(:has(.ui-icon)) {
     background: #ffe4e6;
-    color: #be123c;
+    color: var(--color-danger);
 }
 
 .btn-icon[data-action="open-dir"]:not(:has(.ui-icon)):hover,
@@ -1237,8 +1241,8 @@ body {
     transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-.toast.success { background: #2e7d32; }
-.toast.error { background: #c62828; }
+.toast.success { background: var(--color-success); }
+.toast.error { background: var(--color-danger); }
 .toast.is-leaving { opacity: 0; transform: translateY(-6px); pointer-events: none; }
 
 @keyframes toast-enter {
@@ -1297,6 +1301,42 @@ body {
     justify-content: flex-end;
     gap: 8px;
     border-top: 1px solid var(--border);
+}
+
+/* Radix owns focus trapping, Escape handling and focus restoration. */
+.radix-dialog-overlay {
+    animation: dialog-overlay-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.radix-dialog-content {
+    position: fixed;
+    z-index: 501;
+    top: 50%;
+    left: 50%;
+    max-height: calc(100dvh - 32px);
+    overflow: auto;
+    transform: translate(-50%, -50%);
+    animation: dialog-content-in 170ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.radix-dialog-description {
+    margin: 0;
+    padding: 12px 20px 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+@keyframes dialog-overlay-in {
+    from { opacity: 0; }
+}
+
+@keyframes dialog-content-in {
+    from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .radix-dialog-overlay,
+    .radix-dialog-content { animation: none; }
 }
 
 /* All Lucide icon buttons share the same theme-aware interaction states. */

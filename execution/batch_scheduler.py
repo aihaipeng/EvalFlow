@@ -45,6 +45,7 @@ class BatchScheduler:
         self._threads: dict[str, threading.Thread] = {}
         self._active_executions: dict[str, set[str]] = {}
         self._case_events: dict[tuple[str, str], threading.Event] = {}
+        self._case_threads: dict[tuple[str, str], threading.Thread] = {}
         self._lock = threading.RLock()
         self._closed = False
 
@@ -144,23 +145,33 @@ class BatchScheduler:
     def cancel(self, batch_id: str) -> bool:
         with self._lock:
             batch = self.store.get(batch_id)
-            if (
-                batch is None
-                or batch.get("status") != "RUNNING"
-                or batch.get("execution_mode") == "SINGLE_CASE"
-            ):
+            if batch is None or batch.get("status") != "RUNNING":
                 return False
-            event = self._cancel_events.get(batch_id)
-            if event is None or event.is_set():
+            if batch.get("execution_mode") == "SINGLE_CASE":
+                events = [
+                    event
+                    for (active_batch_id, _case_id), event in self._case_events.items()
+                    if active_batch_id == batch_id and not event.is_set()
+                ]
+            else:
+                event = self._cancel_events.get(batch_id)
+                events = [] if event is None or event.is_set() else [event]
+            if not events:
                 return False
-            event.set()
+            for event in events:
+                event.set()
+            execution_ids = list(self._active_executions.get(batch_id, set()))
             batch["status"] = "STOPPING"
             batch["finished_at"] = None
             self.store.write_batch(batch)
-            return True
+        for execution_id in execution_ids:
+            self.workflow_manager.cancel(execution_id)
+        return True
 
     def start_case(self, batch_id: str, case_run_id: str) -> dict[str, Any]:
         with self._lock:
+            if self._closed:
+                raise BatchExecutionError("Batch Scheduler 已关闭")
             batch = self.store.get(batch_id)
             case = self.store.get_case(batch_id, case_run_id)
             if batch is None or case is None:
@@ -190,7 +201,9 @@ class BatchScheduler:
                 target=self._run_single_case,
                 args=(batch, case, event, previous_status),
                 daemon=True,
+                name=f"single-case-{case_run_id}",
             )
+            self._case_threads[key] = thread
             thread.start()
         return case
 
@@ -205,8 +218,12 @@ class BatchScheduler:
             self._run_case(batch, case, event)
         finally:
             with self._lock:
-                self._case_events.pop((batch["id"], case["id"]), None)
+                key = (batch["id"], case["id"])
+                self._case_events.pop(key, None)
+                self._case_threads.pop(key, None)
                 has_active_case = any(key[0] == batch["id"] for key in self._case_events)
+                if not has_active_case:
+                    self._active_executions.pop(batch["id"], None)
             latest = self.store.get(batch["id"])
             if latest is not None:
                 self._update_summary(latest)
@@ -230,9 +247,12 @@ class BatchScheduler:
         with self._lock:
             self._closed = True
             batch_ids = list(self._cancel_events)
-            threads = list(self._threads.values())
+            case_events = list(self._case_events.values())
+            threads = list(self._threads.values()) + list(self._case_threads.values())
         for batch_id in batch_ids:
             self.cancel(batch_id)
+        for event in case_events:
+            event.set()
         with self._lock:
             execution_ids = [
                 execution_id
@@ -329,6 +349,19 @@ class BatchScheduler:
                     self.store.write_batch(latest_batch)
             max_attempts = 1 + int(batch.get("failure_retry_count", 0))
             for _attempt in range(max_attempts):
+                if cancel_event.is_set():
+                    case.update(
+                        {
+                            "status": "INTERRUPTED",
+                            "execution_status": "INTERRUPTED",
+                            "error": {
+                                "code": "USER_INTERRUPTED",
+                                "message": "用户停止任务",
+                                "details": None,
+                            },
+                        }
+                    )
+                    break
                 if _attempt:
                     case.update(
                         {
@@ -342,7 +375,7 @@ class BatchScheduler:
                     )
                     self.store.write_case(case)
                 try:
-                    self._run_case_attempt(batch, case)
+                    self._run_case_attempt(batch, case, cancel_event)
                 except Exception as exc:  # noqa: BLE001 - retry isolated Case system errors
                     case["status"] = "FAILED"
                     case["execution_status"] = "FAILED"
@@ -351,6 +384,19 @@ class BatchScheduler:
                         "message": str(exc),
                         "details": None,
                     }
+                if cancel_event.is_set() and case["status"] == "FAILED":
+                    case.update(
+                        {
+                            "status": "INTERRUPTED",
+                            "execution_status": "INTERRUPTED",
+                            "error": {
+                                "code": "USER_INTERRUPTED",
+                                "message": "用户停止任务",
+                                "details": None,
+                            },
+                        }
+                    )
+                    break
                 if case["status"] != "FAILED":
                     break
         finally:
@@ -361,7 +407,10 @@ class BatchScheduler:
                 self._global_slots.release()
 
     def _run_case_attempt(
-        self, batch: dict[str, Any], case: dict[str, Any]
+        self,
+        batch: dict[str, Any],
+        case: dict[str, Any],
+        cancel_event: threading.Event,
     ) -> None:
         started = self.workflow_manager.start_batch(
             batch["workflow"]["structural_snapshot"],
@@ -378,8 +427,11 @@ class BatchScheduler:
         self.store.write_case(case)
         with self._lock:
             self._active_executions[batch["id"]].add(started["id"])
+        deadline = time.monotonic() + self._workflow_poll_timeout_seconds(batch)
         try:
             while True:
+                if cancel_event.is_set():
+                    self.workflow_manager.cancel(started["id"])
                 execution = self.workflow_manager.store.get_workflow(
                     started["workflow_id"], started["id"]
                 )
@@ -387,7 +439,14 @@ class BatchScheduler:
                     "SUCCESS", "FAILED", "INTERRUPTED"
                 }:
                     break
-                time.sleep(0.03)
+                if execution is None:
+                    raise BatchExecutionError("Workflow Execution 事实丢失")
+                if not self.workflow_manager.is_active(started["id"]):
+                    raise BatchExecutionError("Workflow 执行线程已结束但未产生终态")
+                if time.monotonic() >= deadline:
+                    self.workflow_manager.cancel(started["id"])
+                    raise BatchExecutionError("Workflow Execution 等待超过配置上界")
+                cancel_event.wait(0.03)
         finally:
             with self._lock:
                 self._active_executions[batch["id"]].discard(started["id"])
@@ -407,6 +466,27 @@ class BatchScheduler:
             case["verdict"] = evaluation["verdict"]
             if evaluation["verdict"] != "PASS":
                 case["status"] = "FAILED"
+
+    @staticmethod
+    def _workflow_poll_timeout_seconds(batch: dict[str, Any]) -> float:
+        """由冻结节点策略推导 Case 等待上界，并留出 Worker 收敛余量。"""
+
+        snapshot = batch.get("workflow", {}).get("structural_snapshot", {})
+        total = 0.0
+        for item in snapshot.get("nodes", []):
+            node = item.get("node", {}) if isinstance(item, dict) else {}
+            execution = node.get("execution") if isinstance(node, dict) else None
+            if not isinstance(execution, dict):
+                continue
+            retries = max(0, int(execution.get("max_attempts", 0)))
+            attempts = retries + 1
+            total += max(0.0, float(execution.get("delay_seconds", 0)))
+            total += attempts * max(0.001, float(execution.get("timeout_seconds", 600)))
+            total += retries * max(
+                0.0, float(execution.get("retry_interval_seconds", 0))
+            )
+            total += attempts * 2.0
+        return max(30.0, total + 30.0)
 
     def _record_terminal_history(
         self, batch: dict[str, Any], attempt_started_at: str

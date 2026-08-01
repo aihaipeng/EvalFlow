@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -83,6 +84,12 @@ def _finite_number(value: Any) -> bool:
     )
 
 
+def _value_equal(left: Any, right: Any) -> bool:
+    if _finite_number(left) and _finite_number(right):
+        return Decimal(str(left)) == Decimal(str(right))
+    return type(left) is type(right) and left == right
+
+
 def _not_empty(value: Any) -> bool:
     if value is None:
         return False
@@ -95,9 +102,9 @@ def _not_empty(value: Any) -> bool:
 
 def _compare(operator: str, actual: Any, expected: Any) -> bool:
     if operator == "EQ":
-        return type(actual) is type(expected) and actual == expected
+        return _value_equal(actual, expected)
     if operator == "NE":
-        return not (type(actual) is type(expected) and actual == expected)
+        return not _value_equal(actual, expected)
     if operator == "JSON_EQUAL":
         return _json_equal(actual, expected)
     if operator == "CONTAINS":

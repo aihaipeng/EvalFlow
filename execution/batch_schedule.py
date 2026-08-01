@@ -13,14 +13,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
+from sqlalchemy import and_, delete, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from execution.batch_execution_store import BatchExecutionError, BatchExecutionStore
 from execution.batch_inputs import BatchInputService
 from execution.batch_scheduler import BatchScheduler
+from execution.database_schema import batch_schedules
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
-    CoreConnection,
-    database_connection,
+    database_read_connection,
+    database_transaction,
     database_initialize_lock_for,
     upgrade_database,
 )
@@ -172,70 +175,70 @@ class BatchScheduleRepository:
         schedule = normalize_schedule(values, now=now)
         next_run = next_schedule_at(schedule, now) if schedule["enabled"] else None
         timestamp = _utc_iso(now)
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO batch_schedules (
-                    batch_id, enabled, cadence, run_at, run_time, weekdays_json,
-                    month_day, timezone, overlap_policy, next_run_at, last_run_at,
-                    last_error, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-                ON CONFLICT(batch_id) DO UPDATE SET
-                    enabled = excluded.enabled,
-                    cadence = excluded.cadence,
-                    run_at = excluded.run_at,
-                    run_time = excluded.run_time,
-                    weekdays_json = excluded.weekdays_json,
-                    month_day = excluded.month_day,
-                    timezone = excluded.timezone,
-                    overlap_policy = excluded.overlap_policy,
-                    next_run_at = excluded.next_run_at,
-                    last_error = NULL,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    batch_id,
-                    int(schedule["enabled"]),
-                    schedule["cadence"],
-                    schedule["run_at"],
-                    schedule["run_time"],
-                    json.dumps(schedule["weekdays"]),
-                    schedule["month_day"],
-                    schedule["timezone"],
-                    schedule["overlap_policy"],
-                    _utc_iso(next_run) if next_run else None,
-                    timestamp,
-                    timestamp,
-                ),
-            )
-            connection.commit()
+        statement = sqlite_insert(batch_schedules).values(
+            batch_id=batch_id,
+            enabled=int(schedule["enabled"]),
+            cadence=schedule["cadence"],
+            run_at=schedule["run_at"],
+            run_time=schedule["run_time"],
+            weekdays_json=json.dumps(schedule["weekdays"]),
+            month_day=schedule["month_day"],
+            timezone=schedule["timezone"],
+            overlap_policy=schedule["overlap_policy"],
+            next_run_at=_utc_iso(next_run) if next_run else None,
+            last_run_at=None,
+            last_error=None,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=[batch_schedules.c.batch_id],
+            set_={
+                "enabled": statement.excluded.enabled,
+                "cadence": statement.excluded.cadence,
+                "run_at": statement.excluded.run_at,
+                "run_time": statement.excluded.run_time,
+                "weekdays_json": statement.excluded.weekdays_json,
+                "month_day": statement.excluded.month_day,
+                "timezone": statement.excluded.timezone,
+                "overlap_policy": statement.excluded.overlap_policy,
+                "next_run_at": statement.excluded.next_run_at,
+                "last_error": None,
+                "updated_at": statement.excluded.updated_at,
+            },
+        )
+        with self._transaction() as connection:
+            connection.execute(statement)
         return self.get(batch_id) or {}
 
     def get(self, batch_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM batch_schedules WHERE batch_id = ?", (batch_id,)
-            ).fetchone()
+                select(batch_schedules).where(batch_schedules.c.batch_id == batch_id)
+            ).mappings().first()
         return self._row(row) if row else None
 
     def list(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM batch_schedules ORDER BY updated_at DESC"
-            ).fetchall()
+                select(batch_schedules).order_by(batch_schedules.c.updated_at.desc())
+            ).mappings().all()
         return [self._row(row) for row in rows]
 
     def list_due(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
         timestamp = _utc_iso((now or _utc_now()).astimezone(UTC))
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT * FROM batch_schedules
-                WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
-                ORDER BY next_run_at, batch_id
-                """,
-                (timestamp,),
-            ).fetchall()
+                select(batch_schedules)
+                .where(
+                    and_(
+                        batch_schedules.c.enabled == 1,
+                        batch_schedules.c.next_run_at.is_not(None),
+                        batch_schedules.c.next_run_at <= timestamp,
+                    )
+                )
+                .order_by(batch_schedules.c.next_run_at, batch_schedules.c.batch_id)
+            ).mappings().all()
         return [self._row(row) for row in rows]
 
     def complete_occurrence(
@@ -256,23 +259,20 @@ class BatchScheduleRepository:
         else:
             enabled = schedule["enabled"]
             next_run = next_schedule_at(schedule, now) if enabled else None
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.execute(
-                """
-                UPDATE batch_schedules
-                SET enabled = ?, next_run_at = ?, last_run_at = ?, last_error = ?, updated_at = ?
-                WHERE batch_id = ?
-                """,
-                (
-                    int(enabled),
-                    _utc_iso(next_run) if next_run else None,
-                    _utc_iso(now) if executed else schedule.get("last_run_at"),
-                    error,
-                    _utc_iso(now),
-                    batch_id,
-                ),
+                update(batch_schedules)
+                .where(batch_schedules.c.batch_id == batch_id)
+                .values(
+                    enabled=int(enabled),
+                    next_run_at=_utc_iso(next_run) if next_run else None,
+                    last_run_at=(
+                        _utc_iso(now) if executed else schedule.get("last_run_at")
+                    ),
+                    last_error=error,
+                    updated_at=_utc_iso(now),
+                )
             )
-            connection.commit()
         return self.get(batch_id)
 
     def recover_missed(self, *, now: datetime | None = None) -> int:
@@ -288,11 +288,10 @@ class BatchScheduleRepository:
         return len(schedules)
 
     def delete(self, batch_id: str) -> int:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             cursor = connection.execute(
-                "DELETE FROM batch_schedules WHERE batch_id = ?", (batch_id,)
+                delete(batch_schedules).where(batch_schedules.c.batch_id == batch_id)
             )
-            connection.commit()
         return cursor.rowcount
 
     @staticmethod
@@ -303,10 +302,16 @@ class BatchScheduleRepository:
         return data
 
     @contextmanager
-    def _connect(self, *, initialize: bool = True) -> Iterator[CoreConnection]:
+    def _connect(self, *, initialize: bool = True) -> Iterator[Any]:
         if initialize:
             self.initialize()
-        with database_connection(self.database_path, initialize=False) as connection:
+        with database_read_connection(self.database_path, initialize=False) as connection:
+            yield connection
+
+    @contextmanager
+    def _transaction(self) -> Iterator[Any]:
+        self.initialize()
+        with database_transaction(self.database_path, initialize=False) as connection:
             yield connection
 
 
@@ -404,10 +409,6 @@ class BatchScheduleManager:
                 )
                 continue
             try:
-                if not (
-                    batch.get("status") == "QUEUED" and self.store.has_execution(batch)
-                ):
-                    self.inputs.prepare_execution(batch_id)
                 self.scheduler.start(batch_id)
             except (BatchExecutionError, ValueError) as exc:
                 logger.exception("定时任务启动失败: %s", batch_id)

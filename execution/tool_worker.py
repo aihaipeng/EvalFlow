@@ -33,6 +33,15 @@ class _RawHttpResponseParseError(ValueError):
     pass
 
 
+class _PythonVariableSerializationError(ValueError):
+    def __init__(self, name: str, cause: Exception) -> None:
+        super().__init__(
+            f"Python 顶层变量无法序列化: {name} "
+            f"({type(cause).__name__}: {cause})"
+        )
+        self.name = name
+
+
 def _emit_event(event: dict[str, Any]) -> None:
     sys.__stdout__.buffer.write(
         (
@@ -280,9 +289,7 @@ def _serialize_python_variables(values: dict[str, Any]) -> dict[str, Any]:
         try:
             serialized[name] = _serialize_response(value)
         except Exception as exc:  # noqa: BLE001
-            raise ValueError(
-                f"Python 顶层变量无法序列化: {name} ({type(exc).__name__}: {exc})"
-            ) from exc
+            raise _PythonVariableSerializationError(name, exc) from exc
     return serialized
 
 
@@ -366,6 +373,9 @@ def main() -> None:
             result["http_status"] = exc.status_code
         elif isinstance(exc, _RawHttpResponseParseError):
             result["error_code"] = "HTTP_RESPONSE_PARSE_ERROR"
+        elif isinstance(exc, _PythonVariableSerializationError):
+            result["error_code"] = "SCRIPT_OUTPUT_SERIALIZATION_ERROR"
+            result["serialization_variable_name"] = exc.name
     _emit_event({"type": "result", "result": result})
 
 

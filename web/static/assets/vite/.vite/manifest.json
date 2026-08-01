@@ -1,0 +1,75 @@
+{
+  "_api-result-CCnj3GqW.js": {
+    "file": "chunks/api-result-CCnj3GqW.js",
+    "name": "api-result",
+    "imports": [
+      "_dist-D5BYm1LM.js",
+      "_dist-BM6k9l3C.js"
+    ]
+  },
+  "_dist-BM6k9l3C.js": {
+    "file": "chunks/dist-BM6k9l3C.js",
+    "name": "dist",
+    "imports": [
+      "_dist-D5BYm1LM.js"
+    ]
+  },
+  "_dist-D5BYm1LM.js": {
+    "file": "chunks/dist-D5BYm1LM.js",
+    "name": "dist"
+  },
+  "_x-CO1OiZBW.js": {
+    "file": "chunks/x-CO1OiZBW.js",
+    "name": "x",
+    "imports": [
+      "_dist-D5BYm1LM.js"
+    ]
+  },
+  "web/frontend/batch-runs.jsx": {
+    "file": "batch-runs-CO-z0TKu.js",
+    "name": "batch-runs",
+    "src": "web/frontend/batch-runs.jsx",
+    "isEntry": true,
+    "imports": [
+      "_dist-D5BYm1LM.js",
+      "_api-result-CCnj3GqW.js"
+    ]
+  },
+  "web/frontend/model-providers.jsx": {
+    "file": "model-providers-BoMyZJYC.js",
+    "name": "model-providers",
+    "src": "web/frontend/model-providers.jsx",
+    "isEntry": true,
+    "imports": [
+      "_dist-D5BYm1LM.js",
+      "_api-result-CCnj3GqW.js"
+    ]
+  },
+  "web/frontend/test-sets.jsx": {
+    "file": "test-sets-uzZelAh1.js",
+    "name": "test-sets",
+    "src": "web/frontend/test-sets.jsx",
+    "isEntry": true,
+    "imports": [
+      "_dist-D5BYm1LM.js",
+      "_x-CO1OiZBW.js",
+      "_dist-BM6k9l3C.js"
+    ],
+    "css": [
+      "test-sets-Cnwealj_.css"
+    ]
+  },
+  "web/frontend/workflow-canvas.jsx": {
+    "file": "workflow-canvas-C-eXIO3E.js",
+    "name": "workflow-canvas",
+    "src": "web/frontend/workflow-canvas.jsx",
+    "isEntry": true,
+    "imports": [
+      "_dist-D5BYm1LM.js",
+      "_x-CO1OiZBW.js"
+    ],
+    "css": [
+      "workflow-canvas-mAS-GxQS.css"
+    ]
+  }
+}
