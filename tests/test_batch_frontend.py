@@ -78,7 +78,8 @@ def test_batch_schedule_modal_persists_real_schedule():
     styles = read(STATIC_DIR / "execution.css")
 
     assert "function ScheduleModal" in source
-    assert "saveBatchSchedule(batch.id, value)" in source
+    assert "saveBatchSchedule(batch.id, body)" in source
+    assert "next_run_at: _nextRunAt" in source
     for cadence in ("ONCE", "DAILY", "WEEKLY", "MONTHLY"):
         assert f'value="{cadence}"' in source
     for policy in ("SKIP", "QUEUE"):

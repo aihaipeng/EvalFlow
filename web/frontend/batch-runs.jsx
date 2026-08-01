@@ -892,6 +892,7 @@ function ScheduleModal({ batch, onClose, onSaved }) {
   return (
     <Modal
       title="定时任务设置"
+      className="is-batch-schedule"
       onClose={onClose}
       footer={
         <>

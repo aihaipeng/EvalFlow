@@ -329,6 +329,13 @@
 
 #batch-schedule-fields:disabled { opacity: 0.5; }
 
+/* 去掉 fieldset 浏览器默认暗色 groove 边框，改用卡片内网格分隔 */
+.is-batch-schedule fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
 .batch-schedule-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
