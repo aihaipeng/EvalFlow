@@ -3355,3 +3355,43 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - 创建脚本和资源索引分别保存在 `scripts/setup_datacenter_demo.py`、`run_storage/datacenter-demo-setup.json`；测试集生成脚本为 `scripts/generate_datacenter_cases.py`。
 - 存储中途采样：22 个已创建的 Workflow Execution 共 266 个 JSON 文件、98,280,306 bytes，约 4.47 MB/用例；按相同输出规模线性估算 100 条约 447 MB，Batch 自身 102 个文件仅 260,065 bytes。主要占用来自大 HTTP 响应随节点 Context/日志重复持久化，而不是 Batch 索引。
 - 本节结果取代此前“真实内网 FastAPI 联调仍未完成”的历史限制；当前批量任务仍在运行，完成后的最终 100 条汇总和存储占用需继续回填。
+
+### 24.15 HTTP 节点配置窗口边界与开关反馈（completed，2026-08-01）
+
+#### 业务背景与验收目标
+
+- Why：HTTP 节点配置窗口从顶部缩放后可能越过画布边界，导致标题栏和操作按钮被裁切；Redirects 与 SSL Verify 开关在深色主题下又会被高优先级灰色样式覆盖，用户无法快速判断当前状态。
+- Who / Where：测试工程师在 Workflow Studio 配置 HTTP 节点请求选项，并在浅色或深色主题下频繁启停重定向和 SSL 验证。
+- What / Priority：P0 可操作性修复。配置窗口拖动或缩放结束后必须约束在画布内；两个 HTTP 开关复用供应商管理的尺寸与交互规范，选中态统一使用绿色语义色。
+- How to Measure：顶部缩放越界后标题栏仍完整可见且距画布顶部至少 14px；开关轨道为 34x18px、滑块为 12px、选中位移 16px；浅色选中态为 `#2EA44F`、深色为 `#3FB950`，关闭后恢复中性灰；浏览器控制台无错误。
+
+#### 实现与验证记录
+
+- Inspector 在 `react-rnd` 的拖动和缩放停止事件中统一调用纯函数计算合法位置，同时保留 `bounds="parent"` 和四周 14px 安全边距；窗口大于可用区域时仍优先保证标题栏和左上入口可见。
+- HTTP 开关与供应商管理保持相同的 34x18px 轨道、9px 圆角、12px 滑块和 16px 位移；未选中滑块使用中性色，选中滑块为白色，焦点轮廓使用同一绿色状态色。
+- 自动验证：Inspector 边界 Node 测试 `2 passed`；Workflow 前端专项 `30 passed`；`npm run build` 成功；`git diff --check` 无空白错误。
+- 完整回归在独立临时目录得到 `385 passed, 4 skipped`，唯一长路径 ZIP 用例因 Windows 测试目录过长失败；改用系统短路径单独复跑后 `1 passed`，确认不是本次前端回归。
+- 浏览器 E2E：深色主题实测选中背景 `rgb(63, 185, 80)`，浅色主题为 `rgb(46, 164, 79)`；关闭后恢复 `rgb(52, 61, 73)`，重新开启后配置值与 16px 位移恢复；从顶部向画布外缩放后最终 `topInset=14`、标题栏完整，console error 为 0。
+
+### 24.16 GitHub 本地测试缓存清理（completed，2026-08-01）
+
+#### 业务背景与验收目标
+
+- Why：pytest 临时目录包含 SQLite、批次快照、节点日志和归档文件，被误提交后会显著放大仓库体积、污染代码审查，并持续在后续测试中产生无业务价值的差异。
+- Who / Where：开发者在本机反复执行 Workflow、Batch、Test Set 回归后，将 `main` 推送到 GitHub；缓存只应保留在本机，不应成为产品源码。
+- What / Priority：P0 仓库卫生。移除 `.codex/`、`.pd/`、`.pe/`、`.pf/`、`.ph/`、`.pk/`、`.pm/`、`.pp/`、`.ps/`、`.pt-confirm-full/`、`.pt-delete-full/`、`.pt0801/`、`.pu/` 的 Git 跟踪，并为每个目录增加精确忽略规则。
+- How to Measure：`origin/main` 对上述路径的树查询结果为 0；13 个本机目录继续存在并全部命中 `.gitignore`；提交不包含产品源码、业务数据或前端构建产物。
+
+#### 实施与验证记录
+
+- 使用 `git rm --cached` 仅清理索引，没有物理删除本机测试目录；共从 GitHub 移除 4,272 个缓存文件，并在 `.gitignore` 增加 15 行分组规则。
+- 暂存范围验证覆盖 4,273 个变更文件，除 `.gitignore` 外全部位于目标目录；提交统计为 15 行新增、170,650 行缓存内容删除。
+- 清理提交为 `e2420ca chore: remove local test artifacts`，已推送到 `origin/main`；远端 `main` 与本地 HEAD 均为 `e2420ca35b4b78924732499c664e0ecdc9621890`。
+- 远端最终树检查 `REMOTE_CACHE_PATHS=0`；本机检查 `LOCAL_DIRECTORIES_PRESENT=13 / IGNORED_DIRECTORIES=13`，达到“远端删除、本机保留、后续不再提交”的验收目标。
+
+### 24.17 无人模式文档收尾（completed，2026-08-01）
+
+- Why：在连续实现和仓库清理后，需要把已验证事实写回唯一计划文档，避免后续维护者重复排查已经关闭的问题，也避免无人执行阶段越权改动产品代码。
+- Who / Where：后续开发者通过 `PLAN.md` 接续工作；本轮无人模式只处理计划状态、验收证据和 GitHub 同步。
+- What / Priority：本轮只允许修改 `PLAN.md`，不修改任何代码、配置、构建产物或业务数据；仅记录 24.15、24.16 的已完成事实。没有新增运行证据的 24.14 保持 `in progress`，最终 100 条汇总和存储占用仍需后续按真实结果回填。
+- How to Measure：提交前后文件范围检查必须只有 `PLAN.md`；文档差异通过 `git diff --check`；提交成功推送后，本地 HEAD、`origin/main` 与 GitHub 远端 `main` 必须一致。
