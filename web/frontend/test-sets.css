@@ -389,7 +389,11 @@
 /* 字段设置弹窗感官改进：表头与行对齐、删除列精简、deleted 行柔和 */
 .ts-column-settings-head {
     grid-template-columns: minmax(0, 1fr) 44px;
-    padding: 0 12px 8px 38px;
+    padding: 0 12px 8px 50px;
+    color: var(--text-muted);
+}
+.ts-column-settings-head span {
+    color: var(--text-muted);
 }
 .ts-column-settings-list > div {
     grid-template-columns: 28px minmax(0, 1fr) 44px;
