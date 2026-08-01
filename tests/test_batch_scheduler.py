@@ -284,13 +284,22 @@ def test_single_case_execution_updates_batch_activity_times(tmp_path: Path):
 
     scheduler.start_case(batch["id"], case["id"])
     deadline = time.monotonic() + 10
+    latest = None
     while time.monotonic() < deadline:
         case = store.get_case(batch["id"], case["id"])
-        if case and case["status"] == "SUCCESS":
+        latest = store.get(batch["id"])
+        # case 终态与 batch 活动时间由不同线程先后写入，等待完整收敛
+        if (
+            case
+            and case["status"] == "SUCCESS"
+            and latest
+            and latest["started_at"]
+            and latest["finished_at"]
+        ):
             break
         time.sleep(0.03)
 
-    latest = store.get(batch["id"])
+    latest = latest or store.get(batch["id"])
     assert case and case["status"] == "SUCCESS"
     assert latest["started_at"]
     assert latest["finished_at"]
