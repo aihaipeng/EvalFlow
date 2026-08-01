@@ -36,6 +36,20 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Local test workspaces
+.pd/
+.pe/
+.pf/
+.ph/
+.pk/
+.pm/
+.pp/
+.ps/
+.pt-confirm-full/
+.pt-delete-full/
+.pt0801/
+.pu/
+
 # Frontend dependencies and caches
 node_modules/
 .npm-cache/
@@ -45,6 +59,7 @@ dist/
 # Local editor and agent state
 .claude/
 .agents/
+.codex/
 .idea/
 .vscode/
 .proto-shots/
