@@ -1,0 +1,152 @@
+{
+  "id": "f0122408-3c04-4d10-a979-84fd52100ca0",
+  "workflow_id": "59b941cf-4d36-4882-84d5-5bd2815f3795",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "445005ff-f263-4264-9d30-e75fa5f5eb55",
+    "case_run_id": "21867572-0a30-4a81-8ec3-03aeebcea762",
+    "case_id": "case-2",
+    "row_number": 2
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "59b941cf-4d36-4882-84d5-5bd2815f3795",
+      "name": "Batch API Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "f133aeb1-5d5d-4cac-bd44-6f2dd519664f",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "world"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "2c02fdd5-8b34-4061-b45e-31f82ea8fa92",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = context[\"question\"].upper()",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "e0f993dc-2ec0-42fd-9499-241c97cce02f",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "cb69384d-cca5-4e82-96ad-de02bbd0976a",
+        "source_node_id": "f133aeb1-5d5d-4cac-bd44-6f2dd519664f",
+        "target_node_id": "2c02fdd5-8b34-4061-b45e-31f82ea8fa92"
+      },
+      {
+        "id": "e3ef0f83-c785-4132-9130-2b029efe5de4",
+        "source_node_id": "2c02fdd5-8b34-4061-b45e-31f82ea8fa92",
+        "target_node_id": "e0f993dc-2ec0-42fd-9499-241c97cce02f"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:08:14.515Z",
+  "started_at": "2026-07-31T21:08:14.517Z",
+  "finished_at": "2026-07-31T21:08:14.824Z",
+  "duration_ms": 307,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "f133aeb1-5d5d-4cac-bd44-6f2dd519664f",
+        "node_execution_id": "4bce62cf-8615-4738-a071-2e6a898f4944",
+        "committed_at": "2026-07-31T21:08:14.527Z",
+        "values": {
+          "input": {},
+          "question": "world"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "2c02fdd5-8b34-4061-b45e-31f82ea8fa92",
+        "node_execution_id": "b1dd1c90-12a7-4766-9522-f0b6b792c75f",
+        "committed_at": "2026-07-31T21:08:14.809Z",
+        "values": {
+          "answer": "WORLD"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "world",
+      "answer": "WORLD"
+    }
+  },
+  "result": {
+    "answer": "WORLD"
+  },
+  "nodes": [
+    {
+      "node_id": "f133aeb1-5d5d-4cac-bd44-6f2dd519664f",
+      "node_execution_id": "4bce62cf-8615-4738-a071-2e6a898f4944",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "2c02fdd5-8b34-4061-b45e-31f82ea8fa92",
+      "node_execution_id": "b1dd1c90-12a7-4766-9522-f0b6b792c75f",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "e0f993dc-2ec0-42fd-9499-241c97cce02f",
+      "node_execution_id": "3210d8e5-21ea-4713-865b-45589b3cadb3",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

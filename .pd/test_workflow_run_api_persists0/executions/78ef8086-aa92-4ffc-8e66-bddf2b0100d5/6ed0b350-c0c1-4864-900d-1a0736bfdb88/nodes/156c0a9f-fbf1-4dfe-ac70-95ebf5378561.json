@@ -1,0 +1,65 @@
+{
+  "workflow_execution_id": "6ed0b350-c0c1-4864-900d-1a0736bfdb88",
+  "workflow_id": "78ef8086-aa92-4ffc-8e66-bddf2b0100d5",
+  "node_execution_id": "156c0a9f-fbf1-4dfe-ac70-95ebf5378561",
+  "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+  "type": "START",
+  "structural_snapshot": {
+    "id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+    "type": "START",
+    "name": "开始",
+    "description": "",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "value": "请审核"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:08:34",
+  "finished_at": "2026-08-01 05:08:34",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "请审核"
+  },
+  "outputs": {
+    "question": "请审核"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:08:34.030Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:08:34.031Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:08:34.033Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "input_validation": {
+      "status": "SUCCESS",
+      "inputs": {
+        "question": "请审核"
+      },
+      "error": null
+    },
+    "context_commit": {
+      "status": "SUCCESS",
+      "outputs": {
+        "question": "请审核"
+      },
+      "error": null
+    }
+  }
+}

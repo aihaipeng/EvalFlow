@@ -1,0 +1,74 @@
+{
+  "workflow_execution_id": "381f2a59-4394-4013-adcb-60d0d6fb3237",
+  "workflow_id": "9eddc544-b951-4d91-b5dd-18d75a372e48",
+  "node_execution_id": "1a4515cd-b3b7-49d3-8cb4-497ed57648e4",
+  "node_id": "e899f7d9-a6a5-4f4e-817b-0adb8dc50339",
+  "type": "LLM",
+  "structural_snapshot": {
+    "id": "e899f7d9-a6a5-4f4e-817b-0adb8dc50339",
+    "type": "LLM",
+    "name": "已删除模型",
+    "description": "",
+    "model": {
+      "provider_id": "missing-provider",
+      "model_name": "missing-model"
+    },
+    "context": {
+      "messages": [
+        {
+          "role": "SYSTEM",
+          "content": ""
+        },
+        {
+          "role": "USER",
+          "content": "请回答"
+        }
+      ]
+    },
+    "generation": {
+      "parameters": {},
+      "parameters_text": ""
+    },
+    "execution": {
+      "timeout_seconds": 600.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": []
+  },
+  "status": "FAILED",
+  "started_at": null,
+  "finished_at": "2026-08-01 05:21:26",
+  "duration_ms": null,
+  "attempt_count": 0,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:21:26.150Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:21:26.156Z",
+      "reason": "LLM_MODEL_NOT_FOUND"
+    }
+  ],
+  "error": {
+    "code": "LLM_MODEL_NOT_FOUND",
+    "message": "节点“已删除模型”引用的模型“missing-provider/missing-model”不存在或已被删除",
+    "details": {
+      "missing_fields": [],
+      "suggestion": "打开节点设置，重新选择模型管理中的可用模型"
+    }
+  },
+  "model": null,
+  "request": null,
+  "response": null,
+  "response_received": false,
+  "usage": null,
+  "usage_errors": [],
+  "attempts": []
+}

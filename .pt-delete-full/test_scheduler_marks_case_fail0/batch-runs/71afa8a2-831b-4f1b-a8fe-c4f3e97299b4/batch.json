@@ -1,0 +1,217 @@
+{
+  "id": "71afa8a2-831b-4f1b-a8fe-c4f3e97299b4",
+  "name": "evaluation failure",
+  "description": "",
+  "configuration": {
+    "name": "evaluation failure",
+    "description": "",
+    "test_set_id": "429fd363-ef1d-4ad2-b4d7-f285c46ac978",
+    "test_set_name": "测试集-ce350073",
+    "workflow_id": "2651f9c0-f23b-4bbc-8fc0-a5de7320a83f",
+    "workflow_name": "Batch workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      }
+    ],
+    "evaluation_rules": [
+      {
+        "result_path": "context.answer",
+        "operator": "EQ",
+        "expected_value": "DIFFERENT",
+        "type": "string"
+      },
+      {
+        "result_path": "context.answer",
+        "operator": "EXISTS",
+        "expected_value": "true",
+        "type": "boolean"
+      }
+    ],
+    "case_concurrency": 1,
+    "failure_retry_count": 0,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "case_name",
+    "rule_display_column": "case_name",
+    "updated_at": "2026-07-31T21:02:50.917Z"
+  },
+  "execution_configuration": {
+    "name": "evaluation failure",
+    "description": "",
+    "test_set_id": "429fd363-ef1d-4ad2-b4d7-f285c46ac978",
+    "test_set_name": "测试集-ce350073",
+    "workflow_id": "2651f9c0-f23b-4bbc-8fc0-a5de7320a83f",
+    "workflow_name": "Batch workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      }
+    ],
+    "evaluation_rules": [
+      {
+        "result_path": "context.answer",
+        "operator": "EQ",
+        "expected_value": "DIFFERENT",
+        "type": "string"
+      },
+      {
+        "result_path": "context.answer",
+        "operator": "EXISTS",
+        "expected_value": "true",
+        "type": "boolean"
+      }
+    ],
+    "case_concurrency": 1,
+    "failure_retry_count": 0,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "case_name",
+    "rule_display_column": "case_name",
+    "updated_at": "2026-07-31T21:02:50.917Z"
+  },
+  "execution_round_id": "8ae054ad-a54c-4208-97c3-df6694db74d7",
+  "execution_round_number": 1,
+  "status": "COMPLETED_WITH_ERRORS",
+  "input": {
+    "test_set_id": "429fd363-ef1d-4ad2-b4d7-f285c46ac978",
+    "test_set_name": "测试集-ce350073",
+    "columns": [
+      "case_name",
+      "question"
+    ],
+    "display_columns": {
+      "case": "case_name",
+      "rule": "case_name"
+    },
+    "updated_at": "2026-07-31T21:02:50.909+00:00",
+    "call_order": {
+      "mode": "SEQUENTIAL",
+      "random_seed": null
+    }
+  },
+  "workflow": {
+    "id": "2651f9c0-f23b-4bbc-8fc0-a5de7320a83f",
+    "name": "Batch workflow",
+    "structural_snapshot": {
+      "workflow": {
+        "id": "2651f9c0-f23b-4bbc-8fc0-a5de7320a83f",
+        "name": "Batch workflow",
+        "description": ""
+      },
+      "nodes": [
+        {
+          "node": {
+            "id": "8b7cd002-0361-48ee-a0ae-3a46f44c4bfb",
+            "type": "START",
+            "name": "START",
+            "description": "",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          },
+          "position_x": 0.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "282a4cf1-c014-4070-8ae3-683ead0b5b59",
+            "type": "SCRIPT",
+            "name": "SCRIPT",
+            "description": "",
+            "script": "result = context[\"question\"].upper()",
+            "execution": {
+              "timeout_seconds": 10.0,
+              "max_attempts": 0,
+              "retry_interval_seconds": 0.0,
+              "delay_seconds": 0.0
+            },
+            "outputs": [
+              {
+                "name": "answer",
+                "type": "string",
+                "source": "result"
+              }
+            ]
+          },
+          "position_x": 200.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "2b63f337-c0ac-452f-a6cb-3cc90027b79d",
+            "type": "END",
+            "name": "END",
+            "description": "",
+            "outputs": []
+          },
+          "position_x": 400.0,
+          "position_y": 0.0
+        }
+      ],
+      "edges": [
+        {
+          "id": "55e14f06-3088-4b1d-a4b1-e1869e06fd95",
+          "source_node_id": "8b7cd002-0361-48ee-a0ae-3a46f44c4bfb",
+          "target_node_id": "282a4cf1-c014-4070-8ae3-683ead0b5b59"
+        },
+        {
+          "id": "5303a1b1-d4cb-41d3-8993-76f43a55f883",
+          "source_node_id": "282a4cf1-c014-4070-8ae3-683ead0b5b59",
+          "target_node_id": "2b63f337-c0ac-452f-a6cb-3cc90027b79d"
+        }
+      ]
+    }
+  },
+  "variables": [
+    {
+      "source": "TEST_SET",
+      "key": "question",
+      "value": "question",
+      "type": "string"
+    }
+  ],
+  "evaluation_rules": [
+    {
+      "result_path": "context.answer",
+      "operator": "EQ",
+      "expected_value": "DIFFERENT",
+      "type": "string"
+    },
+    {
+      "result_path": "context.answer",
+      "operator": "EXISTS",
+      "expected_value": "true",
+      "type": "boolean"
+    }
+  ],
+  "case_concurrency": 1,
+  "failure_retry_count": 0,
+  "total_cases": 1,
+  "summary": {
+    "queued": 0,
+    "running": 0,
+    "success": 0,
+    "failed": 1,
+    "interrupted": 0,
+    "pass": 0,
+    "fail": 1,
+    "error": 0,
+    "not_evaluated": 0
+  },
+  "created_at": "2026-07-31T21:02:50.914Z",
+  "execution_created_at": "2026-07-31T21:02:50.917Z",
+  "updated_at": "2026-07-31T21:02:50.917Z",
+  "started_at": "2026-07-31T21:02:50.923Z",
+  "finished_at": "2026-07-31T21:02:51.241Z",
+  "error": null,
+  "execution_mode": null
+}

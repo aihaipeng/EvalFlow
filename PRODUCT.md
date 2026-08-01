@@ -8,11 +8,11 @@ web
 
 ## Users
 
-Agent Bench v2 is used by a small internal team of approximately four to five Agent and test engineers. Each user runs the application independently on their own computer through localhost to manage test data, configure workflows, and execute or trace batch Runs.
+EvalFlow is used by a small internal team of approximately four to five Agent and test engineers. Each user runs the application independently on their own computer through localhost to manage test data, configure workflows, and execute or trace batch Runs.
 
 ## Product Purpose
 
-Agent Bench v2 is a local enterprise Agent testing and orchestration tool. It enables users to manage database-backed test sets, maintain model suppliers and restricted visual workflows, create batch Runs, execute cases concurrently, resume interrupted work, and trace execution results.
+EvalFlow is a local enterprise Agent testing and orchestration tool. It enables users to manage database-backed test sets, maintain model suppliers and restricted visual workflows, create batch Runs, execute cases concurrently, resume interrupted work, and trace execution results.
 
 Success means users can maintain and execute test cases efficiently without editing or coordinating shared Excel files, while each Run remains reproducible and traceable.
 
@@ -40,9 +40,9 @@ The product combines editable database-backed test sets, constrained visual work
 
 ## Brand Commitments
 
-- Product name: Agent Bench.
+- Product name: EvalFlow.
 - Chinese is the primary interface language.
-- Existing business terminology such as 测试集、供应商、工作流、运行调度 and Run should remain consistent.
+- Existing business terminology such as 测试集、供应商、工作流、任务调度 and Run should remain consistent.
 
 ## Evidence on Hand
 

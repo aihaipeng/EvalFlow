@@ -1,0 +1,122 @@
+{
+  "workflow_execution_id": "cef93e95-2d0b-4052-8663-4e915eb1925e",
+  "workflow_id": "3c529656-0fc9-4db9-8500-b70bc75d6dff",
+  "node_execution_id": "bf5c862a-d432-4812-a927-d76a5d154fda",
+  "node_id": "aeb90347-9d10-49ab-b3ab-0f6a547dfa53",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "aeb90347-9d10-49ab-b3ab-0f6a547dfa53",
+    "type": "SCRIPT",
+    "name": "SCRIPT",
+    "description": "",
+    "script": "raise RuntimeError(\"service unavailable\")",
+    "execution": {
+      "timeout_seconds": 10.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "string",
+        "source": "result"
+      }
+    ]
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 04:57:52",
+  "finished_at": "2026-08-01 04:57:52",
+  "duration_ms": 271,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {},
+    "question": "bad"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:57:52.595Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:57:52.601Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T20:57:52.865Z",
+      "reason": "SCRIPT_RUNTIME_ERROR"
+    }
+  ],
+  "error": {
+    "code": "SCRIPT_RUNTIME_ERROR",
+    "message": "RuntimeError: service unavailable",
+    "details": null
+  },
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 1220,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "FAILED",
+        "console": [
+          {
+            "sequence": 1,
+            "stream": "STDERR",
+            "content": "Traceback (most recent call last):\n"
+          },
+          {
+            "sequence": 2,
+            "stream": "STDERR",
+            "content": "  File \"C:\\Users\\Administrator\\Desktop\\agent-bench-v2\\execution\\tool_worker.py\", line 346, in main\n"
+          },
+          {
+            "sequence": 3,
+            "stream": "STDERR",
+            "content": "    response, python_variables = _execute_python(payload)\n"
+          },
+          {
+            "sequence": 4,
+            "stream": "STDERR",
+            "content": "                                 ~~~~~~~~~~~~~~~^^^^^^^^^\n"
+          },
+          {
+            "sequence": 5,
+            "stream": "STDERR",
+            "content": "  File \"C:\\Users\\Administrator\\Desktop\\agent-bench-v2\\execution\\tool_worker.py\", line 125, in _execute_python\n"
+          },
+          {
+            "sequence": 6,
+            "stream": "STDERR",
+            "content": "    exec(compile(code, \"<workflow-node-main.py>\", \"exec\"), namespace, namespace)\n"
+          },
+          {
+            "sequence": 7,
+            "stream": "STDERR",
+            "content": "    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+          },
+          {
+            "sequence": 8,
+            "stream": "STDERR",
+            "content": "  File \"<workflow-node-main.py>\", line 1, in <module>\n"
+          },
+          {
+            "sequence": 9,
+            "stream": "STDERR",
+            "content": "RuntimeError: service unavailable\n"
+          }
+        ],
+        "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\Administrator\\Desktop\\agent-bench-v2\\execution\\tool_worker.py\", line 346, in main\n    response, python_variables = _execute_python(payload)\n                                 ~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"C:\\Users\\Administrator\\Desktop\\agent-bench-v2\\execution\\tool_worker.py\", line 125, in _execute_python\n    exec(compile(code, \"<workflow-node-main.py>\", \"exec\"), namespace, namespace)\n    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<workflow-node-main.py>\", line 1, in <module>\nRuntimeError: service unavailable\n",
+        "error": {
+          "code": "SCRIPT_RUNTIME_ERROR",
+          "message": "RuntimeError: service unavailable",
+          "details": null
+        }
+      }
+    ]
+  }
+}

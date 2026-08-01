@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
@@ -18,6 +18,7 @@ from execution.node_structural_models import (
     NodeStructuralRepository,
 )
 from execution.node_codec import dump_node_definition
+from execution.resource_names import next_copy_name
 from execution.time_utils import utc_now_iso
 from execution.init_db import (
     DEFAULT_DATABASE_PATH,
@@ -365,6 +366,86 @@ class WorkflowStructuralRepository:
                 "ORDER BY updated_at DESC, id DESC"
             ).fetchall()
         return [WorkflowStructuralSummary(**dict(row)) for row in rows]
+
+    def copy(self, workflow_id: str) -> WorkflowStructuralRecord:
+        """Atomically duplicate a Workflow with independent structural identities."""
+
+        now = utc_now_iso()
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT * FROM workflow_structural_models WHERE id = ?",
+                    (workflow_id,),
+                ).fetchone()
+                if row is None:
+                    raise WorkflowStructuralRepositoryError(
+                        f"Workflow 不存在: {workflow_id}"
+                    )
+                current = self._record_from_connection(connection, row)
+                existing_names = {
+                    item["name"]
+                    for item in connection.execute(
+                        "SELECT name FROM workflow_structural_models"
+                    )
+                }
+                try:
+                    copied_name = next_copy_name(
+                        current.workflow.name, existing_names
+                    )
+                except ValueError as exc:
+                    raise WorkflowStructuralRepositoryError(str(exc)) from exc
+                node_ids = {
+                    node.id: str(uuid4()) for node in current.node_models
+                }
+                copied_nodes = [
+                    node.model_copy(update={"id": node_ids[node.id]})
+                    for node in current.node_models
+                ]
+                copied_workflow = WorkflowStructuralModel(
+                    id=str(uuid4()),
+                    name=copied_name,
+                    description=current.workflow.description,
+                    nodes=[
+                        binding.model_copy(
+                            update={"node_id": node_ids[binding.node_id]}
+                        )
+                        for binding in current.workflow.nodes
+                    ],
+                    edges=[
+                        edge.model_copy(
+                            update={
+                                "id": str(uuid4()),
+                                "source_node_id": node_ids[edge.source_node_id],
+                                "target_node_id": node_ids[edge.target_node_id],
+                            }
+                        )
+                        for edge in current.workflow.edges
+                    ],
+                )
+                validate_workflow_graph(copied_workflow, copied_nodes)
+                connection.execute(
+                    "INSERT INTO workflow_structural_models VALUES (?, ?, ?, ?, ?)",
+                    (
+                        copied_workflow.id,
+                        copied_workflow.name,
+                        copied_workflow.description,
+                        now,
+                        now,
+                    ),
+                )
+                self._insert_nodes_bindings_edges(
+                    connection, copied_workflow, copied_nodes, now
+                )
+                connection.commit()
+        except sqlite3.IntegrityError as exc:
+            _raise_workflow_integrity_error("复制", exc)
+        return WorkflowStructuralRecord(
+            workflow=copied_workflow,
+            node_models=copied_nodes,
+            created_at=now,
+            updated_at=now,
+        )
 
     def update(
         self,

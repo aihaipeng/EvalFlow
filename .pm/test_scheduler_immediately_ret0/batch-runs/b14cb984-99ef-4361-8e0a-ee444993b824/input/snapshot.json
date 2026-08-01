@@ -1,0 +1,26 @@
+{
+  "id": "323112dd-9216-4cd5-8ec7-03d2c5f98d97",
+  "name": "测试集-b99adeb9",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "good"
+      }
+    }
+  ],
+  "created_at": "2026-08-01T00:10:20.561+00:00",
+  "updated_at": "2026-08-01T00:10:20.561+00:00"
+}

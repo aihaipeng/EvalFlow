@@ -1,0 +1,99 @@
+{
+  "id": "d260246c-8cf9-4b5c-a6c4-4232f38ded86",
+  "workflow_id": "55c2e001-bc6c-456e-b035-3579afec1158",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "55c2e001-bc6c-456e-b035-3579afec1158",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "b055b5d6-9238-4a98-94f5-56d9b0519512",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "5f1c5dc3-d8b2-417f-bfe3-127879bb2912",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = {'id': 3}",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "314b4674-55aa-4abf-9a7d-276f3d27f5a1",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "898c0177-4899-4859-aed1-43cae96a6277",
+        "source_node_id": "b055b5d6-9238-4a98-94f5-56d9b0519512",
+        "target_node_id": "5f1c5dc3-d8b2-417f-bfe3-127879bb2912"
+      },
+      {
+        "id": "577f8b90-83df-45c4-9324-4f27859a7cdf",
+        "source_node_id": "5f1c5dc3-d8b2-417f-bfe3-127879bb2912",
+        "target_node_id": "314b4674-55aa-4abf-9a7d-276f3d27f5a1"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:17:09.632Z",
+  "started_at": "2026-07-31T21:17:09.636Z",
+  "finished_at": "2026-07-31T21:17:09.948Z",
+  "duration_ms": 312,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "b055b5d6-9238-4a98-94f5-56d9b0519512",
+      "node_execution_id": "36503e60-1c69-454b-9182-92f4943bd148",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "5f1c5dc3-d8b2-417f-bfe3-127879bb2912",
+      "node_execution_id": "62e3b319-98ee-4e5e-871b-df2edd6fbe5d",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "314b4674-55aa-4abf-9a7d-276f3d27f5a1",
+      "node_execution_id": "b65613d5-96b2-44a8-b689-5b9400193c98",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

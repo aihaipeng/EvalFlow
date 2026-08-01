@@ -1,7 +1,9 @@
 import json
 import threading
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
@@ -178,6 +180,30 @@ def local_execution_server():
                     "content": [{"type": "text", "text": "Anthropic OK"}],
                     "stop_reason": "end_turn",
                     "usage": {"input_tokens": 4, "output_tokens": 2},
+                }
+            elif self.path.endswith("/responses"):
+                response = {
+                    "id": "resp-1",
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "reasoning",
+                            "content": [
+                                {
+                                    "type": "reasoning_text",
+                                    "text": "private reasoning",
+                                }
+                            ],
+                        },
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {"type": "output_text", "text": "Responses OK"}
+                            ],
+                        }
+                    ],
+                    "usage": {"input_tokens": 5, "output_tokens": 3, "total_tokens": 8},
                 }
             else:
                 response = {
@@ -919,6 +945,241 @@ def test_store_atomic_write_retries_transient_windows_permission_error(tmp_path,
     assert list(store.execution_root(workflow_id, execution_id).glob("*.tmp")) == []
 
 
+def test_store_archives_expired_terminal_executions_with_transparent_node_reads(
+    tmp_path, monkeypatch
+):
+    store = WorkflowExecutionStore(tmp_path / "executions")
+    workflow_id = str(uuid4())
+    batch_id = str(uuid4())
+    expired_id = str(uuid4())
+    recent_id = str(uuid4())
+    running_id = str(uuid4())
+    expired = {
+        "id": expired_id,
+        "workflow_id": workflow_id,
+        "trigger": {"type": "BATCH", "batch_execution_id": batch_id},
+        "status": "SUCCESS",
+        "created_at": "2026-07-20T12:00:00.000Z",
+        "finished_at": "2026-07-20T12:01:00.000Z",
+    }
+    node = {
+        "node_execution_id": str(uuid4()),
+        "workflow_id": workflow_id,
+        "workflow_execution_id": expired_id,
+        "type": "SCRIPT",
+        "status": "SUCCESS",
+        "started_at": "2026-07-20 20:00:00",
+        "logs": ["complete"],
+    }
+    recent = {
+        **expired,
+        "id": recent_id,
+        "trigger": {"type": "MANUAL"},
+        "created_at": "2026-07-30T12:00:00.000Z",
+        "finished_at": "2026-07-30T12:01:00.000Z",
+    }
+    running = {**expired, "id": running_id, "status": "RUNNING"}
+    store.create(expired)
+    store.write_node(node)
+    store.create(recent)
+    store.create(running)
+
+    archived = store.archive_expired(
+        now=datetime(2026, 7, 31, 12, tzinfo=timezone.utc)
+    )
+
+    assert archived == 1
+    assert not store.execution_root(workflow_id, expired_id).exists()
+    original_read = store._read
+    manifest_reads = 0
+
+    def counted_read(path):
+        nonlocal manifest_reads
+        if path.name.startswith("manifest-"):
+            manifest_reads += 1
+        return original_read(path)
+
+    monkeypatch.setattr(store, "_read", counted_read)
+    assert store.get_workflow(workflow_id, expired_id) == expired
+    assert store.get_nodes(workflow_id, expired_id) == [node]
+    assert store.get_workflow(workflow_id, recent_id) == recent
+    assert store.get_workflow(workflow_id, running_id) == running
+    assert {item["id"] for item in store.list(workflow_id)} == {
+        expired_id,
+        recent_id,
+        running_id,
+    }
+    assert next(item for item in store.list(workflow_id) if item["id"] == expired_id) == expired
+    assert manifest_reads == 1
+    manifests = list(store.archive_root.glob(f"{workflow_id}/**/manifest-*.json"))
+    assert len(manifests) == 1
+    manifest = WorkflowExecutionStore._read(manifests[0])
+    assert manifest["version"] == 2
+    assert manifest["batch_execution_id"] == batch_id
+    assert manifest["executions"][0]["id"] == expired_id
+    assert "workflow" not in manifest["executions"][0]
+    assert manifest["executions"][0]["created_at"] == expired["created_at"]
+
+    store.create(expired)
+    store.write_node(node)
+    temporary = store.root / ".interrupted-write.tmp"
+    temporary.write_text("partial", encoding="utf-8")
+    staged_deletion = store.root / f".deleting-{workflow_id}-{uuid4()}"
+    staged_deletion.mkdir()
+    (staged_deletion / "marker.json").write_text("{}", encoding="utf-8")
+    orphan = manifests[0].parent / "executions-orphan.zip"
+    with zipfile.ZipFile(orphan, "w") as archive:
+        archive.writestr(f"{expired_id}/workflow.json", json.dumps(expired))
+
+    recovered = store.recover_interrupted_archives()
+
+    assert recovered == {
+        "temporary_files": 2,
+        "orphan_archives": 1,
+        "hot_duplicates": 1,
+    }
+    assert not store.execution_root(workflow_id, expired_id).exists()
+    assert not orphan.exists()
+    assert not temporary.exists()
+    assert not staged_deletion.exists()
+
+    store.delete_workflow_root(workflow_id)
+    assert not (store.archive_root / workflow_id).exists()
+
+
+def test_store_reads_legacy_full_workflow_archive_manifest(tmp_path):
+    store = WorkflowExecutionStore(tmp_path / "executions")
+    workflow_id = str(uuid4())
+    execution_id = str(uuid4())
+    document = {
+        "id": execution_id,
+        "workflow_id": workflow_id,
+        "trigger": {"type": "MANUAL"},
+        "status": "SUCCESS",
+        "created_at": "2026-07-20T12:00:00.000Z",
+        "finished_at": "2026-07-20T12:01:00.000Z",
+        "context": {"commits": [], "final": {"answer": 42}},
+    }
+    target = store.archive_root / workflow_id / "date=2026-07-20" / "batch=manual"
+    target.mkdir(parents=True)
+    archive_name = "executions-legacy.zip"
+    with zipfile.ZipFile(target / archive_name, "w") as archive:
+        archive.writestr(
+            f"{execution_id}/workflow.json",
+            json.dumps(document, ensure_ascii=False),
+        )
+    WorkflowExecutionStore._atomic_write(
+        target / "manifest-legacy.json",
+        {
+            "version": 1,
+            "archive": archive_name,
+            "workflow_id": workflow_id,
+            "date": "2026-07-20",
+            "batch_execution_id": None,
+            "created_at": "2026-07-20T12:02:00.000Z",
+            "executions": [{"id": execution_id, "workflow": document}],
+        },
+    )
+
+    assert store.get_workflow(workflow_id, execution_id) == document
+    assert store.list(workflow_id) == [document]
+
+
+def test_store_archives_oldest_terminal_executions_with_hot_window_and_limit(tmp_path):
+    store = WorkflowExecutionStore(tmp_path / "executions")
+    workflow_id = str(uuid4())
+    oldest_id = str(uuid4())
+    older_id = str(uuid4())
+    recent_id = str(uuid4())
+    running_id = str(uuid4())
+
+    def document(execution_id, status, created_at, finished_at):
+        return {
+            "id": execution_id,
+            "workflow_id": workflow_id,
+            "trigger": {"type": "MANUAL"},
+            "status": status,
+            "created_at": created_at,
+            "finished_at": finished_at,
+        }
+
+    oldest = document(
+        oldest_id,
+        "SUCCESS",
+        "2026-07-31T10:00:00.000Z",
+        "2026-07-31T10:01:00.000Z",
+    )
+    older = document(
+        older_id,
+        "FAILED",
+        "2026-07-31T10:10:00.000Z",
+        "2026-07-31T10:11:00.000Z",
+    )
+    recent = document(
+        recent_id,
+        "SUCCESS",
+        "2026-07-31T11:50:00.000Z",
+        "2026-07-31T11:55:00.000Z",
+    )
+    running = document(
+        running_id,
+        "RUNNING",
+        "2026-07-31T10:20:00.000Z",
+        None,
+    )
+    for item in (oldest, older, recent, running):
+        store.create(item)
+
+    archived = store.archive_expired(
+        retention_days=None,
+        retention_seconds=15 * 60,
+        max_executions=1,
+        now=datetime(2026, 7, 31, 12, tzinfo=timezone.utc),
+    )
+
+    assert archived == 1
+    assert not store.execution_root(workflow_id, oldest_id).exists()
+    assert store.execution_root(workflow_id, older_id).exists()
+    assert store.execution_root(workflow_id, recent_id).exists()
+    assert store.execution_root(workflow_id, running_id).exists()
+
+    assert store.archive_expired(
+        retention_days=None,
+        retention_seconds=15 * 60,
+        max_executions=1,
+        now=datetime(2026, 7, 31, 12, tzinfo=timezone.utc),
+    ) == 1
+    assert not store.execution_root(workflow_id, older_id).exists()
+    assert store.execution_root(workflow_id, recent_id).exists()
+    assert store.execution_root(workflow_id, running_id).exists()
+
+
+def test_retention_scheduler_archives_on_start_and_stops_cleanly(tmp_path, monkeypatch):
+    store = WorkflowExecutionStore(tmp_path / "executions")
+    calls = []
+
+    def archive_expired(*, retention_days, retention_seconds, max_executions):
+        calls.append((retention_days, retention_seconds, max_executions))
+        return 3
+
+    monkeypatch.setattr(store, "archive_expired", archive_expired)
+    scheduler = workflow_execution_store_module.WorkflowExecutionRetentionScheduler(
+        store,
+        retention_seconds=15 * 60,
+        interval_seconds=60,
+        max_executions_per_pass=100,
+    )
+
+    assert scheduler.start() == 3
+    assert scheduler.last_recovery == {
+        "temporary_files": 0,
+        "orphan_archives": 0,
+        "hot_duplicates": 0,
+    }
+    scheduler.shutdown()
+    assert calls == [(None, 15 * 60, 100)]
+
+
 def test_execution_json_is_readable_standard_json_without_execution_database_tables(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node("START")
@@ -934,6 +1195,7 @@ def test_execution_json_is_readable_standard_json_without_execution_database_tab
     workflow_path = store.execution_root(workflow_id, started["id"]) / "workflow.json"
     parsed = json.loads(workflow_path.read_text(encoding="utf-8"))
     assert parsed["structural_snapshot"]["workflow"]["id"] == workflow_id
+    assert "\n  " not in workflow_path.read_text(encoding="utf-8")
     assert list(workflow_path.parent.glob("*.tmp")) == []
 
 
@@ -1228,14 +1490,21 @@ def test_http_node_classifies_output_source_and_type_errors(
         (
             "OPENAI_COMPATIBLE",
             "local-openai",
-            "response.choices[-1].message.content",
+            "result.output",
             "OpenAI OK",
             "/chat/completions",
         ),
         (
+            "OPENAI_RESPONSES",
+            "local-responses",
+            "result.output",
+            "Responses OK",
+            "/responses",
+        ),
+        (
             "ANTHROPIC",
             "local-anthropic",
-            "response.content[0].text",
+            "result.output",
             "Anthropic OK",
             "/messages",
         ),
@@ -1283,7 +1552,15 @@ def test_llm_node_uses_real_openai_and_anthropic_protocols(
                     {"role": "USER", "content": "问题：${question}"},
                 ]
             },
-            "generation": {"parameters": {"max_tokens": 64}},
+            "generation": {
+                "parameters": {
+                    (
+                        "max_output_tokens"
+                        if protocol == "OPENAI_RESPONSES"
+                        else "max_tokens"
+                    ): 64
+                }
+            },
             "execution": {
                 "timeout_seconds": 5,
                 "max_attempts": 0,
@@ -1313,7 +1590,10 @@ def test_llm_node_uses_real_openai_and_anthropic_protocols(
     assert llm_execution["response_received"] is True
     assert llm_execution["request"]["stream"] is False
     assert llm_execution["request"]["temperature"] == 0
-    assert llm_execution["request"]["max_tokens"] == 64
+    token_field = (
+        "max_output_tokens" if protocol == "OPENAI_RESPONSES" else "max_tokens"
+    )
+    assert llm_execution["request"][token_field] == 64
     assert requests[0]["path"].endswith(path_suffix)
     assert requests[0]["body"]["model"] == model_name
     if protocol == "ANTHROPIC":
@@ -1323,6 +1603,21 @@ def test_llm_node_uses_real_openai_and_anthropic_protocols(
             {"role": "assistant", "content": "示例回答"},
             {"role": "user", "content": "问题：真实请求"},
         ]
+    elif protocol == "OPENAI_RESPONSES":
+        assert "messages" not in requests[0]["body"]
+        assert requests[0]["body"]["input"] == [
+            {"role": "system", "content": "系统"},
+            {"role": "user", "content": "示例问题"},
+            {"role": "assistant", "content": "示例回答"},
+            {"role": "user", "content": "问题：真实请求"},
+        ]
+        assert llm_execution["usage"] == {
+            "input_tokens": 5,
+            "output_tokens": 3,
+            "total_tokens": 8,
+        }
+        assert llm_execution["response"]["output"][0]["type"] == "reasoning"
+        assert llm_execution["outputs"] == {"model_text": "Responses OK"}
     else:
         assert requests[0]["body"]["messages"] == [
             {"role": "system", "content": "系统"},
@@ -1330,6 +1625,70 @@ def test_llm_node_uses_real_openai_and_anthropic_protocols(
             {"role": "assistant", "content": "示例回答"},
             {"role": "user", "content": "问题：真实请求"},
         ]
+
+
+def test_llm_node_rejects_cross_protocol_parameters_before_request(
+    tmp_path, local_execution_server
+):
+    base_url, requests = local_execution_server
+    database = tmp_path / "cross-protocol.sqlite3"
+    model_repository = ModelProviderRepository(database)
+    provider = model_repository.create(
+        ModelProviderRecord(
+            name="Claude",
+            api_key="test-key",
+            base_url=base_url + "/v1/chat/completions",
+            protocol="ANTHROPIC",
+            proxy_mode="DIRECT",
+            models=["claude-test"],
+        )
+    )
+    start = make_node("START")
+    llm = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "LLM",
+            "name": "Claude 参数校验",
+            "description": "",
+            "model": {"provider_id": provider.id, "model_name": "claude-test"},
+            "context": {
+                "messages": [
+                    {"role": "SYSTEM", "content": ""},
+                    {"role": "USER", "content": "hello"},
+                ]
+            },
+            "generation": {
+                "parameters": {"response_format": {"type": "json_object"}}
+            },
+            "execution": {
+                "timeout_seconds": 5,
+                "max_attempts": 0,
+                "retry_interval_seconds": 0,
+                "delay_seconds": 0,
+            },
+            "outputs": [{"name": "text", "type": "string", "source": "result.output"}],
+        }
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database, [start, llm, end], [(start, llm), (llm, end)]
+    )
+    manager = WorkflowExecutionManager(
+        repository, model_repository, WorkflowExecutionStore(tmp_path / "cross-runs")
+    )
+
+    started = manager.start(workflow_id)
+    finished = wait_for_terminal(manager.store, workflow_id, started["id"])
+    llm_execution = next(
+        item
+        for item in manager.store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "LLM"
+    )
+
+    assert finished["status"] == "FAILED"
+    assert requests == []
+    assert llm_execution["error"]["code"] == "LLM_EXECUTION_ERROR"
+    assert "response_format" in llm_execution["error"]["message"]
 
 
 @pytest.mark.parametrize(

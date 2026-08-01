@@ -1,0 +1,154 @@
+{
+  "workflow_execution_id": "e66bc4b5-096f-4f36-8fdf-91b90f6745f1",
+  "workflow_id": "290e9565-2bbd-4158-93f3-50bf6ac4bbef",
+  "node_execution_id": "a01bdb71-e9f0-4ae4-ad18-19b6bce93a77",
+  "node_id": "861441f4-28b0-47dd-9ba4-ce616f7547a7",
+  "type": "LLM",
+  "structural_snapshot": {
+    "id": "861441f4-28b0-47dd-9ba4-ce616f7547a7",
+    "type": "LLM",
+    "name": "输出错误分类",
+    "description": "",
+    "model": {
+      "provider_id": "240efbacc5b0441eae7f9d0611589ac7",
+      "model_name": "local-openai"
+    },
+    "context": {
+      "messages": [
+        {
+          "role": "SYSTEM",
+          "content": ""
+        },
+        {
+          "role": "USER",
+          "content": "测试输出提取"
+        }
+      ]
+    },
+    "generation": {
+      "parameters": {},
+      "parameters_text": ""
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "integer",
+        "source": "response.choices[-1].message"
+      }
+    ]
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 05:17:16",
+  "finished_at": "2026-08-01 05:17:16",
+  "duration_ms": 331,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:16.290Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:17:16.299Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:17:16.624Z",
+      "reason": "LLM_OUTPUT_TYPE_MISMATCH"
+    }
+  ],
+  "error": {
+    "code": "LLM_OUTPUT_TYPE_MISMATCH",
+    "message": "值不能转换为 integer",
+    "details": null
+  },
+  "model": {
+    "provider_id": "240efbacc5b0441eae7f9d0611589ac7",
+    "model_name": "local-openai"
+  },
+  "request": {
+    "model": "local-openai",
+    "messages": [
+      {
+        "role": "user",
+        "content": "测试输出提取"
+      }
+    ],
+    "stream": false
+  },
+  "response": {
+    "id": "chat-1",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "OpenAI OK"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 5,
+      "completion_tokens": 3,
+      "total_tokens": 8
+    }
+  },
+  "response_received": true,
+  "usage": {
+    "input_tokens": 5,
+    "output_tokens": 3,
+    "total_tokens": 8
+  },
+  "usage_errors": [],
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "SUCCESS",
+      "started_at": "2026-08-01 05:17:16",
+      "finished_at": "2026-08-01 05:17:16",
+      "duration_ms": 323,
+      "request": {
+        "model": "local-openai",
+        "messages": [
+          {
+            "role": "user",
+            "content": "测试输出提取"
+          }
+        ],
+        "stream": false
+      },
+      "response": {
+        "id": "chat-1",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "OpenAI OK"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 5,
+          "completion_tokens": 3,
+          "total_tokens": 8
+        }
+      },
+      "response_received": true,
+      "error": null,
+      "truncated_fields": []
+    }
+  ]
+}

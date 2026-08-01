@@ -1,0 +1,17 @@
+{
+  "id": "bf379b16-62d9-4a99-9ba6-879dbf4a0994",
+  "batch_execution_id": "5343f461-8464-42e1-ba9d-d8db709e1fef",
+  "case_id": "C-28",
+  "row_number": 28,
+  "status": "SUCCESS",
+  "finished_at": null,
+  "error": null,
+  "call_number": 28,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "PASS"
+  },
+  "source_values": {
+    "question": "question-28"
+  }
+}

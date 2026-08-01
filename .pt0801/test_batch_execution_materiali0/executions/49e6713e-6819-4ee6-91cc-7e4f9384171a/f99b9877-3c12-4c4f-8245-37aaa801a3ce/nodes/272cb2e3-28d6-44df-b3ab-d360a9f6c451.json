@@ -1,0 +1,61 @@
+{
+  "workflow_execution_id": "f99b9877-3c12-4c4f-8245-37aaa801a3ce",
+  "workflow_id": "49e6713e-6819-4ee6-91cc-7e4f9384171a",
+  "node_execution_id": "272cb2e3-28d6-44df-b3ab-d360a9f6c451",
+  "node_id": "9c987b3c-fef1-4bdc-93a9-9d5714b446e3",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "9c987b3c-fef1-4bdc-93a9-9d5714b446e3",
+    "type": "SCRIPT",
+    "name": "SCRIPT",
+    "description": "",
+    "script": "result = None",
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:58:12",
+  "finished_at": "2026-08-01 04:58:12",
+  "duration_ms": 259,
+  "attempt_count": 1,
+  "inputs": {
+    "question": 123
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:12.398Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:12.402Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:58:12.657Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "SUCCESS",
+        "console": [],
+        "traceback": null,
+        "error": null
+      }
+    ]
+  }
+}

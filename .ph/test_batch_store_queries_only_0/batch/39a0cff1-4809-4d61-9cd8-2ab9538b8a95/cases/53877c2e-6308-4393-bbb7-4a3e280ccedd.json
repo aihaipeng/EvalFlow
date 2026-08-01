@@ -1,0 +1,17 @@
+{
+  "id": "53877c2e-6308-4393-bbb7-4a3e280ccedd",
+  "batch_execution_id": "39a0cff1-4809-4d61-9cd8-2ab9538b8a95",
+  "case_id": "C-8",
+  "row_number": 8,
+  "status": "FAILED",
+  "finished_at": null,
+  "error": null,
+  "call_number": 8,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "FAIL"
+  },
+  "source_values": {
+    "question": "question-8"
+  }
+}

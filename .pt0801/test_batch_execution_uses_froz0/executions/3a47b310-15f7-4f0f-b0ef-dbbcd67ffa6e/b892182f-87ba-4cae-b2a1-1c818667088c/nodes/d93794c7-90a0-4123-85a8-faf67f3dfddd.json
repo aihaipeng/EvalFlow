@@ -1,0 +1,44 @@
+{
+  "workflow_execution_id": "b892182f-87ba-4cae-b2a1-1c818667088c",
+  "workflow_id": "3a47b310-15f7-4f0f-b0ef-dbbcd67ffa6e",
+  "node_execution_id": "d93794c7-90a0-4123-85a8-faf67f3dfddd",
+  "node_id": "08d8e422-fa37-45d7-bd1d-ec0d9a1d7e21",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "08d8e422-fa37-45d7-bd1d-ec0d9a1d7e21",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:58:12",
+  "finished_at": "2026-08-01 04:58:12",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {
+      "question": "batch case"
+    },
+    "answer": "BATCH CASE"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:12.034Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:12.035Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:58:12.036Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

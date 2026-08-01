@@ -1,0 +1,167 @@
+{
+  "id": "ea7f75d4-232f-4353-902e-e85e7fcac0c2",
+  "workflow_id": "84e0c94f-6273-4035-8f36-7abd466c9e5f",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "84e0c94f-6273-4035-8f36-7abd466c9e5f",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "4e730b13-738f-4dca-9411-47249408ec4c",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "6091776b-a2a6-44f8-bad0-899c0d9dddb8",
+          "type": "SCRIPT",
+          "name": "left",
+          "description": "",
+          "script": "import time\ntime.sleep(0.6)\nleft = 'L'",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "left",
+              "type": "string",
+              "source": "left"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "fdd6c1df-a2a0-418d-9598-643d6637b267",
+          "type": "SCRIPT",
+          "name": "right",
+          "description": "",
+          "script": "import time\ntime.sleep(0.6)\nright = 'R'",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "right",
+              "type": "string",
+              "source": "right"
+            }
+          ]
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      },
+      {
+        "node": {
+          "id": "60cef78d-03b1-4107-87b9-74e311439b34",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 750.0,
+        "position_y": 240.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "8568b407-4b9f-4655-81e5-2ad7ac1a80a7",
+        "source_node_id": "4e730b13-738f-4dca-9411-47249408ec4c",
+        "target_node_id": "6091776b-a2a6-44f8-bad0-899c0d9dddb8"
+      },
+      {
+        "id": "56332e5b-5894-4c75-8a56-f269547963ec",
+        "source_node_id": "4e730b13-738f-4dca-9411-47249408ec4c",
+        "target_node_id": "fdd6c1df-a2a0-418d-9598-643d6637b267"
+      },
+      {
+        "id": "2cfdea96-70ef-41ac-a9cc-38ff7c61a326",
+        "source_node_id": "6091776b-a2a6-44f8-bad0-899c0d9dddb8",
+        "target_node_id": "60cef78d-03b1-4107-87b9-74e311439b34"
+      },
+      {
+        "id": "826f6a5e-8028-4473-860a-4bc418786738",
+        "source_node_id": "fdd6c1df-a2a0-418d-9598-643d6637b267",
+        "target_node_id": "60cef78d-03b1-4107-87b9-74e311439b34"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:12.254Z",
+  "started_at": "2026-07-31T21:03:12.256Z",
+  "finished_at": "2026-07-31T21:03:13.161Z",
+  "duration_ms": 905,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "fdd6c1df-a2a0-418d-9598-643d6637b267",
+        "node_execution_id": "cc94db9e-e40a-4acd-9497-5585e18b37aa",
+        "committed_at": "2026-07-31T21:03:13.147Z",
+        "values": {
+          "right": "R"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "6091776b-a2a6-44f8-bad0-899c0d9dddb8",
+        "node_execution_id": "f637e587-a382-480c-be4b-0ac6c0eb32d9",
+        "committed_at": "2026-07-31T21:03:13.149Z",
+        "values": {
+          "left": "L"
+        }
+      }
+    ],
+    "final": {
+      "right": "R",
+      "left": "L"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "4e730b13-738f-4dca-9411-47249408ec4c",
+      "node_execution_id": "f10ae074-3398-4b5f-96f0-a9bb4a2f771b",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "6091776b-a2a6-44f8-bad0-899c0d9dddb8",
+      "node_execution_id": "f637e587-a382-480c-be4b-0ac6c0eb32d9",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "fdd6c1df-a2a0-418d-9598-643d6637b267",
+      "node_execution_id": "cc94db9e-e40a-4acd-9497-5585e18b37aa",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "60cef78d-03b1-4107-87b9-74e311439b34",
+      "node_execution_id": "8c2f0e9f-c8e6-4dd5-8782-ac4aa4d5ece2",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

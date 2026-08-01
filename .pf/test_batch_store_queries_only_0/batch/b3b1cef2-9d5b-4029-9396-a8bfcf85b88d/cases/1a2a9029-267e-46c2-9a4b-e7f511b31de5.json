@@ -1,0 +1,17 @@
+{
+  "id": "1a2a9029-267e-46c2-9a4b-e7f511b31de5",
+  "batch_execution_id": "b3b1cef2-9d5b-4029-9396-a8bfcf85b88d",
+  "case_id": "C-20",
+  "row_number": 20,
+  "status": "FAILED",
+  "finished_at": null,
+  "error": null,
+  "call_number": 20,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "FAIL"
+  },
+  "source_values": {
+    "question": "question-20"
+  }
+}

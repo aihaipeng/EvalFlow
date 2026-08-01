@@ -39,7 +39,7 @@ def create_app(
             finally:
                 del app.state.workflow_services
 
-    app = FastAPI(title="Agent Bench", lifespan=lifespan)
+    app = FastAPI(title="EvalFlow", lifespan=lifespan)
 
     app.include_router(local_clipboard_router)
     app.include_router(model_providers_router)

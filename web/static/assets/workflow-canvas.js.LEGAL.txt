@@ -101,10 +101,10 @@ lucide-react/dist/esm/icons/external-link.js:
 lucide-react/dist/esm/icons/eye.js:
 lucide-react/dist/esm/icons/file-clock.js:
 lucide-react/dist/esm/icons/file-text.js:
-lucide-react/dist/esm/icons/folder-open.js:
 lucide-react/dist/esm/icons/layout-grid.js:
 lucide-react/dist/esm/icons/loader-circle.js:
 lucide-react/dist/esm/icons/message-square-text.js:
+lucide-react/dist/esm/icons/pencil.js:
 lucide-react/dist/esm/icons/play.js:
 lucide-react/dist/esm/icons/plus.js:
 lucide-react/dist/esm/icons/redo-2.js:

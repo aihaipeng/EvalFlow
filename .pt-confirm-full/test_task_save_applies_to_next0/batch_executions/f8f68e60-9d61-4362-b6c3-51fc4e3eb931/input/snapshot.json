@@ -1,0 +1,35 @@
+{
+  "id": "f861a284-e240-419b-9aee-da7bab8e52dc",
+  "name": "Reusable Set",
+  "description": "",
+  "columns": [
+    "question",
+    "expected"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "case-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "question": "changed",
+        "expected": "HELLO"
+      }
+    },
+    {
+      "id": "case-2",
+      "position": 1,
+      "call_number": 2,
+      "values": {
+        "question": "world",
+        "expected": "WORLD"
+      }
+    }
+  ],
+  "created_at": "2026-08-01T00:40:54.813+00:00",
+  "updated_at": "2026-08-01T00:40:55.242+00:00"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "3a6b937d-3e00-4d24-ae01-b101fe4d5d27",
+  "name": "测试集-c9f4f69c",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "退款"
+      }
+    }
+  ],
+  "created_at": "2026-07-31T21:16:42.312+00:00",
+  "updated_at": "2026-07-31T21:16:42.312+00:00"
+}

@@ -1,0 +1,171 @@
+{
+  "id": "2b1f86d8-be44-4408-ac4d-caee93363322",
+  "workflow_id": "21d716f1-9051-4541-a987-78bd07c57cf6",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "21d716f1-9051-4541-a987-78bd07c57cf6",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "99a19be5-5dcb-41a3-98fd-9822d1788879",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "lookup_id",
+              "type": "integer",
+              "value": 3
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "b346501f-e49b-4177-9181-37b34018ff1f",
+          "type": "HTTP",
+          "name": "本机查询",
+          "description": "",
+          "request": {
+            "method": "GET",
+            "url": "http://127.0.0.1:65331/items",
+            "follow_redirects": true,
+            "headers": [],
+            "params": [
+              {
+                "key": "wanted",
+                "value": "${lookup_id}"
+              }
+            ],
+            "body": {
+              "type": "none",
+              "content": null,
+              "template_text": null
+            }
+          },
+          "network": {
+            "proxy": {
+              "mode": "DIRECT",
+              "url": null,
+              "username": null,
+              "password": null
+            },
+            "verify_ssl": true
+          },
+          "response": {
+            "mode": "AUTO",
+            "success_statuses": [
+              "200-299"
+            ]
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0,
+            "retry_non_idempotent": false,
+            "retry_statuses": [
+              500,
+              502,
+              503,
+              504
+            ]
+          },
+          "outputs": [
+            {
+              "name": "selected_name",
+              "type": "string",
+              "source": "response.body.data[id==3].name"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "5cafb030-cb71-4e71-a478-eaec9964fb7e",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "15d44ff3-a097-4c5a-8c7a-f28a0efe725a",
+        "source_node_id": "99a19be5-5dcb-41a3-98fd-9822d1788879",
+        "target_node_id": "b346501f-e49b-4177-9181-37b34018ff1f"
+      },
+      {
+        "id": "fc5e533e-6981-40e4-95d3-a60f6f1b3b87",
+        "source_node_id": "b346501f-e49b-4177-9181-37b34018ff1f",
+        "target_node_id": "5cafb030-cb71-4e71-a478-eaec9964fb7e"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:21:29.323Z",
+  "started_at": "2026-07-31T21:21:29.326Z",
+  "finished_at": "2026-07-31T21:21:29.685Z",
+  "duration_ms": 359,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "99a19be5-5dcb-41a3-98fd-9822d1788879",
+        "node_execution_id": "0cdd0dbc-f5b4-4063-b6fd-3fd698f6c268",
+        "committed_at": "2026-07-31T21:21:29.331Z",
+        "values": {
+          "lookup_id": 3
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "b346501f-e49b-4177-9181-37b34018ff1f",
+        "node_execution_id": "dcb01909-e6ca-43ea-aa55-ba9ea64adbb5",
+        "committed_at": "2026-07-31T21:21:29.675Z",
+        "values": {
+          "selected_name": "three"
+        }
+      }
+    ],
+    "final": {
+      "lookup_id": 3,
+      "selected_name": "three"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "99a19be5-5dcb-41a3-98fd-9822d1788879",
+      "node_execution_id": "0cdd0dbc-f5b4-4063-b6fd-3fd698f6c268",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "b346501f-e49b-4177-9181-37b34018ff1f",
+      "node_execution_id": "dcb01909-e6ca-43ea-aa55-ba9ea64adbb5",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "5cafb030-cb71-4e71-a478-eaec9964fb7e",
+      "node_execution_id": "511ba2aa-8f11-4366-bea9-5d2ade2d55dc",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

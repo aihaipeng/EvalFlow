@@ -194,6 +194,50 @@ def test_model_provider_api_crud_and_list_hides_api_key(tmp_path):
         assert client.get(f"/api/model-providers/{created['id']}").status_code == 404
 
 
+def test_model_provider_protocol_change_clears_old_protocol_data_on_save(tmp_path):
+    database_path, application = _isolated_app(tmp_path)
+    with TestClient(application) as client:
+        created = client.post("/api/model-providers", json=_body()).json()["provider"]
+        response = client.put(
+            f"/api/model-providers/{created['id']}",
+            json=_body(
+                protocol="OPENAI_RESPONSES",
+                model_endpoint="https://api.deepseek.com/v1/models",
+                models=["deepseek-chat"],
+                model_configs={
+                    "deepseek-chat": {
+                        "default_body": {"messages": [{"role": "user", "content": "old"}]}
+                    }
+                },
+            ),
+        )
+
+    assert response.status_code == 200
+    saved = response.json()["provider"]
+    assert saved["protocol"] == "OPENAI_RESPONSES"
+    assert saved["models"] == []
+    assert saved["model_configs"] == {}
+    assert saved["model_endpoint"] is None
+    restored = ModelProviderRepository(database_path).get(created["id"])
+    assert restored is not None
+    assert restored.models == []
+    assert restored.model_configs == {}
+    assert restored.model_endpoint is None
+
+
+def test_model_provider_update_without_protocol_change_still_requires_model(tmp_path):
+    _, application = _isolated_app(tmp_path)
+    with TestClient(application) as client:
+        created = client.post("/api/model-providers", json=_body()).json()["provider"]
+        response = client.put(
+            f"/api/model-providers/{created['id']}",
+            json=_body(models=[], model_configs={}),
+        )
+
+    assert response.status_code == 422
+    assert "至少添加一个模型" in response.text
+
+
 def test_model_provider_repository_is_app_scoped_and_database_isolated(tmp_path):
     first = create_app(
         database_path=tmp_path / "first.sqlite3",
@@ -364,7 +408,9 @@ def test_anthropic_model_discovery_uses_selected_protocol_headers(tmp_path, monk
     ]
 
 
-@pytest.mark.parametrize("protocol", ["OPENAI_COMPATIBLE", "ANTHROPIC"])
+@pytest.mark.parametrize(
+    "protocol", ["OPENAI_COMPATIBLE", "OPENAI_RESPONSES", "ANTHROPIC"]
+)
 def test_model_availability_runs_real_inference_with_current_configuration(
     tmp_path, monkeypatch, protocol
 ):
@@ -385,6 +431,20 @@ def test_model_availability_runs_real_inference_with_current_configuration(
                 response_body = {
                     "content": [{"type": "text", "text": "模型连接正常。"}],
                     "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 8, "output_tokens": 6},
+                }
+            elif protocol == "OPENAI_RESPONSES":
+                response_body = {
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {"type": "output_text", "text": "模型连接正常。"}
+                            ],
+                        }
+                    ],
                     "usage": {"input_tokens": 8, "output_tokens": 6},
                 }
             else:
@@ -409,6 +469,12 @@ def test_model_availability_runs_real_inference_with_current_configuration(
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    default_body = {
+        "temperature": 0.2,
+        "model": "must-be-overridden",
+        "stream": True,
+    }
+    default_body["input" if protocol == "OPENAI_RESPONSES" else "messages"] = []
     try:
         response = TestClient(app).post(
             "/api/model-providers/test-model",
@@ -418,12 +484,7 @@ def test_model_availability_runs_real_inference_with_current_configuration(
                 "protocol": protocol,
                 "proxy_mode": "SYSTEM",
                 "model_name": "test-model",
-                "default_body": {
-                    "temperature": 0.2,
-                    "model": "must-be-overridden",
-                    "messages": [],
-                    "stream": True,
-                },
+                "default_body": default_body,
             },
         )
     finally:
@@ -439,18 +500,65 @@ def test_model_availability_runs_real_inference_with_current_configuration(
     assert "model-test-secret" not in response.text
     request = seen[0]
     assert request["body"]["model"] == "test-model"
-    assert request["body"]["messages"][0]["role"] == "user"
     assert request["body"]["stream"] is False
     assert request["body"]["temperature"] == 0.2
     if protocol == "ANTHROPIC":
+        assert request["body"]["messages"][0]["role"] == "user"
         assert request["path"] == "/v1/messages"
         assert request["api_key"] == "model-test-secret"
         assert request["authorization"] is None
         assert request["body"]["max_tokens"] == 8192
+    elif protocol == "OPENAI_RESPONSES":
+        assert request["path"] == "/responses"
+        assert request["authorization"] == "Bearer model-test-secret"
+        assert request["api_key"] is None
+        assert request["body"]["input"][0]["role"] == "user"
+        assert "messages" not in request["body"]
     else:
+        assert request["body"]["messages"][0]["role"] == "user"
         assert request["path"] == "/chat/completions"
         assert request["authorization"] == "Bearer model-test-secret"
         assert request["api_key"] is None
+
+
+def test_model_provider_api_persists_responses_protocol(tmp_path):
+    database_path, application = _isolated_app(tmp_path)
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/model-providers",
+            json=_body(protocol="OPENAI_RESPONSES"),
+        )
+
+    assert response.status_code == 200
+    provider = response.json()["provider"]
+    assert provider["protocol"] == "OPENAI_RESPONSES"
+    assert ModelProviderRepository(database_path).get(provider["id"]).protocol == (
+        "OPENAI_RESPONSES"
+    )
+
+
+@pytest.mark.parametrize(
+    ("protocol", "default_body", "field"),
+    [
+        ("OPENAI_COMPATIBLE", {"input": "wrong"}, "input"),
+        ("OPENAI_RESPONSES", {"messages": []}, "messages"),
+        ("ANTHROPIC", {"response_format": {"type": "json_object"}}, "response_format"),
+    ],
+)
+def test_model_provider_api_rejects_default_body_from_other_protocol(
+    tmp_path, protocol, default_body, field
+):
+    _, application = _isolated_app(tmp_path)
+    body = _body(
+        protocol=protocol,
+        model_configs={"deepseek-chat": {"default_body": default_body}},
+    )
+
+    with TestClient(application) as client:
+        response = client.post("/api/model-providers", json=body)
+
+    assert response.status_code == 422
+    assert field in response.text
 
 
 def test_model_discovery_error_never_echoes_api_key(tmp_path, monkeypatch):

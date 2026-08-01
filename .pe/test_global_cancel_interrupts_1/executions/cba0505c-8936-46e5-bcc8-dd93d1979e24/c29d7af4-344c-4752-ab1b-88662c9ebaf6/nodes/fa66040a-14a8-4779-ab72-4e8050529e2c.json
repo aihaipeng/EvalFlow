@@ -1,0 +1,56 @@
+{
+  "workflow_execution_id": "c29d7af4-344c-4752-ab1b-88662c9ebaf6",
+  "workflow_id": "cba0505c-8936-46e5-bcc8-dd93d1979e24",
+  "node_execution_id": "fa66040a-14a8-4779-ab72-4e8050529e2c",
+  "node_id": "15611146-1b64-42a8-b6c8-0d06bc258aff",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "15611146-1b64-42a8-b6c8-0d06bc258aff",
+    "type": "SCRIPT",
+    "name": "SCRIPT",
+    "description": "",
+    "script": "result = 'late'",
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 30.0
+    },
+    "outputs": [
+      {
+        "name": "result",
+        "type": "string",
+        "source": "result"
+      }
+    ]
+  },
+  "status": "INTERRUPTED",
+  "started_at": null,
+  "finished_at": "2026-08-01 05:17:09",
+  "duration_ms": 10,
+  "attempt_count": 0,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:09.460Z",
+      "reason": null
+    },
+    {
+      "status": "INTERRUPTED",
+      "at": "2026-07-31T21:17:09.470Z",
+      "reason": "WORKFLOW_ABORTED"
+    }
+  ],
+  "error": {
+    "code": "WORKFLOW_ABORTED",
+    "message": "Workflow 已停止",
+    "details": null
+  },
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": []
+  }
+}

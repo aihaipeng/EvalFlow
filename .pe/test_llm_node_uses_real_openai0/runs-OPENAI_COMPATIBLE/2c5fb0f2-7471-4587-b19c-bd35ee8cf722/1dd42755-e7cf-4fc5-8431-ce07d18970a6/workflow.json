@@ -1,0 +1,162 @@
+{
+  "id": "1dd42755-e7cf-4fc5-8431-ce07d18970a6",
+  "workflow_id": "2c5fb0f2-7471-4587-b19c-bd35ee8cf722",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "2c5fb0f2-7471-4587-b19c-bd35ee8cf722",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "8a1752d5-41bf-4118-8261-cdcf77646f90",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "真实请求"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "cbfa7df9-b328-4c83-9287-beb2647a22a9",
+          "type": "LLM",
+          "name": "OPENAI_COMPATIBLE",
+          "description": "",
+          "model": {
+            "provider_id": "ddc04b5e2fac4cdea6c99c132b1d2d6b",
+            "model_name": "local-openai"
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": "系统"
+              },
+              {
+                "role": "USER",
+                "content": "示例问题"
+              },
+              {
+                "role": "ASSISTANT",
+                "content": "示例回答"
+              },
+              {
+                "role": "USER",
+                "content": "问题：${question}"
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {
+              "max_tokens": 64
+            },
+            "parameters_text": ""
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "model_text",
+              "type": "string",
+              "source": "response.choices[-1].message.content"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "de1da236-36a0-4ecd-ac8a-4603b1502224",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "f53248bb-f10c-4e1b-8ad8-7bd69a9db0e0",
+        "source_node_id": "8a1752d5-41bf-4118-8261-cdcf77646f90",
+        "target_node_id": "cbfa7df9-b328-4c83-9287-beb2647a22a9"
+      },
+      {
+        "id": "390ebf7c-7a93-4782-be68-f29be7aaee5a",
+        "source_node_id": "cbfa7df9-b328-4c83-9287-beb2647a22a9",
+        "target_node_id": "de1da236-36a0-4ecd-ac8a-4603b1502224"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:17:13.630Z",
+  "started_at": "2026-07-31T21:17:13.633Z",
+  "finished_at": "2026-07-31T21:17:14.023Z",
+  "duration_ms": 390,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "8a1752d5-41bf-4118-8261-cdcf77646f90",
+        "node_execution_id": "206963a4-67c2-4886-a562-9d6ddfad3a99",
+        "committed_at": "2026-07-31T21:17:13.642Z",
+        "values": {
+          "question": "真实请求"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "cbfa7df9-b328-4c83-9287-beb2647a22a9",
+        "node_execution_id": "4ed1c6a7-ca19-426d-b5e1-b203647cdeb1",
+        "committed_at": "2026-07-31T21:17:14.008Z",
+        "values": {
+          "model_text": "OpenAI OK"
+        }
+      }
+    ],
+    "final": {
+      "question": "真实请求",
+      "model_text": "OpenAI OK"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "8a1752d5-41bf-4118-8261-cdcf77646f90",
+      "node_execution_id": "206963a4-67c2-4886-a562-9d6ddfad3a99",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "cbfa7df9-b328-4c83-9287-beb2647a22a9",
+      "node_execution_id": "4ed1c6a7-ca19-426d-b5e1-b203647cdeb1",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "de1da236-36a0-4ecd-ac8a-4603b1502224",
+      "node_execution_id": "43128479-96e4-4498-8741-14ed860d2d9c",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

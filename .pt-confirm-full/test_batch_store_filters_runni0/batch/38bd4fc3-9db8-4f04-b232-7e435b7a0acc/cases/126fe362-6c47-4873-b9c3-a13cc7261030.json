@@ -1,0 +1,10 @@
+{
+  "id": "126fe362-6c47-4873-b9c3-a13cc7261030",
+  "batch_execution_id": "38bd4fc3-9db8-4f04-b232-7e435b7a0acc",
+  "case_id": "C-1",
+  "row_number": 1,
+  "status": "RUNNING",
+  "finished_at": null,
+  "error": null,
+  "execution_status": "RUNNING"
+}

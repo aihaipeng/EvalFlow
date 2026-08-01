@@ -1,0 +1,10 @@
+{
+  "id": "d609d298-8d1b-461b-93d9-92b6e9d866ce",
+  "batch_execution_id": "bba0a624-db35-46f6-aaea-9b95798d47dd",
+  "case_id": "C-2",
+  "row_number": 2,
+  "status": "QUEUED",
+  "finished_at": null,
+  "error": null,
+  "call_number": 1
+}

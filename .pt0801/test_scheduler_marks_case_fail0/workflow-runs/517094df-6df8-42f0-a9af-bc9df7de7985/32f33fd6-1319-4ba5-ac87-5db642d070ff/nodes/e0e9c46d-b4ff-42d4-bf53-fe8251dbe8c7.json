@@ -1,0 +1,70 @@
+{
+  "workflow_execution_id": "32f33fd6-1319-4ba5-ac87-5db642d070ff",
+  "workflow_id": "517094df-6df8-42f0-a9af-bc9df7de7985",
+  "node_execution_id": "e0e9c46d-b4ff-42d4-bf53-fe8251dbe8c7",
+  "node_id": "d1c3d3ba-788e-4b49-a8c2-39fa56b73d11",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "d1c3d3ba-788e-4b49-a8c2-39fa56b73d11",
+    "type": "SCRIPT",
+    "name": "SCRIPT",
+    "description": "",
+    "script": "result = context[\"question\"].upper()",
+    "execution": {
+      "timeout_seconds": 10.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "string",
+        "source": "result"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:57:51",
+  "finished_at": "2026-08-01 04:57:51",
+  "duration_ms": 271,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {},
+    "question": "good"
+  },
+  "outputs": {
+    "answer": "GOOD"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:57:51.246Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:57:51.250Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:57:51.517Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "SUCCESS",
+        "console": [],
+        "traceback": null,
+        "error": null
+      }
+    ]
+  }
+}

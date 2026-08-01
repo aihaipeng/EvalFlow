@@ -1,0 +1,1 @@
+{"id":"9d6a939f-3705-4a87-aafc-a24c6008ec4c","workflow_id":"e6b7859e-4e6b-4978-8832-c153f614e1bb","status":"FAILED","created_at":"2026-07-26T00:00:00.000Z","finished_at":"2026-08-01T00:22:14.860Z","error":{"code":"PROCESS_RESTARTED","message":"服务重启，未完成执行不自动续跑","details":null}}

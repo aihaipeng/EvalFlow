@@ -1,0 +1,17 @@
+{
+  "id": "cd36b565-c1dc-433c-9837-fe65e1dca52b",
+  "batch_execution_id": "19bac0be-9039-405e-bd2b-7f9183afe8d3",
+  "case_id": "C-22",
+  "row_number": 22,
+  "status": "SUCCESS",
+  "finished_at": null,
+  "error": null,
+  "call_number": 22,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "PASS"
+  },
+  "source_values": {
+    "question": "question-22"
+  }
+}

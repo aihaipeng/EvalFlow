@@ -1,0 +1,141 @@
+{
+  "id": "a8ccf2ba-2ac0-43b9-9145-19ce2a000c0a",
+  "workflow_id": "0120d82f-e033-4f72-a09d-2a1fe84bbc85",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "ffa1c7e3-3f1e-4b79-874f-47e4a0a4db4c",
+    "case_run_id": "65fc1d06-b31e-4775-ac0e-ec4a49594d3a",
+    "case_id": "C-1",
+    "row_number": 1
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "0120d82f-e033-4f72-a09d-2a1fe84bbc85",
+      "name": "Batch workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "2c23e408-72f6-4f8b-a087-79e3269efe64",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "bad"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "ad47539d-a54d-4363-be9d-cc2f5403a55b",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "raise RuntimeError(\"service unavailable\")",
+          "execution": {
+            "timeout_seconds": 10.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "68d13152-4f49-454e-9770-1592ffd90237",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "e5583344-e480-43aa-805a-2ff6c56367a1",
+        "source_node_id": "2c23e408-72f6-4f8b-a087-79e3269efe64",
+        "target_node_id": "ad47539d-a54d-4363-be9d-cc2f5403a55b"
+      },
+      {
+        "id": "a89a63dd-c9af-461f-82d8-dabc5fa7b405",
+        "source_node_id": "ad47539d-a54d-4363-be9d-cc2f5403a55b",
+        "target_node_id": "68d13152-4f49-454e-9770-1592ffd90237"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:21:06.878Z",
+  "started_at": "2026-07-31T21:21:06.880Z",
+  "finished_at": "2026-07-31T21:21:07.154Z",
+  "duration_ms": 274,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "2c23e408-72f6-4f8b-a087-79e3269efe64",
+        "node_execution_id": "7c5d11a6-3f01-4122-bc84-eb5194160dc4",
+        "committed_at": "2026-07-31T21:21:06.885Z",
+        "values": {
+          "input": {},
+          "question": "bad"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "bad"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "2c23e408-72f6-4f8b-a087-79e3269efe64",
+      "node_execution_id": "7c5d11a6-3f01-4122-bc84-eb5194160dc4",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "ad47539d-a54d-4363-be9d-cc2f5403a55b",
+      "node_execution_id": "a0f02c09-aa48-46a6-a23f-cd1b2bda281d",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "68d13152-4f49-454e-9770-1592ffd90237",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: SCRIPT",
+    "details": {
+      "node_id": "ad47539d-a54d-4363-be9d-cc2f5403a55b",
+      "node_execution_id": "a0f02c09-aa48-46a6-a23f-cd1b2bda281d"
+    }
+  }
+}

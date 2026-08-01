@@ -50,6 +50,51 @@ def test_canvas_matches_current_structural_contract():
     assert "AGENT:" not in source
 
 
+def test_workflow_canvas_follows_application_theme():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert "function useDocumentTheme()" in source
+    assert "new MutationObserver(() => setTheme(documentTheme()))" in source
+    assert "colorMode={theme}" in source
+    assert "theme === 'dark' ? '#3a4656' : '#c8d1de'" in source
+    assert "theme === 'dark' ? 'rgba(15, 20, 27, 0.72)'" in source
+    assert "--wf-node-bg: #ffffff;" in styles
+    assert "--wf-node-bg: #20262e;" in styles
+    assert "--wf-edge: #718096;" in styles
+    assert "background: var(--wf-toolbar-bg);" in styles
+    assert "stroke: var(--wf-edge);" in styles
+    assert ':root[data-theme="dark"] .wf-inspector {' in styles
+    assert ':root[data-theme="dark"] .wf-inspector-body input,' in styles
+    assert ':root[data-theme="dark"] .wf-readonly-field,' in styles
+    assert ':root[data-theme="dark"] .wf-node-variable-panel,' in styles
+    assert ':root[data-theme="dark"] .wf-http-request-section {' in styles
+    assert ':root[data-theme="dark"] .wf-http-table-row.is-heading,' in styles
+    assert "background: #181e26;" in styles
+    assert "--wf-button-bg: #ffffff;" in styles
+    assert "--wf-button-bg: #20262e;" in styles
+    assert ".wf-header-actions button,\n.wf-http-import-button," in styles
+    assert ".wf-icon-button,\n.wf-header-popover > header button," in styles
+    assert ".workflow-studio-shell button:focus-visible {" in styles
+    assert ':root[data-theme="dark"] .wf-context-menu,' in styles
+    assert ':root[data-theme="dark"] .wf-node-picker {' in styles
+    assert "background: var(--wf-surface);" in styles
+    assert ':root[data-theme="dark"] .wf-node-picker button > span:first-child {' in styles
+    assert ':root[data-theme="dark"] .wf-menu-separator {' in styles
+    assert ':root[data-theme="dark"] .wf-context-menu > button.is-danger {' in styles
+    assert ".wf-execution-history-panel {" in styles
+    assert ".wf-execution-history-summary:hover {\n    background: var(--wf-soft);" in styles
+    assert ".wf-execution-history-empty {" in styles
+    assert ':root[data-theme="dark"] .wf-node-test-badge {' in styles
+    assert "background: #173d31;" in styles
+    history_panel = styles[styles.index(".wf-execution-history-panel {"):styles.index("}", styles.index(".wf-execution-history-panel {"))]
+    node_picker = styles[styles.index(".wf-node-picker {"):styles.index("}", styles.index(".wf-node-picker {"))]
+    context_menu = styles[styles.index(".wf-context-menu {"):styles.index("}", styles.index(".wf-context-menu {"))]
+    assert "background: var(--wf-surface);" in history_panel
+    assert "background: var(--wf-surface);" in node_picker
+    assert "background: var(--wf-surface);" in context_menu
+
+
 def test_llm_inspector_supports_few_shot_drafts_and_run_only_validation():
     source = read("web/frontend/workflow-canvas.jsx")
     javascript = read("web/static/execution.js")
@@ -63,7 +108,16 @@ def test_llm_inspector_supports_few_shot_drafts_and_run_only_validation():
     assert "llmErrors.size === 0" in source
     assert "modelParametersText: text" in source
     assert "parameters_text: data.modelParametersText || ''" in javascript
-    assert "wf-llm-message is-" in source
+    assert 'className="wf-llm-message"' in source
+    assert "wf-llm-message is-" not in source
+    assert "has-error" not in source
+    assert 'aria-invalid={Boolean(error)}' in source
+    assert 'title={error || undefined}' in source
+    assert "border-left: 3px solid #7b55c7;" in styles
+    assert ".wf-llm-message.is-system" not in styles
+    assert ".wf-llm-message.is-user" not in styles
+    assert ".wf-llm-message.is-assistant" not in styles
+    assert ".wf-llm-message.has-error" not in styles
     assert ".wf-llm-add-message" in styles
     assert "wf-llm-context-warning" not in source
     assert "wf-llm-context-warning" not in styles
@@ -92,15 +146,24 @@ def test_canvas_uses_dify_style_drag_guides_without_alignment_actions_or_snappin
         assert f'aria-label="{label}"' not in source
 
 
-def test_new_and_existing_workflows_open_at_sixty_seven_percent_of_fit_view():
+def test_new_and_existing_workflows_open_at_readable_fit_view():
     source = read("web/frontend/workflow-canvas.jsx")
 
-    assert "const INITIAL_OVERVIEW_SCALE = 0.67;" in source
     assert "await fitView({padding: 0.16, duration: 0});" in source
-    assert "zoom: viewport.zoom * ratio" in source
-    assert "centerX - (centerX - viewport.x) * ratio" in source
+    assert "INITIAL_OVERVIEW_SCALE" not in source
+    assert "getViewport" not in source
+    assert "setViewport" not in source
     assert "window.setTimeout(() => void fitInitialOverview(), 0);" in source
     assert 'minZoom={0.1}' in source
+
+
+def test_workflow_canvas_and_controls_fit_standard_desktop():
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert "min-width: 960px;" in styles
+    assert "min-width: 1180px;" not in styles
+    assert ".wf-node-actions button {" in styles
+    assert "width: 28px;" in styles
 
 
 def test_business_node_context_menu_replaces_type_with_new_identity_and_preserved_edges():
@@ -116,7 +179,7 @@ def test_business_node_context_menu_replaces_type_with_new_identity_and_preserve
     assert "setSelectedNodeIds((current) => current.map" in source
     assert "setSaveState('未保存');" in source
     assert "节点运行期间不能更换类型" in source
-    assert "<span className=\"wf-node-runtime\">{meta.runtime}</span>" in source
+    assert "wf-node-runtime" not in source
 
 
 def test_canvas_node_tests_are_ephemeral_and_independent_from_workflow_runs():
@@ -141,6 +204,49 @@ def test_canvas_node_tests_are_ephemeral_and_independent_from_workflow_runs():
     assert "onRun: runAll" not in source
     assert "friendlyNodeError(data.snapshot.error, '节点临时测试失败')" in source
     assert "friendlyNodeError(failedNode?.error || run.error, 'Workflow 执行失败')" in source
+
+
+def test_running_workflow_nodes_increment_elapsed_time_from_started_at():
+    source = read("web/frontend/workflow-canvas.jsx")
+    timing = read("web/frontend/workflow-execution-timing.mjs")
+
+    assert "import {workflowNodeExecutionDuration} from './workflow-execution-timing.mjs';" in source
+    assert "if (run?.status !== 'RUNNING') return reportedDurationMs;" in timing
+    assert "const startedAtMs = new Date(run.started_at).getTime();" in timing
+    assert "Math.max(reportedDurationMs, previousDurationMs, nowMs - startedAtMs)" in timing
+    assert "executionDurationMs: workflowNodeExecutionDuration(run, node.data.executionDurationMs)" in source
+
+
+def test_closing_canvas_keeps_workflow_running_in_background():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    close = source[source.index("const close = useCallback(() => {"):source.index("const closeInspector")]
+    assert "studioClosedRef.current = true;" in close
+    assert "interruptWorkflow" not in close
+    assert "if (studioClosedRef.current) return;" in source
+    assert ".wf-node-status.is-running i {\n    background: #2563eb;\n}" in styles
+    assert ".wf-node-runtime" not in styles
+    node_execution = styles[styles.index(".wf-node-execution {"):styles.index("}", styles.index(".wf-node-execution {"))]
+    assert "font-size: 11px;" in node_execution
+
+
+def test_canvas_header_omits_execution_directory_button():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "openExecutionDirectory" not in source
+    assert "FolderOpen" not in source
+    assert ">执行记录</button>" not in source
+    assert "<FileClock size={15} />历史" in source
+
+
+def test_llm_run_log_omits_provider_and_model_metadata_caption():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert "`${run.model.provider_id} / ${run.model.model_name}`" not in source
+    assert "wf-llm-run-meta" not in source
+    assert ".wf-llm-run-meta" not in styles
 
 
 def test_http_log_prints_execution_model_request_without_reconstruction():
@@ -201,6 +307,34 @@ def test_http_inspector_uses_approved_request_settings_layout():
     assert ".wf-http-api-section" not in styles
     assert ".wf-http-network-section" not in styles
     assert ">API<" not in source
+
+
+def test_node_inspector_stays_inside_canvas_after_resize_and_drag():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "import {clampInspectorPosition}" in source
+    assert "const editorRndRef = useRef(null);" in source
+    assert "ref={editorRndRef}" in source
+    assert "onResizeStop={finishEditorResize}" in source
+    assert "onDragStop={finishEditorDrag}" in source
+    assert "parentWidth: parent.clientWidth" in source
+    assert "parentHeight: parent.clientHeight" in source
+
+
+def test_http_toggles_match_provider_switch_with_green_checked_feedback():
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert '.wf-http-toggle input:checked + i {' in styles
+    assert ':root[data-theme="dark"] .wf-http-toggle input:checked + i {' in styles
+    assert "--wf-switch-on: #2ea44f;" in styles
+    assert "--wf-switch-on: #3fb950;" in styles
+    assert "height: 18px;" in styles
+    assert "border-radius: 9px;" in styles
+    assert "width: 12px;" in styles
+    assert "height: 12px;" in styles
+    assert "transform: translateX(16px);" in styles
+    assert "background: var(--wf-switch-on);" in styles
+    assert ".wf-http-toggle:active > i" in styles
 
 
 def test_http_url_trims_on_blur_and_workflow_serialization():
@@ -277,8 +411,49 @@ def test_workflow_bundle_uses_cache_busting_version():
     html = read("web/static/index.html")
     build_script = read("scripts/build-workflow.mjs")
 
+    assert re.search(r'/assets/workflow-canvas\.css\?v=[0-9a-f]{12}', html)
     assert re.search(r'/assets/workflow-canvas\.js\?v=[0-9a-f]{12}', html)
     assert re.search(r'/execution\.js\?v=[0-9a-f]{12}', html)
     assert 'createHash("sha256")' in build_script
     assert 'indexContent.replace(' in build_script
     assert 'versionedWorkflowIndex.replace(' in build_script
+
+
+def test_llm_advanced_parameters_are_protocol_specific():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "OPENAI_COMPATIBLE: 'OpenAI Chat Completions'" in source
+    assert "OPENAI_RESPONSES: 'OpenAI Responses API'" in source
+    assert "ANTHROPIC: 'Anthropic Claude Messages'" in source
+    assert "function llmParametersReference(protocol)" in source
+    assert "function modelParametersProtocolError(protocol, parameters)" in source
+    assert "placeholder={llmParametersReference(selectedModelProtocol)}" in source
+    assert "&& !protocolParametersError" in source
+
+
+def test_workflow_header_groups_description_with_title_and_hides_saved_marker():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    header = source[source.index('<header className="wf-studio-header">'):source.index('<main className="wf-canvas-wrap"')]
+    left = header[header.index('<div className="wf-header-left">'):header.index('<div className="wf-header-actions">')]
+
+    assert 'className={`wf-header-description ${descriptionEditing ? \'is-editing\' : \'\'}`}' in left
+    assert 'className="wf-save-state"' not in header
+    assert "metadataDraft.current.name === workflowName ? event.currentTarget.value : metadataDraft.current.name" in left
+    assert "metadataDraft.current.description === workflowDescription ? event.currentTarget.value : metadataDraft.current.description" in left
+    assert "metadataDraft.current.name = event.target.value" in left
+    assert "metadataDraft.current.description = event.target.value" in left
+    assert "grid-template-columns: minmax(420px, 1fr) minmax(500px, auto);" in styles
+
+
+def test_workflow_editing_has_explicit_keyboard_reachable_entries():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert 'title="编辑工作流名称"' in source
+    assert 'title="编辑工作流说明"' in source
+    assert 'aria-label={`配置 ${data.label}`}' in source
+    assert "data.onConfigure?.();" in source
+    assert "onConfigure: () =>" in source
+    assert "function useDialogAccessibility(onClose, active = true)" in source
+    assert 'className="wf-node-test-dialog" role="dialog"' in source

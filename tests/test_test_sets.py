@@ -65,6 +65,18 @@ def test_repository_updates_full_state_directly(tmp_path) -> None:
     assert updated.cases[0].values == {"col_1": "a", "col_2": "c"}
 
 
+def test_repository_allows_empty_case_values_when_all_fields_are_present(tmp_path) -> None:
+    repository = Repository(tmp_path / "agent-bench.sqlite3")
+
+    created = repository.create(
+        name="允许空值",
+        columns=["col_1", "col_2"],
+        cases=[{"values": {"col_1": "", "col_2": ""}}],
+    )
+
+    assert created.cases[0].values == {"col_1": "", "col_2": ""}
+
+
 def test_repository_rejects_duplicate_names_and_invalid_case_shapes(tmp_path) -> None:
     repository = Repository(tmp_path / "agent-bench.sqlite3")
     repository.create(name="唯一名称", columns=["col_1"], cases=[])

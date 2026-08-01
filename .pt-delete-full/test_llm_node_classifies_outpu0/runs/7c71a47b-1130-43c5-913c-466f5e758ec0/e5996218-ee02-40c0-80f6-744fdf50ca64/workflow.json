@@ -1,0 +1,131 @@
+{
+  "id": "e5996218-ee02-40c0-80f6-744fdf50ca64",
+  "workflow_id": "7c71a47b-1130-43c5-913c-466f5e758ec0",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "7c71a47b-1130-43c5-913c-466f5e758ec0",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "1f0f523d-985e-4f6c-b0e7-c06620eb301a",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "1b84de62-cac3-44e1-983b-dd356bd25c02",
+          "type": "LLM",
+          "name": "输出错误分类",
+          "description": "",
+          "model": {
+            "provider_id": "18e2e5f7e1d0416f8381ad8960dc1293",
+            "model_name": "local-openai"
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": ""
+              },
+              {
+                "role": "USER",
+                "content": "测试输出提取"
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {},
+            "parameters_text": ""
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "response.choices[-2].message.content"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "4ad426c9-2d89-4a66-b6eb-8be5746b9276",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "5781606f-7085-43b9-82e4-6943c3c01c3d",
+        "source_node_id": "1f0f523d-985e-4f6c-b0e7-c06620eb301a",
+        "target_node_id": "1b84de62-cac3-44e1-983b-dd356bd25c02"
+      },
+      {
+        "id": "0c14f919-4ebc-4772-882d-aa20d0300839",
+        "source_node_id": "1b84de62-cac3-44e1-983b-dd356bd25c02",
+        "target_node_id": "4ad426c9-2d89-4a66-b6eb-8be5746b9276"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:20.721Z",
+  "started_at": "2026-07-31T21:03:20.723Z",
+  "finished_at": "2026-07-31T21:03:21.054Z",
+  "duration_ms": 331,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "1f0f523d-985e-4f6c-b0e7-c06620eb301a",
+      "node_execution_id": "9d80aede-a9ee-40da-bdfa-79b0500e3b7c",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "1b84de62-cac3-44e1-983b-dd356bd25c02",
+      "node_execution_id": "23523361-c5f1-4ce0-855b-9c8bd6422ab5",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "4ad426c9-2d89-4a66-b6eb-8be5746b9276",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 输出错误分类",
+    "details": {
+      "node_id": "1b84de62-cac3-44e1-983b-dd356bd25c02",
+      "node_execution_id": "23523361-c5f1-4ce0-855b-9c8bd6422ab5"
+    }
+  }
+}

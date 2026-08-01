@@ -1,0 +1,278 @@
+{
+  "workflow_execution_id": "d11fcd01-3fe7-4463-a866-5bd5e07c1218",
+  "workflow_id": "0d98fbeb-68bd-430e-a0ee-55b597a80b73",
+  "node_execution_id": "d0d30763-a7a7-4b95-8fc5-283c6e7d4a68",
+  "node_id": "83249a69-7577-4482-badf-b43ed9787a57",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "83249a69-7577-4482-badf-b43ed9787a57",
+    "type": "HTTP",
+    "name": "HTTP JSON 模板",
+    "description": "",
+    "request": {
+      "method": "POST",
+      "url": "http://127.0.0.1:59709/${input.path}",
+      "follow_redirects": true,
+      "headers": [
+        {
+          "key": "X-Template-Test",
+          "value": "${input.header}"
+        }
+      ],
+      "params": [
+        {
+          "key": "q",
+          "value": "${input.query}"
+        }
+      ],
+      "body": {
+        "type": "raw",
+        "content": null,
+        "template_text": "{\"question\": ${input.question}}"
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "DIRECT",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": true
+    },
+    "response": {
+      "mode": "AUTO",
+      "success_statuses": [
+        "200-299"
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        500
+      ]
+    },
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:08:42",
+  "finished_at": "2026-08-01 05:08:42",
+  "duration_ms": 339,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {
+      "question": "中文 \"quote\" \\ path\nnext line",
+      "path": "template",
+      "query": "a b",
+      "header": "template-header"
+    }
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:08:42.169Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:08:42.178Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:08:42.508Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "network": {
+    "proxy": {
+      "mode": "DIRECT",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": true
+  },
+  "request": {
+    "method": "POST",
+    "url": "http://127.0.0.1:59709/template?q=a+b",
+    "headers": [
+      {
+        "key": "host",
+        "value": "127.0.0.1:59709"
+      },
+      {
+        "key": "accept",
+        "value": "*/*"
+      },
+      {
+        "key": "accept-encoding",
+        "value": "gzip, deflate, zstd"
+      },
+      {
+        "key": "connection",
+        "value": "keep-alive"
+      },
+      {
+        "key": "user-agent",
+        "value": "python-httpx/0.28.1"
+      },
+      {
+        "key": "x-template-test",
+        "value": "template-header"
+      },
+      {
+        "key": "content-length",
+        "value": "50"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      }
+    ],
+    "body_type": "raw",
+    "body": {
+      "question": "中文 \"quote\" \\ path\nnext line"
+    }
+  },
+  "redirects": [],
+  "response": {
+    "status_code": 200,
+    "headers": [
+      {
+        "key": "server",
+        "value": "BaseHTTP/0.6 Python/3.14.6"
+      },
+      {
+        "key": "date",
+        "value": "Fri, 31 Jul 2026 21:08:42 GMT"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      },
+      {
+        "key": "content-length",
+        "value": "200"
+      }
+    ],
+    "body_type": "JSON",
+    "body": {
+      "id": "chat-1",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "OpenAI OK"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 5,
+        "completion_tokens": 3,
+        "total_tokens": 8
+      }
+    }
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "SUCCESS",
+      "started_at": "2026-08-01 05:08:42",
+      "finished_at": "2026-08-01 05:08:42",
+      "duration_ms": 328,
+      "request": {
+        "method": "POST",
+        "url": "http://127.0.0.1:59709/template?q=a+b",
+        "headers": [
+          {
+            "key": "host",
+            "value": "127.0.0.1:59709"
+          },
+          {
+            "key": "accept",
+            "value": "*/*"
+          },
+          {
+            "key": "accept-encoding",
+            "value": "gzip, deflate, zstd"
+          },
+          {
+            "key": "connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "user-agent",
+            "value": "python-httpx/0.28.1"
+          },
+          {
+            "key": "x-template-test",
+            "value": "template-header"
+          },
+          {
+            "key": "content-length",
+            "value": "50"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body_type": "raw",
+        "body": {
+          "question": "中文 \"quote\" \\ path\nnext line"
+        }
+      },
+      "redirects": [],
+      "response": {
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "server",
+            "value": "BaseHTTP/0.6 Python/3.14.6"
+          },
+          {
+            "key": "date",
+            "value": "Fri, 31 Jul 2026 21:08:42 GMT"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json"
+          },
+          {
+            "key": "content-length",
+            "value": "200"
+          }
+        ],
+        "body_type": "JSON",
+        "body": {
+          "id": "chat-1",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "OpenAI OK"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 5,
+            "completion_tokens": 3,
+            "total_tokens": 8
+          }
+        }
+      },
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "id": "c97a3edd-d9bb-41a4-be43-30399aeb455b",
+  "workflow_id": "2e7d8b0f-c537-4fad-b459-131fda8f3384",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "2e7d8b0f-c537-4fad-b459-131fda8f3384",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "d159c799-ab23-4cf8-b044-c69c4c8e0577",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {
+                "question": "中文 \"quote\" \\ path\nnext line",
+                "path": "template",
+                "query": "a b",
+                "header": "template-header"
+              }
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "ed3ce034-8a99-4c8b-b259-e8e0e019f3a8",
+          "type": "HTTP",
+          "name": "HTTP JSON 模板",
+          "description": "",
+          "request": {
+            "method": "POST",
+            "url": "http://127.0.0.1:55743/${input.path}",
+            "follow_redirects": true,
+            "headers": [
+              {
+                "key": "X-Template-Test",
+                "value": "${input.header}"
+              }
+            ],
+            "params": [
+              {
+                "key": "q",
+                "value": "${input.query}"
+              }
+            ],
+            "body": {
+              "type": "raw",
+              "content": null,
+              "template_text": "{\"question\": ${input.question}}"
+            }
+          },
+          "network": {
+            "proxy": {
+              "mode": "DIRECT",
+              "url": null,
+              "username": null,
+              "password": null
+            },
+            "verify_ssl": true
+          },
+          "response": {
+            "mode": "AUTO",
+            "success_statuses": [
+              "200-299"
+            ]
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0,
+            "retry_non_idempotent": false,
+            "retry_statuses": [
+              500
+            ]
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "f9220c33-e3e7-4c61-afd6-abd652eee2fa",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "2c7b3c65-7817-40da-ba9b-919d189b24cd",
+        "source_node_id": "d159c799-ab23-4cf8-b044-c69c4c8e0577",
+        "target_node_id": "ed3ce034-8a99-4c8b-b259-e8e0e019f3a8"
+      },
+      {
+        "id": "20564b4b-86a2-4fb1-bc03-6f7741627e4c",
+        "source_node_id": "ed3ce034-8a99-4c8b-b259-e8e0e019f3a8",
+        "target_node_id": "f9220c33-e3e7-4c61-afd6-abd652eee2fa"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:17.064Z",
+  "started_at": "2026-07-31T20:58:17.067Z",
+  "finished_at": "2026-07-31T20:58:17.407Z",
+  "duration_ms": 340,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "d159c799-ab23-4cf8-b044-c69c4c8e0577",
+        "node_execution_id": "66343475-b65f-4d05-a0d3-09832c176715",
+        "committed_at": "2026-07-31T20:58:17.072Z",
+        "values": {
+          "input": {
+            "question": "中文 \"quote\" \\ path\nnext line",
+            "path": "template",
+            "query": "a b",
+            "header": "template-header"
+          }
+        }
+      }
+    ],
+    "final": {
+      "input": {
+        "question": "中文 \"quote\" \\ path\nnext line",
+        "path": "template",
+        "query": "a b",
+        "header": "template-header"
+      }
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "d159c799-ab23-4cf8-b044-c69c4c8e0577",
+      "node_execution_id": "66343475-b65f-4d05-a0d3-09832c176715",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "ed3ce034-8a99-4c8b-b259-e8e0e019f3a8",
+      "node_execution_id": "2b820551-4fe4-4377-a1b4-40c068378fb9",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "f9220c33-e3e7-4c61-afd6-abd652eee2fa",
+      "node_execution_id": "fdcd7b0a-0545-434c-8075-eb3a02b4b984",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

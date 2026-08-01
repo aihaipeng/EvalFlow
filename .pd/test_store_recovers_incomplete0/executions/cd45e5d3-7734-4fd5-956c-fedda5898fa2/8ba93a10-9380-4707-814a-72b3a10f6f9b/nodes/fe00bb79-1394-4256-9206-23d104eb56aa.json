@@ -1,0 +1,19 @@
+{
+  "workflow_execution_id": "8ba93a10-9380-4707-814a-72b3a10f6f9b",
+  "workflow_id": "cd45e5d3-7734-4fd5-956c-fedda5898fa2",
+  "node_execution_id": "fe00bb79-1394-4256-9206-23d104eb56aa",
+  "status": "FAILED",
+  "finished_at": "2026-08-01 05:08:40",
+  "transitions": [
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:08:40.809Z",
+      "reason": "RUNTIME_LOST"
+    }
+  ],
+  "error": {
+    "code": "RUNTIME_LOST",
+    "message": "服务重启导致节点运行时丢失",
+    "details": null
+  }
+}

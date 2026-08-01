@@ -1,0 +1,152 @@
+{
+  "id": "7c1179e7-b1fd-42c7-bbb3-7182c5f83b28",
+  "workflow_id": "fe2efa09-93e8-4c15-a54c-d0df5f851727",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "75038dc4-c587-4726-ad39-917c022f87b6",
+    "case_run_id": "d070b95f-d242-44a7-85bb-ea7e83cced09",
+    "case_id": "case-2",
+    "row_number": 2
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "fe2efa09-93e8-4c15-a54c-d0df5f851727",
+      "name": "Batch API Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "883b9e20-2d19-40fd-b8e7-590b53ab7c2c",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "world"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "acc00930-3830-4a1a-b6c1-58d8994b767e",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = context[\"question\"].upper()",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "f7d29a1c-e0d9-4478-b16a-885420c4948e",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "2df248e4-d6d4-42ad-8753-acd6b74a263e",
+        "source_node_id": "883b9e20-2d19-40fd-b8e7-590b53ab7c2c",
+        "target_node_id": "acc00930-3830-4a1a-b6c1-58d8994b767e"
+      },
+      {
+        "id": "881aa8db-4b75-4ab5-9e50-412baf8f1080",
+        "source_node_id": "acc00930-3830-4a1a-b6c1-58d8994b767e",
+        "target_node_id": "f7d29a1c-e0d9-4478-b16a-885420c4948e"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:16:41.634Z",
+  "started_at": "2026-07-31T21:16:41.639Z",
+  "finished_at": "2026-07-31T21:16:41.985Z",
+  "duration_ms": 347,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "883b9e20-2d19-40fd-b8e7-590b53ab7c2c",
+        "node_execution_id": "22cd6248-ed7d-4ffd-869d-63065cea6677",
+        "committed_at": "2026-07-31T21:16:41.653Z",
+        "values": {
+          "input": {},
+          "question": "world"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "acc00930-3830-4a1a-b6c1-58d8994b767e",
+        "node_execution_id": "9b8f8272-f691-4832-998a-db2347824bc0",
+        "committed_at": "2026-07-31T21:16:41.971Z",
+        "values": {
+          "answer": "WORLD"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "world",
+      "answer": "WORLD"
+    }
+  },
+  "result": {
+    "answer": "WORLD"
+  },
+  "nodes": [
+    {
+      "node_id": "883b9e20-2d19-40fd-b8e7-590b53ab7c2c",
+      "node_execution_id": "22cd6248-ed7d-4ffd-869d-63065cea6677",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "acc00930-3830-4a1a-b6c1-58d8994b767e",
+      "node_execution_id": "9b8f8272-f691-4832-998a-db2347824bc0",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "f7d29a1c-e0d9-4478-b16a-885420c4948e",
+      "node_execution_id": "3ce9f60b-cdc3-4681-b68c-0d9316bb10db",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

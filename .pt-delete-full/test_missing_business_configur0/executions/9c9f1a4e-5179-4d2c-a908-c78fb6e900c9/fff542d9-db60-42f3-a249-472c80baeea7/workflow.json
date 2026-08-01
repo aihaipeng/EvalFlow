@@ -1,0 +1,106 @@
+{
+  "id": "fff542d9-db60-42f3-a249-472c80baeea7",
+  "workflow_id": "9c9f1a4e-5179-4d2c-a908-c78fb6e900c9",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "9c9f1a4e-5179-4d2c-a908-c78fb6e900c9",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "c9783e2f-5858-4812-b694-3a8f98ffad47",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "6d2f34c2-d53b-4b3e-a84c-1394c6eb4fea",
+          "type": "SCRIPT",
+          "name": "空白 SCRIPT",
+          "description": "",
+          "script": "",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "c24cd41a-596b-43e3-803a-2fa6794f2553",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "0a02fd99-4426-4819-93c2-32e2e19c2bba",
+        "source_node_id": "c9783e2f-5858-4812-b694-3a8f98ffad47",
+        "target_node_id": "6d2f34c2-d53b-4b3e-a84c-1394c6eb4fea"
+      },
+      {
+        "id": "ad96a0ba-0ac8-47c6-a20d-f9b5716fd85a",
+        "source_node_id": "6d2f34c2-d53b-4b3e-a84c-1394c6eb4fea",
+        "target_node_id": "c24cd41a-596b-43e3-803a-2fa6794f2553"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:12.057Z",
+  "started_at": "2026-07-31T21:03:12.059Z",
+  "finished_at": "2026-07-31T21:03:12.075Z",
+  "duration_ms": 16,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "c9783e2f-5858-4812-b694-3a8f98ffad47",
+      "node_execution_id": "3d7bc872-06b9-419d-a518-806cf3b8a63c",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "6d2f34c2-d53b-4b3e-a84c-1394c6eb4fea",
+      "node_execution_id": "89479f15-597f-452a-896a-80af36ed8cb5",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "c24cd41a-596b-43e3-803a-2fa6794f2553",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 空白 SCRIPT",
+    "details": {
+      "node_id": "6d2f34c2-d53b-4b3e-a84c-1394c6eb4fea",
+      "node_execution_id": "89479f15-597f-452a-896a-80af36ed8cb5"
+    }
+  }
+}

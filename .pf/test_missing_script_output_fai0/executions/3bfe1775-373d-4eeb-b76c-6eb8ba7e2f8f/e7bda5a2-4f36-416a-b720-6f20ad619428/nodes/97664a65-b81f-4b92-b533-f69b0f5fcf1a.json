@@ -1,0 +1,88 @@
+{
+  "workflow_execution_id": "e7bda5a2-4f36-416a-b720-6f20ad619428",
+  "workflow_id": "3bfe1775-373d-4eeb-b76c-6eb8ba7e2f8f",
+  "node_execution_id": "97664a65-b81f-4b92-b533-f69b0f5fcf1a",
+  "node_id": "26f59eea-8881-45ae-9a74-0358894e5d55",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "26f59eea-8881-45ae-9a74-0358894e5d55",
+    "type": "SCRIPT",
+    "name": "SCRIPT",
+    "description": "",
+    "script": "print('done')",
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "string",
+        "source": "missing"
+      }
+    ]
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 05:21:25",
+  "finished_at": "2026-08-01 05:21:25",
+  "duration_ms": 269,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:21:25.680Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:21:25.684Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:21:25.950Z",
+      "reason": "SCRIPT_OUTPUT_MISSING"
+    }
+  ],
+  "error": {
+    "code": "SCRIPT_OUTPUT_MISSING",
+    "message": "Python 顶层变量不存在: missing",
+    "details": {
+      "source": "missing"
+    }
+  },
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 67,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "FAILED",
+        "console": [
+          {
+            "sequence": 1,
+            "stream": "STDOUT",
+            "content": "done\n"
+          },
+          {
+            "sequence": 2,
+            "stream": "STDERR",
+            "content": "[WARNING] Python 顶层变量不存在，输出 null: missing\n"
+          }
+        ],
+        "traceback": null,
+        "error": {
+          "code": "SCRIPT_OUTPUT_MISSING",
+          "message": "Python 顶层变量不存在: missing",
+          "details": {
+            "source": "missing"
+          }
+        }
+      }
+    ]
+  }
+}

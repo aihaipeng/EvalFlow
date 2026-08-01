@@ -1,0 +1,23 @@
+{
+  "id": "97940d59-9fe1-4e71-b837-c72113e91228",
+  "status": "STOPPED",
+  "created_at": "2026-07-27T00:00:00.000Z",
+  "finished_at": "2026-07-31T21:16:42.198Z",
+  "error": {
+    "code": "PROCESS_RESTARTED",
+    "message": "服务重启，Batch 未自动续跑",
+    "details": null
+  },
+  "execution_mode": null,
+  "summary": {
+    "queued": 1,
+    "running": 0,
+    "success": 0,
+    "failed": 0,
+    "interrupted": 1,
+    "pass": 0,
+    "fail": 0,
+    "error": 0,
+    "not_evaluated": 2
+  }
+}

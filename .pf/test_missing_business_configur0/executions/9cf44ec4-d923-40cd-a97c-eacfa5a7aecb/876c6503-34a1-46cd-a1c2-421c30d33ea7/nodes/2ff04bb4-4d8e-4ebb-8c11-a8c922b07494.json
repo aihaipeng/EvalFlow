@@ -1,0 +1,55 @@
+{
+  "workflow_execution_id": "876c6503-34a1-46cd-a1c2-421c30d33ea7",
+  "workflow_id": "9cf44ec4-d923-40cd-a97c-eacfa5a7aecb",
+  "node_execution_id": "2ff04bb4-4d8e-4ebb-8c11-a8c922b07494",
+  "node_id": "5c26c9e4-6ae7-40b4-a26a-4fd71b7320b3",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "5c26c9e4-6ae7-40b4-a26a-4fd71b7320b3",
+    "type": "SCRIPT",
+    "name": "空白 SCRIPT",
+    "description": "",
+    "script": "",
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": []
+  },
+  "status": "FAILED",
+  "started_at": null,
+  "finished_at": "2026-08-01 05:21:26",
+  "duration_ms": null,
+  "attempt_count": 0,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:21:26.002Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:21:26.004Z",
+      "reason": "SCRIPT_CONFIGURATION_INCOMPLETE"
+    }
+  ],
+  "error": {
+    "code": "SCRIPT_CONFIGURATION_INCOMPLETE",
+    "message": "节点“空白 SCRIPT”未填写 Python 代码",
+    "details": {
+      "missing_fields": [
+        "script"
+      ],
+      "suggestion": "打开节点设置，在 main.py 中填写需要执行的 Python 代码"
+    }
+  },
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": []
+  }
+}

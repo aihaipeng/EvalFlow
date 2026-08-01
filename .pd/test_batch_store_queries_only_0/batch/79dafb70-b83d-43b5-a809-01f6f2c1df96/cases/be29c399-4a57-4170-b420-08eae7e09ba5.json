@@ -1,0 +1,17 @@
+{
+  "id": "be29c399-4a57-4170-b420-08eae7e09ba5",
+  "batch_execution_id": "79dafb70-b83d-43b5-a809-01f6f2c1df96",
+  "case_id": "C-4",
+  "row_number": 4,
+  "status": "SUCCESS",
+  "finished_at": null,
+  "error": null,
+  "call_number": 4,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "PASS"
+  },
+  "source_values": {
+    "question": "question-4"
+  }
+}

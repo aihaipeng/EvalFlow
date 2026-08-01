@@ -1,0 +1,234 @@
+{
+  "workflow_execution_id": "10c4ec50-1380-4289-a2aa-8d3bf35fcc67",
+  "workflow_id": "c7f88ba7-21a3-44ba-aa6a-b87eb6ee49ae",
+  "node_execution_id": "72ae0f4e-f766-4429-9405-f91ba17aa3d6",
+  "node_id": "f74465ef-db25-41b6-ba93-9ba264b53807",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "f74465ef-db25-41b6-ba93-9ba264b53807",
+    "type": "HTTP",
+    "name": "HTTP 输出错误分类",
+    "description": "",
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:49891/items",
+      "follow_redirects": true,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "none",
+        "content": null,
+        "template_text": null
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "DIRECT",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": true
+    },
+    "response": {
+      "mode": "AUTO",
+      "success_statuses": [
+        "200-299"
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        500,
+        502,
+        503,
+        504
+      ]
+    },
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "integer",
+        "source": "response.body.data[-1]"
+      }
+    ]
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 05:03:18",
+  "finished_at": "2026-08-01 05:03:18",
+  "duration_ms": 340,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:03:18.259Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:03:18.263Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:03:18.599Z",
+      "reason": "HTTP_OUTPUT_TYPE_MISMATCH"
+    }
+  ],
+  "error": {
+    "code": "HTTP_OUTPUT_TYPE_MISMATCH",
+    "message": "值不能转换为 integer",
+    "details": null
+  },
+  "network": {
+    "proxy": {
+      "mode": "DIRECT",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": true
+  },
+  "request": {
+    "method": "GET",
+    "url": "http://127.0.0.1:49891/items",
+    "headers": [
+      {
+        "key": "host",
+        "value": "127.0.0.1:49891"
+      },
+      {
+        "key": "accept",
+        "value": "*/*"
+      },
+      {
+        "key": "accept-encoding",
+        "value": "gzip, deflate, zstd"
+      },
+      {
+        "key": "connection",
+        "value": "keep-alive"
+      },
+      {
+        "key": "user-agent",
+        "value": "python-httpx/0.28.1"
+      }
+    ],
+    "body_type": "none",
+    "body": null
+  },
+  "redirects": [],
+  "response": {
+    "status_code": 200,
+    "headers": [
+      {
+        "key": "server",
+        "value": "BaseHTTP/0.6 Python/3.14.6"
+      },
+      {
+        "key": "date",
+        "value": "Fri, 31 Jul 2026 21:03:18 GMT"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      },
+      {
+        "key": "content-length",
+        "value": "64"
+      }
+    ],
+    "body_type": "JSON",
+    "body": {
+      "data": [
+        {
+          "id": 2,
+          "name": "two"
+        },
+        {
+          "id": 3,
+          "name": "three"
+        }
+      ]
+    }
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "SUCCESS",
+      "started_at": "2026-08-01 05:03:18",
+      "finished_at": "2026-08-01 05:03:18",
+      "duration_ms": 335,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:49891/items",
+        "headers": [
+          {
+            "key": "host",
+            "value": "127.0.0.1:49891"
+          },
+          {
+            "key": "accept",
+            "value": "*/*"
+          },
+          {
+            "key": "accept-encoding",
+            "value": "gzip, deflate, zstd"
+          },
+          {
+            "key": "connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "user-agent",
+            "value": "python-httpx/0.28.1"
+          }
+        ],
+        "body_type": "none",
+        "body": null
+      },
+      "redirects": [],
+      "response": {
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "server",
+            "value": "BaseHTTP/0.6 Python/3.14.6"
+          },
+          {
+            "key": "date",
+            "value": "Fri, 31 Jul 2026 21:03:18 GMT"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json"
+          },
+          {
+            "key": "content-length",
+            "value": "64"
+          }
+        ],
+        "body_type": "JSON",
+        "body": {
+          "data": [
+            {
+              "id": 2,
+              "name": "two"
+            },
+            {
+              "id": 3,
+              "name": "three"
+            }
+          ]
+        }
+      },
+      "error": null
+    }
+  ]
+}

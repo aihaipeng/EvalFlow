@@ -1,0 +1,141 @@
+{
+  "id": "f965d96c-294a-4579-a492-e67498efad86",
+  "workflow_id": "9380d70e-3e8e-4354-ab25-ac69beab4755",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "4427b7ea-62ab-4a08-a947-f9efa86f80ca",
+    "case_run_id": "60f12dbd-a06d-4397-9221-c83df72596a7",
+    "case_id": "C-2",
+    "row_number": 2
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "9380d70e-3e8e-4354-ab25-ac69beab4755",
+      "name": "Batch workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "56fe81bf-a919-4d5d-abdb-857896de2bb9",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "bad"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "650cf9e7-3baa-4a44-90a2-b72869d01fcb",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "question = context[\"question\"]\nif question == \"bad\":\n    raise RuntimeError(\"bad case\")\nresult = question.upper()",
+          "execution": {
+            "timeout_seconds": 10.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "b7704474-0f04-4100-a860-22b93eed22f1",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "c53419dc-ade8-445d-b963-a390abbcaa97",
+        "source_node_id": "56fe81bf-a919-4d5d-abdb-857896de2bb9",
+        "target_node_id": "650cf9e7-3baa-4a44-90a2-b72869d01fcb"
+      },
+      {
+        "id": "74b4068d-5204-46fd-b4eb-3fce51707f49",
+        "source_node_id": "650cf9e7-3baa-4a44-90a2-b72869d01fcb",
+        "target_node_id": "b7704474-0f04-4100-a860-22b93eed22f1"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:57:50.252Z",
+  "started_at": "2026-07-31T20:57:50.254Z",
+  "finished_at": "2026-07-31T20:57:50.556Z",
+  "duration_ms": 302,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "56fe81bf-a919-4d5d-abdb-857896de2bb9",
+        "node_execution_id": "37ad9689-4662-4b85-9d04-748571008995",
+        "committed_at": "2026-07-31T20:57:50.265Z",
+        "values": {
+          "input": {},
+          "question": "bad"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "bad"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "56fe81bf-a919-4d5d-abdb-857896de2bb9",
+      "node_execution_id": "37ad9689-4662-4b85-9d04-748571008995",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "650cf9e7-3baa-4a44-90a2-b72869d01fcb",
+      "node_execution_id": "c8873eb8-d7dc-4cf9-aa16-7e999250e4d7",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "b7704474-0f04-4100-a860-22b93eed22f1",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: SCRIPT",
+    "details": {
+      "node_id": "650cf9e7-3baa-4a44-90a2-b72869d01fcb",
+      "node_execution_id": "c8873eb8-d7dc-4cf9-aa16-7e999250e4d7"
+    }
+  }
+}

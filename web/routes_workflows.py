@@ -194,6 +194,20 @@ def get_workflow(
     return WorkflowEnvelope(workflow=_get_or_404(workflow_id, services))
 
 
+@router.post("/{workflow_id}/copy", response_model=WorkflowEnvelope, status_code=201)
+def copy_workflow(
+    workflow_id: str, services: WorkflowServicesDependency
+) -> WorkflowEnvelope:
+    """复制 Workflow 的当前完整结构并生成独立身份。"""
+
+    _get_or_404(workflow_id, services)
+    try:
+        record = services.repository.copy(workflow_id)
+    except WorkflowStructuralRepositoryError as exc:
+        _raise_repository_http_error(exc)
+    return WorkflowEnvelope(workflow=record)
+
+
 @router.put("/{workflow_id}", response_model=WorkflowEnvelope)
 def update_workflow(
     workflow_id: str,
@@ -239,10 +253,18 @@ def delete_workflow(
 ) -> WorkflowEnvelope:
     """删除 Workflow 及其当前 Node、binding 和 Edge，并返回删除前快照。"""
 
-    references = [
-        batch for batch in services.batch_store.list()
-        if batch.get("workflow", {}).get("id") == workflow_id
-    ]
+    references = []
+    for batch in services.batch_store.list():
+        workflow_ids = {
+            batch.get("workflow", {}).get("id"),
+            batch.get("configuration", {}).get("workflow_id"),
+        }
+        workflow_ids.update(
+            item.get("workflow", {}).get("id")
+            for item in services.batch_store.list_rounds(batch["id"])
+        )
+        if workflow_id in workflow_ids:
+            references.append(batch)
     if references:
         raise HTTPException(409, "Workflow 已被 Batch Run 引用，请先删除相关 Batch Run")
 

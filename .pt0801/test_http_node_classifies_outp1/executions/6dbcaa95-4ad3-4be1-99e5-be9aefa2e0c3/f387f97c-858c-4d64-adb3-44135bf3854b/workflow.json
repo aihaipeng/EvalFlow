@@ -1,0 +1,145 @@
+{
+  "id": "f387f97c-858c-4d64-adb3-44135bf3854b",
+  "workflow_id": "6dbcaa95-4ad3-4be1-99e5-be9aefa2e0c3",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "6dbcaa95-4ad3-4be1-99e5-be9aefa2e0c3",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "85cc9fe4-92a4-44cd-9e52-5432f3908ef0",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "d4773d5e-2686-48ec-9c93-689314a97f3b",
+          "type": "HTTP",
+          "name": "HTTP 输出错误分类",
+          "description": "",
+          "request": {
+            "method": "GET",
+            "url": "http://127.0.0.1:50692/items",
+            "follow_redirects": true,
+            "headers": [],
+            "params": [],
+            "body": {
+              "type": "none",
+              "content": null,
+              "template_text": null
+            }
+          },
+          "network": {
+            "proxy": {
+              "mode": "DIRECT",
+              "url": null,
+              "username": null,
+              "password": null
+            },
+            "verify_ssl": true
+          },
+          "response": {
+            "mode": "AUTO",
+            "success_statuses": [
+              "200-299"
+            ]
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0,
+            "retry_non_idempotent": false,
+            "retry_statuses": [
+              500,
+              502,
+              503,
+              504
+            ]
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "integer",
+              "source": "response.body.data[-1]"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "d57e1fac-bea6-4fa9-af57-eb00613c7b77",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "d86d3e76-95d7-4d4d-811c-749d59a9b2ff",
+        "source_node_id": "85cc9fe4-92a4-44cd-9e52-5432f3908ef0",
+        "target_node_id": "d4773d5e-2686-48ec-9c93-689314a97f3b"
+      },
+      {
+        "id": "95233395-f797-4375-ae76-544fb5eeec04",
+        "source_node_id": "d4773d5e-2686-48ec-9c93-689314a97f3b",
+        "target_node_id": "d57e1fac-bea6-4fa9-af57-eb00613c7b77"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:18.937Z",
+  "started_at": "2026-07-31T20:58:18.940Z",
+  "finished_at": "2026-07-31T20:58:19.278Z",
+  "duration_ms": 338,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "85cc9fe4-92a4-44cd-9e52-5432f3908ef0",
+      "node_execution_id": "fa2a71aa-173a-479c-8e14-6b827548c381",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "d4773d5e-2686-48ec-9c93-689314a97f3b",
+      "node_execution_id": "9a09c2cc-f60f-412a-95e7-02f790c508c7",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "d57e1fac-bea6-4fa9-af57-eb00613c7b77",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: HTTP 输出错误分类",
+    "details": {
+      "node_id": "d4773d5e-2686-48ec-9c93-689314a97f3b",
+      "node_execution_id": "9a09c2cc-f60f-412a-95e7-02f790c508c7"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "workflow_execution_id": "339b68e3-3a37-4a4a-9bf8-3edfaabde25e",
+  "workflow_id": "4ae773d2-d787-43fb-95ed-4cf970179f0f",
+  "node_execution_id": "0eceea7f-7f62-4b7b-a245-aa118eda2280",
+  "node_id": "ab0b3ce2-8461-4d4b-9b59-f0dc0ce0c5c0",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "ab0b3ce2-8461-4d4b-9b59-f0dc0ce0c5c0",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:03:19",
+  "finished_at": "2026-08-01 05:03:19",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "真实请求",
+    "model_text": "OpenAI OK"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:03:19.415Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:03:19.416Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:03:19.417Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

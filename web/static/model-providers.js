@@ -11,21 +11,46 @@ var modelProviderState = {
     endpoint: null,
     modelConfigs: {},
     modelTests: {},
+    persistedProtocol: 'OPENAI_COMPATIBLE',
 };
-var MODEL_DEFAULT_BODY_REFERENCE = JSON.stringify({
-    thinking: {type: 'disabled'},
-    temperature: 0,
-    top_p: 0.8,
-    max_tokens: 1024,
-    response_format: {type: 'json_object'},
-}, null, 2);
+var modelProviderModalReturnFocus = null;
+var MODEL_DEFAULT_BODY_REFERENCES = {
+    OPENAI_COMPATIBLE: {
+        temperature: 0,
+        top_p: 0.8,
+        max_tokens: 1024,
+        response_format: {type: 'json_object'},
+    },
+    OPENAI_RESPONSES: {
+        reasoning: {effort: 'medium'},
+        max_output_tokens: 1024,
+        text: {format: {type: 'json_object'}},
+    },
+    ANTHROPIC: {
+        temperature: 0,
+        top_p: 0.8,
+        max_tokens: 1024,
+        thinking: {type: 'disabled'},
+    },
+};
 
 function modelProviderName(provider) {
     return provider.name || '未命名供应商';
 }
 
 function modelProviderProtocolLabel(protocol) {
-    return protocol === 'ANTHROPIC' ? 'Anthropic' : 'OpenAI';
+    if (protocol === 'OPENAI_RESPONSES') return 'OpenAI Responses API';
+    return protocol === 'ANTHROPIC'
+        ? 'Anthropic Claude Messages'
+        : 'OpenAI Chat Completions';
+}
+
+function modelProviderDefaultBodyReference(protocol) {
+    return JSON.stringify(
+        MODEL_DEFAULT_BODY_REFERENCES[protocol] || MODEL_DEFAULT_BODY_REFERENCES.OPENAI_COMPATIBLE,
+        null,
+        2
+    );
 }
 
 function modelProviderDefaultBodyText(defaultBody) {
@@ -77,13 +102,12 @@ function renderModelProviderRows() {
         var remaining = (provider.models || []).length - 2;
         if (remaining > 0) modelPreview += '<span class="model-provider-more">+' + remaining + '</span>';
         return '<tr>' +
-            '<td><button class="execution-name-button" type="button" data-provider-edit="' + escAttr(provider.id) + '">' + esc(modelProviderName(provider)) + '</button>' + website + '</td>' +
-            '<td><span class="model-provider-url" title="' + escAttr(provider.base_url) + '">' + esc(provider.base_url) + '</span></td>' +
+            '<td class="management-list-primary" title="' + escAttr(modelProviderName(provider)) + '"><button class="execution-name-button" type="button" data-provider-edit="' + escAttr(provider.id) + '">' + esc(modelProviderName(provider)) + '</button>' + website + '</td>' +
+            '<td class="management-list-text"><span class="model-provider-url" title="' + escAttr(provider.base_url) + '">' + esc(provider.base_url) + '</span></td>' +
             '<td><span class="model-provider-protocol is-' + escAttr(provider.protocol.toLowerCase()) + '">' + esc(modelProviderProtocolLabel(provider.protocol)) + '</span></td>' +
             '<td><div class="model-provider-model-preview">' + modelPreview + '</div></td>' +
-            '<td>' + esc(formatDateTime(provider.updated_at)) + '</td>' +
-            '<td><div class="execution-row-actions">' +
-                '<button class="btn-icon" type="button" data-provider-edit="' + escAttr(provider.id) + '" title="编辑模型供应商" aria-label="编辑模型供应商">' + icon('edit') + '</button>' +
+            '<td class="management-list-time">' + esc(formatDateTime(provider.updated_at)) + '</td>' +
+            '<td class="management-list-actions-cell"><div class="management-list-row-actions execution-row-actions">' +
                 '<button class="btn-icon" type="button" data-provider-delete="' + escAttr(provider.id) + '" title="删除模型供应商" aria-label="删除模型供应商">' + icon('trash') + '</button>' +
             '</div></td></tr>';
     }).join('');
@@ -114,18 +138,18 @@ function viewModelProviders() {
     modelProviderState.editingId = null;
     contentArea.innerHTML =
         '<section class="execution-page model-provider-page" aria-labelledby="model-provider-title">' +
-            '<header class="execution-page-header"><div><h1 id="model-provider-title">供应商管理</h1></div><span class="execution-count" id="model-provider-count">0 个供应商</span></header>' +
-            '<div class="toolbar execution-toolbar" id="model-provider-toolbar">' +
+            '<header class="execution-page-header management-page-header"><div class="management-page-title"><h1 id="model-provider-title">供应商管理</h1><span class="management-page-description">配置模型接入与连接</span></div><span class="execution-count" id="model-provider-count">0 个供应商</span></header>' +
+            '<div class="toolbar execution-toolbar management-list-toolbar" id="model-provider-toolbar">' +
                 '<button class="btn btn-primary" id="btn-model-provider-add" type="button">' + icon('add') + '新增模型</button>' +
                 '<button class="btn" id="btn-model-provider-refresh" type="button">' + icon('refresh') + '刷新</button>' +
                 '<span class="toolbar-sep"></span>' +
                 '<input class="input toolbar-search" id="model-provider-search" type="search" placeholder="搜索供应商、地址或模型..." aria-label="搜索模型供应商" />' +
             '</div>' +
-            '<div class="table-wrap execution-table-wrap"><table class="table execution-table model-provider-table">' +
-                '<thead><tr><th>供应商</th><th>BASE_URL</th><th>协议</th><th>模型</th><th>更新时间</th><th>操作</th></tr></thead>' +
+            '<div class="table-wrap execution-table-wrap management-list-wrap"><table class="table execution-table management-list-table model-provider-table">' +
+                '<thead><tr><th>供应商</th><th>BASE_URL</th><th>协议</th><th>模型</th><th>更新时间</th><th class="management-list-actions-head">操作</th></tr></thead>' +
                 '<tbody id="model-provider-list-body"></tbody>' +
             '</table></div>' +
-            '<div id="model-provider-pagination" class="global-list-footer"></div>' +
+            '<div id="model-provider-pagination" class="global-list-footer management-list-footer"></div>' +
         '</section>';
     document.getElementById('btn-model-provider-add').addEventListener('click', function () {
         viewModelProviderEditor(null);
@@ -141,6 +165,7 @@ function viewModelProviders() {
 
 function modelProviderEditorMarkup(provider) {
     var isEditing = Boolean(provider);
+    var selectedProtocol = provider && provider.protocol || 'OPENAI_COMPATIBLE';
     return '<section class="model-provider-editor" aria-labelledby="model-provider-editor-title">' +
         '<header class="model-provider-editor-header">' +
             '<button class="btn btn-sm" id="model-provider-back" type="button">' + icon('back') + '返回</button>' +
@@ -152,7 +177,12 @@ function modelProviderEditorMarkup(provider) {
             '<label class="model-provider-field"><span>官网链接 <small>选填</small></span><input class="input" id="model-provider-website" type="url" maxlength="2048" placeholder="https://example.com" value="' + escAttr(provider && provider.website_url || '') + '" /></label>' +
             '<label class="model-provider-field"><span>API Key <b>*</b></span><span class="model-provider-key-wrap"><input class="input" id="model-provider-api-key" type="password" maxlength="4096" autocomplete="off" required placeholder="输入 API Key" value="' + escAttr(provider && provider.api_key || '') + '" /><button id="model-provider-key-toggle" class="model-provider-key-toggle" type="button" aria-label="显示 API Key" title="显示 API Key">' + icon('eye') + '</button></span></label>' +
             '<label class="model-provider-field"><span>BASE_URL <b>*</b></span><input class="input" id="model-provider-base-url" type="url" maxlength="2048" required placeholder="https://api.example.com" value="' + escAttr(provider && provider.base_url || '') + '" /></label>' +
-            '<label class="model-provider-field"><span>协议 <b>*</b></span><select class="input" id="model-provider-protocol"><option value="OPENAI_COMPATIBLE"' + ((provider && provider.protocol) === 'ANTHROPIC' ? '' : ' selected') + '>OpenAI</option><option value="ANTHROPIC"' + ((provider && provider.protocol) === 'ANTHROPIC' ? ' selected' : '') + '>Anthropic</option></select></label>' +
+            '<div class="model-provider-field model-provider-protocol-setting"><span><label for="model-provider-protocol">协议 <b>*</b></label><details class="model-provider-proxy-help model-provider-protocol-help"><summary aria-label="查看协议选择帮助" title="协议选择帮助">?</summary>' +
+                '<div class="model-provider-proxy-help-panel" role="tooltip"><strong>如何选择协议？</strong>' +
+                    '<section><b>OpenAI Chat Completions</b><span>多数 OpenAI 兼容服务使用。文档出现 <code>/chat/completions</code> 或请求体使用 <code>messages</code> 时选择。</span></section>' +
+                    '<section><b>OpenAI Responses API</b><span>OpenAI 新版原生接口。仅在文档明确支持 <code>/responses</code> 或请求体使用 <code>input</code> 时选择。</span></section>' +
+                    '<section><b>Anthropic Claude Messages</b><span>Claude 原生接口。文档出现 <code>/v1/messages</code>、<code>x-api-key</code> 或 <code>anthropic-version</code> 时选择。</span></section>' +
+                '</div></details></span><select class="input" id="model-provider-protocol"><option value="OPENAI_COMPATIBLE"' + (selectedProtocol === 'OPENAI_COMPATIBLE' ? ' selected' : '') + '>OpenAI Chat Completions</option><option value="OPENAI_RESPONSES"' + (selectedProtocol === 'OPENAI_RESPONSES' ? ' selected' : '') + '>OpenAI Responses API</option><option value="ANTHROPIC"' + (selectedProtocol === 'ANTHROPIC' ? ' selected' : '') + '>Anthropic Claude Messages</option></select></div>' +
             '<div class="model-provider-field model-provider-proxy-setting"><span>代理模式 <b>*</b><details class="model-provider-proxy-help"><summary aria-label="查看代理模式配置帮助" title="代理模式配置帮助">?</summary>' +
                 '<div class="model-provider-proxy-help-panel" role="tooltip"><strong>如何选择代理模式？</strong>' +
                     '<section><b>SYSTEM</b><span>遵循系统的 HTTP_PROXY / HTTPS_PROXY / NO_PROXY，适合作为默认选择。</span></section>' +
@@ -161,7 +191,7 @@ function modelProviderEditorMarkup(provider) {
                     '<p>SSL 证书验证独立于代理模式；仅在可信的自签名服务联调时关闭。</p>' +
                 '</div></details></span><div class="model-provider-proxy-control">' +
                 '<select class="input" id="model-provider-proxy-mode" aria-label="代理模式"><option value="SYSTEM"' + ((provider && provider.proxy_mode) === 'DIRECT' || (provider && provider.proxy_mode) === 'CUSTOM' ? '' : ' selected') + '>SYSTEM</option><option value="DIRECT"' + ((provider && provider.proxy_mode) === 'DIRECT' ? ' selected' : '') + '>DIRECT</option><option value="CUSTOM"' + ((provider && provider.proxy_mode) === 'CUSTOM' ? ' selected' : '') + '>CUSTOM</option></select>' +
-                '<label class="model-provider-switch model-provider-ssl-setting"><input id="model-provider-verify-ssl" type="checkbox" role="switch"' + (!provider || provider.verify_ssl !== false ? ' checked' : '') + ' /><span class="model-provider-switch-track" aria-hidden="true"></span><span>验证 SSL 证书</span><small class="model-provider-ssl-warning" id="model-provider-ssl-warning" hidden>不安全</small></label>' +
+                '<label class="model-provider-switch model-provider-ssl-setting"><input id="model-provider-verify-ssl" type="checkbox" role="switch"' + (!provider || provider.verify_ssl !== false ? ' checked' : '') + ' /><span class="model-provider-switch-track" aria-hidden="true"></span><span>SSL Verify</span></label>' +
             '</div></div>' +
             '<section class="model-provider-proxy-fields' + ((provider && provider.proxy_mode) === 'CUSTOM' ? '' : ' is-hidden') + '" id="model-provider-proxy-fields">' +
                 '<label class="model-provider-field"><span>代理地址 <b>*</b></span><input class="input" id="model-provider-proxy-url" maxlength="2048" placeholder="http://proxy.corp.com:8080" value="' + escAttr(provider && provider.proxy_url || '') + '" /></label>' +
@@ -208,6 +238,7 @@ async function viewModelProviderEditor(providerId) {
     modelProviderState.discovered = [];
     modelProviderState.selected = provider ? (provider.models || []).slice() : [];
     modelProviderState.protocol = provider ? provider.protocol : 'OPENAI_COMPATIBLE';
+    modelProviderState.persistedProtocol = modelProviderState.protocol;
     modelProviderState.endpoint = provider ? provider.model_endpoint : null;
     modelProviderState.modelConfigs = provider ? JSON.parse(JSON.stringify(provider.model_configs || {})) : {};
     modelProviderState.modelTests = {};
@@ -219,20 +250,29 @@ async function viewModelProviderEditor(providerId) {
 function bindModelProviderEditor() {
     document.getElementById('model-provider-back').addEventListener('click', viewModelProviders);
     document.getElementById('model-provider-key-toggle').addEventListener('click', toggleModelProviderKey);
-    document.getElementById('model-provider-protocol').addEventListener('change', function () {
-        modelProviderState.protocol = this.value;
-        document.getElementById('model-provider-protocol-value').textContent = modelProviderProtocolLabel(this.value);
-        renderSelectedProviderModels();
+    var protocolSelect = document.getElementById('model-provider-protocol');
+    protocolSelect.addEventListener('change', function () {
+        applyModelProviderProtocolDraft(this, this.value);
     });
     document.getElementById('model-provider-proxy-mode').addEventListener('change', syncModelProviderProxyFields);
-    document.getElementById('model-provider-verify-ssl').addEventListener('change', syncModelProviderSslWarning);
     document.getElementById('model-provider-latency').addEventListener('click', testModelProviderLatency);
     document.getElementById('model-provider-fetch').addEventListener('click', fetchProviderModels);
     document.getElementById('model-provider-add-model').addEventListener('click', toggleProviderModelChooser);
     document.getElementById('model-provider-confirm-model').addEventListener('click', addSelectedProviderModel);
     document.getElementById('model-provider-save').addEventListener('click', saveModelProvider);
     syncModelProviderProxyFields();
-    syncModelProviderSslWarning();
+}
+
+function applyModelProviderProtocolDraft(select, nextProtocol) {
+    select.value = nextProtocol;
+    modelProviderState.protocol = nextProtocol;
+    document.getElementById('model-provider-protocol-value').textContent = modelProviderProtocolLabel(nextProtocol);
+    showToast(
+        nextProtocol === modelProviderState.persistedProtocol
+            ? '已恢复原协议，当前模型配置将继续保留'
+            : '协议已切换，保存后将清空旧协议的模型配置和测试状态',
+        'success'
+    );
 }
 
 function syncModelProviderProxyFields() {
@@ -241,11 +281,6 @@ function syncModelProviderProxyFields() {
     var url = document.getElementById('model-provider-proxy-url');
     fields.classList.toggle('is-hidden', mode !== 'CUSTOM');
     url.required = mode === 'CUSTOM';
-}
-
-function syncModelProviderSslWarning() {
-    var verify = document.getElementById('model-provider-verify-ssl').checked;
-    document.getElementById('model-provider-ssl-warning').hidden = verify;
 }
 
 function toggleModelProviderKey() {
@@ -455,23 +490,48 @@ function openProviderModelConfig(model) {
     var current = modelProviderState.modelConfigs[model] || {};
     var defaultBodyText = modelProviderDefaultBodyText(current.default_body);
     var overlay = document.createElement('div');
+    modelProviderModalReturnFocus = document.activeElement;
     overlay.id = 'model-provider-config-overlay';
     overlay.className = 'overlay';
-    overlay.innerHTML = '<div class="modal modal-wide model-provider-config-modal" role="dialog" aria-modal="true" aria-labelledby="model-provider-config-title">' +
+    overlay.innerHTML = '<div class="modal modal-wide model-provider-config-modal" role="dialog" aria-modal="true" aria-labelledby="model-provider-config-title" tabindex="-1">' +
         '<div class="modal-header" id="model-provider-config-title">模型配置 · ' + esc(model) + '</div>' +
         '<div class="modal-body model-provider-config-body">' +
             '<label class="model-provider-field"><span>上下文窗口 <small>仅元数据</small></span><input class="input" id="model-config-context-window" type="number" min="1" step="1" placeholder="例如 128000" value="' + escAttr(current.context_window || '') + '" /></label>' +
             '<label class="model-provider-field"><span>最大输出 Token <small>仅元数据</small></span><input class="input" id="model-config-max-output" type="number" min="1" step="1" placeholder="例如 8192" value="' + escAttr(current.max_output_tokens || '') + '" /></label>' +
-            '<div class="model-provider-field model-provider-config-json"><div class="model-provider-config-json-header"><span>默认 Body JSON <small>运行时可被节点高级参数覆盖</small></span><button class="model-provider-json-beautify" id="model-config-default-body-beautify" type="button" title="格式化默认 Body JSON" aria-label="格式化默认 Body JSON">' + icon('braces') + 'Beautify</button></div><textarea class="input" id="model-config-default-body" aria-label="默认 Body JSON" spellcheck="false" placeholder="' + escAttr(MODEL_DEFAULT_BODY_REFERENCE) + '">' + esc(defaultBodyText) + '</textarea></div>' +
+            '<div class="model-provider-field model-provider-config-json"><div class="model-provider-config-json-header"><span>默认 Body JSON <small>运行时可被节点高级参数覆盖</small></span><button class="model-provider-json-beautify" id="model-config-default-body-beautify" type="button" title="格式化默认 Body JSON" aria-label="格式化默认 Body JSON">' + icon('braces') + 'Beautify</button></div><textarea class="input" id="model-config-default-body" aria-label="默认 Body JSON" spellcheck="false" placeholder="' + escAttr(modelProviderDefaultBodyReference(modelProviderState.protocol)) + '">' + esc(defaultBodyText) + '</textarea></div>' +
         '</div>' +
         '<div class="modal-footer"><button class="btn btn-secondary" id="model-config-cancel" type="button">' + icon('close') + '取消</button><button class="btn btn-primary" id="model-config-save" type="button">' + icon('save') + '保存</button></div>' +
     '</div>';
     document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (event) {
+        if (event.target === overlay) closeProviderModelConfig();
+    });
+    overlay.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeProviderModelConfig();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        var focusable = Array.from(overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+            .filter(function (element) { return element.offsetParent !== null; });
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
     document.getElementById('model-config-default-body-beautify').addEventListener('click', beautifyProviderDefaultBody);
     document.getElementById('model-config-cancel').addEventListener('click', closeProviderModelConfig);
     document.getElementById('model-config-save').addEventListener('click', function () {
         saveProviderModelConfig(model);
     });
+    document.getElementById('model-config-context-window').focus();
 }
 
 function beautifyProviderDefaultBody() {
@@ -492,6 +552,8 @@ function beautifyProviderDefaultBody() {
 function closeProviderModelConfig() {
     var overlay = document.getElementById('model-provider-config-overlay');
     if (overlay) overlay.remove();
+    if (modelProviderModalReturnFocus && modelProviderModalReturnFocus.isConnected) modelProviderModalReturnFocus.focus();
+    modelProviderModalReturnFocus = null;
 }
 
 function readPositiveOptionalInteger(id, label) {
@@ -524,7 +586,9 @@ function saveProviderModelConfig(model) {
 async function saveModelProvider() {
     var connection = readModelProviderConnection();
     if (!connection) return;
-    if (!modelProviderState.selected.length) {
+    var protocolChanged = Boolean(modelProviderState.editingId)
+        && connection.protocol !== modelProviderState.persistedProtocol;
+    if (!protocolChanged && !modelProviderState.selected.length) {
         showToast('至少添加一个模型', 'error');
         return;
     }
@@ -539,10 +603,26 @@ async function saveModelProvider() {
         proxy_username: connection.proxy_mode === 'CUSTOM' ? connection.proxy_username : null,
         proxy_password: connection.proxy_mode === 'CUSTOM' ? connection.proxy_password : null,
         verify_ssl: connection.verify_ssl,
-        model_endpoint: modelProviderState.endpoint,
-        models: modelProviderState.selected.slice(),
-        model_configs: JSON.parse(JSON.stringify(modelProviderState.modelConfigs)),
+        model_endpoint: protocolChanged ? null : modelProviderState.endpoint,
+        models: protocolChanged ? [] : modelProviderState.selected.slice(),
+        model_configs: protocolChanged ? {} : JSON.parse(JSON.stringify(modelProviderState.modelConfigs)),
     };
+    if (protocolChanged) {
+        openExecutionConfirm(
+            '保存协议变更',
+            '<p>保存后，已添加模型、模型默认 Body、测试状态和旧端点将被清空。</p>' +
+                '<p class="execution-confirm-note">供应商名称、地址和鉴权信息会保留。</p>',
+            async function () {
+                return persistModelProvider(body, true);
+            },
+            '确认保存'
+        );
+        return;
+    }
+    await persistModelProvider(body, false);
+}
+
+async function persistModelProvider(body, protocolChanged) {
     var button = document.getElementById('model-provider-save');
     button.disabled = true;
     try {
@@ -551,22 +631,41 @@ async function saveModelProvider() {
         } else {
             await API.post('/api/model-providers', body);
         }
-        showToast(modelProviderState.editingId ? '模型供应商已更新' : '模型供应商已创建', 'success');
+        if (protocolChanged) {
+            modelProviderState.discovered = [];
+            modelProviderState.selected = [];
+            modelProviderState.endpoint = null;
+            modelProviderState.modelConfigs = {};
+            modelProviderState.modelTests = {};
+        }
+        showToast(protocolChanged ? '协议已更新，旧协议模型配置已清空' : (modelProviderState.editingId ? '模型供应商已更新' : '模型供应商已创建'), 'success');
         viewModelProviders();
+        return true;
     } catch (error) {
         showToast('保存模型供应商失败: ' + error.message, 'error');
         button.disabled = false;
+        return false;
     }
 }
 
 async function deleteModelProvider(providerId) {
     var provider = modelProviderState.providers.find(function (item) { return item.id === providerId; });
-    if (!provider || !window.confirm('确定删除模型供应商“' + modelProviderName(provider) + '”吗？')) return;
-    try {
-        await API.del('/api/model-providers/' + encodeURIComponent(providerId));
-        showToast('模型供应商已删除', 'success');
-        await loadModelProviders();
-    } catch (error) {
-        showToast('删除模型供应商失败: ' + error.message, 'error');
-    }
+    if (!provider) return;
+    openExecutionConfirm(
+        '删除模型供应商',
+        '<p>确定删除“<strong>' + esc(modelProviderName(provider)) + '</strong>”吗？</p>' +
+            '<p class="execution-confirm-note">删除后无法恢复，已保存的工作流不会被修改。</p>',
+        async function () {
+            try {
+                await API.del('/api/model-providers/' + encodeURIComponent(providerId));
+                showToast('模型供应商已删除', 'success');
+                await loadModelProviders();
+                return true;
+            } catch (error) {
+                showToast('删除模型供应商失败: ' + error.message, 'error');
+                return false;
+            }
+        },
+        '删除'
+    );
 }

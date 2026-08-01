@@ -55,11 +55,33 @@ var API = {
 
 
 /* ===== Toast ===== */
+var TOAST_DURATION_MS = 5000;
+
+function ensureToastContainer() {
+    var container = document.getElementById('toast-container');
+    if (container) return container;
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('aria-relevant', 'additions');
+    document.body.appendChild(container);
+    return container;
+}
+
 function showToast(msg, type) {
-    var el = document.getElementById('toast');
+    var container = ensureToastContainer();
+    var el = document.createElement('div');
+    var tone = type === 'error' ? 'error' : 'success';
     el.textContent = msg;
-    el.className = 'toast ' + type;
-    setTimeout(function () { el.classList.add('hidden'); }, 3000);
+    el.className = 'toast ' + tone;
+    el.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    el.setAttribute('aria-atomic', 'true');
+    container.appendChild(el);
+    setTimeout(function () {
+        el.classList.add('is-leaving');
+        setTimeout(function () { el.remove(); }, 300);
+    }, TOAST_DURATION_MS);
 }
 
 /* ===== DOM Refs ===== */
@@ -67,9 +89,68 @@ var contentArea = document.getElementById('content-area');
 
 /* ===== State ===== */
 var currentView = 'sets';
+var featureAssetLoads = {};
 
 function icon(name) {
     return window.AppIcons ? window.AppIcons.icon(name) : '';
+}
+
+function featureNavigationItem(view) {
+    return document.querySelector('.sidebar-item[data-view="' + view + '"]');
+}
+
+function loadFeatureStylesheet(view, url) {
+    var id = 'feature-style-' + view;
+    if (document.getElementById(id)) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+        var link = document.createElement('link');
+        link.id = id;
+        link.rel = 'stylesheet';
+        link.href = url;
+        link.onload = resolve;
+        link.onerror = function () {
+            link.remove();
+            reject(new Error('样式资源加载失败'));
+        };
+        document.head.appendChild(link);
+    });
+}
+
+function loadFeatureScript(view, url) {
+    var id = 'feature-script-' + view;
+    if (document.getElementById(id)) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.id = id;
+        script.src = url;
+        script.onload = resolve;
+        script.onerror = function () {
+            script.remove();
+            reject(new Error('脚本资源加载失败'));
+        };
+        document.body.appendChild(script);
+    });
+}
+
+function ensureFeatureAssets(view) {
+    if (featureAssetLoads[view]) return featureAssetLoads[view];
+    var item = featureNavigationItem(view);
+    var stylesheet = item && item.getAttribute('data-feature-css');
+    var script = item && item.getAttribute('data-feature-js');
+    if (!stylesheet || !script) return Promise.resolve();
+    featureAssetLoads[view] = loadFeatureStylesheet(view, stylesheet)
+        .then(function () { return loadFeatureScript(view, script); })
+        .catch(function (error) {
+            delete featureAssetLoads[view];
+            throw error;
+        });
+    return featureAssetLoads[view];
+}
+
+function renderFeatureLoadError(label, retry) {
+    contentArea.innerHTML = '<div class="execution-empty"><strong>' + esc(label + '加载失败') + '</strong>' +
+        '<button class="btn btn-primary btn-sm" id="feature-load-retry" type="button">' + icon('retry') + '重新加载</button></div>';
+    document.getElementById('feature-load-retry').addEventListener('click', retry);
 }
 
 var THEME_STORAGE_KEY = 'agent-bench-theme';
@@ -126,13 +207,32 @@ function initTheme() {
     else if (media.addListener) media.addListener(syncSystemTheme);
 }
 
-function viewSets() {
+async function viewSets() {
     currentView = 'sets';
     if (window.TestSetManagement && typeof window.TestSetManagement.mount === 'function') {
         window.TestSetManagement.mount();
         return;
     }
     contentArea.innerHTML = '<div class="loading">正在加载测试集管理…</div>';
+    try {
+        await ensureFeatureAssets('sets');
+        if (currentView !== 'sets') return;
+        if (!window.TestSetManagement || typeof window.TestSetManagement.mount !== 'function') throw new Error('测试集资源未注册');
+        window.TestSetManagement.mount();
+    } catch (error) {
+        if (currentView === 'sets') renderFeatureLoadError('测试集管理', viewSets);
+    }
+}
+
+async function viewWorkflowsWithAssets() {
+    currentView = 'workflows';
+    contentArea.innerHTML = '<div class="loading">正在加载工作流管理…</div>';
+    try {
+        await ensureFeatureAssets('workflows');
+        if (currentView === 'workflows') viewWorkflows();
+    } catch (error) {
+        if (currentView === 'workflows') renderFeatureLoadError('工作流管理', viewWorkflowsWithAssets);
+    }
 }
 
 function init() {
@@ -145,8 +245,12 @@ init();
 document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     var item = e.target.closest('.sidebar-item');
     if (!item) return;
-    document.querySelectorAll('.sidebar-item').forEach(function (el) { el.classList.remove('active'); });
+    document.querySelectorAll('.sidebar-item').forEach(function (el) {
+        el.classList.remove('active');
+        el.removeAttribute('aria-current');
+    });
     item.classList.add('active');
+    item.setAttribute('aria-current', 'page');
     var view = item.getAttribute('data-view');
     if (view !== 'sets' && window.TestSetManagement) window.TestSetManagement.unmount();
     if (view === 'sets') {
@@ -154,7 +258,7 @@ document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
     } else if (view === 'models') {
         viewModelProviders();
     } else if (view === 'workflows') {
-        viewWorkflows();
+        viewWorkflowsWithAssets();
     } else if (view === 'batch-runs') {
         viewBatchRuns();
     }
@@ -216,6 +320,57 @@ function renderGlobalListPagination(containerId, total, page, pageSize, onPageCh
 /* ========================================================================
    Column / Sidebar Resize
    ======================================================================== */
+
+function enableTableColumnResize(root) {
+    (root || document).querySelectorAll('table.table').forEach(function (table) {
+        if (table.classList.contains('management-list-table')) return;
+        if (table.dataset.columnResizeReady === 'true') return;
+        var headers = Array.from(table.querySelectorAll('thead th'));
+        if (!headers.length) return;
+        table.dataset.columnResizeReady = 'true';
+        var colgroup = document.createElement('colgroup');
+        headers.forEach(function (header) {
+            var col = document.createElement('col');
+            col.style.width = Math.max(80, header.getBoundingClientRect().width) + 'px';
+            colgroup.appendChild(col);
+        });
+        table.insertBefore(colgroup, table.firstChild);
+        table.style.tableLayout = 'fixed';
+        headers.forEach(function (header, index) {
+            var handle = document.createElement('span');
+            handle.className = 'table-column-resize';
+            handle.title = '拖动调整列宽';
+            header.appendChild(handle);
+            handle.addEventListener('mousedown', function (event) {
+                var startX = event.clientX;
+                var startWidth = colgroup.children[index].getBoundingClientRect().width;
+                document.body.classList.add('resizing');
+                var move = function (moveEvent) {
+                    var width = Math.max(80, startWidth + moveEvent.clientX - startX);
+                    colgroup.children[index].style.width = width + 'px';
+                };
+                var stop = function () {
+                    document.body.classList.remove('resizing');
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', stop);
+                };
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', stop);
+                event.preventDefault();
+                event.stopPropagation();
+            });
+        });
+    });
+}
+
+enableTableColumnResize(document);
+new MutationObserver(function (records) {
+    records.forEach(function (record) {
+        record.addedNodes.forEach(function (node) {
+            if (node.nodeType === 1) enableTableColumnResize(node);
+        });
+    });
+}).observe(document.body, {childList: true, subtree: true});
 
 // Sidebar resize
 (function () {

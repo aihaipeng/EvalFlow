@@ -1,0 +1,67 @@
+{
+  "workflow_execution_id": "37be5cd9-4a22-4a0e-9b60-5e565fb0343f",
+  "workflow_id": "4eadd3ea-7f85-4674-a826-f31706530c4b",
+  "node_execution_id": "49373080-8ded-4750-a452-9d2f076ac1a3",
+  "node_id": "1a7e4d5c-581a-46bd-8bad-4dacc254f3bd",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "1a7e4d5c-581a-46bd-8bad-4dacc254f3bd",
+    "type": "SCRIPT",
+    "name": "left",
+    "description": "",
+    "script": "import time\ntime.sleep(0.6)\nleft = 'L'",
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "left",
+        "type": "string",
+        "source": "left"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:21:26",
+  "finished_at": "2026-08-01 05:21:27",
+  "duration_ms": 870,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {
+    "left": "L"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:21:26.202Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:21:26.209Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:21:27.072Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "SUCCESS",
+        "console": [],
+        "traceback": null,
+        "error": null
+      }
+    ]
+  }
+}

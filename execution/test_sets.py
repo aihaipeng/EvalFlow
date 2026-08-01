@@ -336,6 +336,38 @@ class TestSetRepository:
             raise TestSetRepositoryError("更新测试集后读取失败")
         return record
 
+    def update_metadata(
+        self,
+        test_set_id: str,
+        *,
+        name: str,
+        description: str,
+    ) -> TestSetRecord:
+        normalized_name = _normalize_name(name)
+        normalized_description = _normalize_description(description)
+        now = utc_now_iso()
+        try:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE test_sets
+                    SET name = ?, description = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (normalized_name, normalized_description, now, test_set_id),
+                )
+                if cursor.rowcount == 0:
+                    raise TestSetRepositoryError("测试集不存在")
+                connection.commit()
+        except sqlite3.IntegrityError as exc:
+            if "test_sets.name" in str(exc):
+                raise TestSetNameConflictError("测试集名称已存在") from exc
+            raise TestSetRepositoryError(f"更新测试集元数据失败: {exc}") from exc
+        record = self.get(test_set_id)
+        if record is None:
+            raise TestSetRepositoryError("更新测试集元数据后读取失败")
+        return record
+
     def delete(self, test_set_id: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(

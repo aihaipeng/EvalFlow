@@ -1,0 +1,162 @@
+{
+  "id": "c666472f-4b54-4d2c-891c-b6dfd7884c1b",
+  "workflow_id": "11db4d7d-5b94-43c1-b22f-650c1aed7e54",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "11db4d7d-5b94-43c1-b22f-650c1aed7e54",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "真实请求"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "f6bb9baa-90a5-4a83-b8c0-736a942241fe",
+          "type": "LLM",
+          "name": "ANTHROPIC",
+          "description": "",
+          "model": {
+            "provider_id": "45a060293ce946d180cc778863aae17c",
+            "model_name": "local-anthropic"
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": "系统"
+              },
+              {
+                "role": "USER",
+                "content": "示例问题"
+              },
+              {
+                "role": "ASSISTANT",
+                "content": "示例回答"
+              },
+              {
+                "role": "USER",
+                "content": "问题：${question}"
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {
+              "max_tokens": 64
+            },
+            "parameters_text": ""
+          },
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "model_text",
+              "type": "string",
+              "source": "response.content[0].text"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "a4008ed3-391a-4579-9199-d23500dcfa1a",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "5c5409e2-8ce1-404b-84a6-a8b7c3acbda8",
+        "source_node_id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+        "target_node_id": "f6bb9baa-90a5-4a83-b8c0-736a942241fe"
+      },
+      {
+        "id": "17ed867a-dd4c-494a-86ee-38bcbe377084",
+        "source_node_id": "f6bb9baa-90a5-4a83-b8c0-736a942241fe",
+        "target_node_id": "a4008ed3-391a-4579-9199-d23500dcfa1a"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:20.610Z",
+  "started_at": "2026-07-31T20:58:20.614Z",
+  "finished_at": "2026-07-31T20:58:20.984Z",
+  "duration_ms": 371,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+        "node_execution_id": "e22e5fb6-5230-4ca0-a8d6-728a46ecb88c",
+        "committed_at": "2026-07-31T20:58:20.622Z",
+        "values": {
+          "question": "真实请求"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "f6bb9baa-90a5-4a83-b8c0-736a942241fe",
+        "node_execution_id": "dac6ddbe-3aa3-4b68-8b7d-892d7c594fd4",
+        "committed_at": "2026-07-31T20:58:20.973Z",
+        "values": {
+          "model_text": "Anthropic OK"
+        }
+      }
+    ],
+    "final": {
+      "question": "真实请求",
+      "model_text": "Anthropic OK"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+      "node_execution_id": "e22e5fb6-5230-4ca0-a8d6-728a46ecb88c",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "f6bb9baa-90a5-4a83-b8c0-736a942241fe",
+      "node_execution_id": "dac6ddbe-3aa3-4b68-8b7d-892d7c594fd4",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "a4008ed3-391a-4579-9199-d23500dcfa1a",
+      "node_execution_id": "b52d6fa1-1353-4837-9091-34a8f671d132",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

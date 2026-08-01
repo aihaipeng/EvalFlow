@@ -5,14 +5,13 @@ from __future__ import annotations
 import re
 import time
 from typing import Annotated, Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from execution import (
-    ANTHROPIC_VERSION,
     ModelProviderConfiguration,
     ModelProviderProtocol,
     ModelProviderProxyMode,
@@ -20,15 +19,14 @@ from execution import (
     ModelProviderRepository,
     ModelProviderRepositoryError,
     ModelProviderSummary,
-    anthropic_headers,
-    build_anthropic_request,
-    build_chat_completion_request,
-    invoke_anthropic,
-    invoke_openai_compatible,
+    build_model_request,
+    invoke_model_protocol,
+    model_api_base_url,
     model_http_client_options,
-    parse_anthropic_response,
-    parse_openai_compatible_response,
+    model_protocol_headers,
+    parse_model_response,
     redact_sensitive_text,
+    validate_protocol_parameters,
 )
 from web.workflow_services import WorkflowServices
 
@@ -79,7 +77,9 @@ class ProviderConnectionRequest(_StrictModel):
     @classmethod
     def validate_protocol(cls, value: ModelProviderProtocol) -> ModelProviderProtocol:
         if value == ModelProviderProtocol.MANUAL:
-            raise ValueError("模型协议只支持 OPENAI_COMPATIBLE 或 ANTHROPIC")
+            raise ValueError(
+                "模型协议只支持 OPENAI_COMPATIBLE、OPENAI_RESPONSES 或 ANTHROPIC"
+            )
         return value
 
     @field_validator("proxy_url", mode="before")
@@ -174,13 +174,10 @@ def _get_provider_or_404(
 
 
 def build_model_candidates(base_url: str) -> list[str]:
-    parsed = urlsplit(ProviderConnectionRequest(base_url=base_url, api_key="x").base_url)
+    validated = ProviderConnectionRequest(base_url=base_url, api_key="x").base_url
+    base = model_api_base_url(validated)
+    parsed = urlsplit(base)
     path = parsed.path.rstrip("/")
-    for suffix in ("/chat/completions", "/responses", "/messages"):
-        if path.endswith(suffix):
-            path = path[: -len(suffix)]
-            break
-    base = urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
     candidates = [f"{base}/models"] if re.search(r"/v\d+$", path) else [
         f"{base}/v1/models", f"{base}/models"
     ]
@@ -212,9 +209,25 @@ def extract_models(payload: Any) -> list[dict[str, str | None]]:
 
 
 def _protocol_headers(protocol: str, api_key: str) -> dict[str, str]:
-    if protocol == "ANTHROPIC":
-        return anthropic_headers(api_key)
-    return {"accept": "application/json", "authorization": f"Bearer {api_key}"}
+    return model_protocol_headers(protocol, api_key)
+
+
+def _protocol_value(protocol: ModelProviderProtocol | str) -> str:
+    return protocol.value if isinstance(protocol, ModelProviderProtocol) else protocol
+
+
+def _validate_provider_default_bodies(body: ModelProviderConfiguration) -> None:
+    protocol = _protocol_value(body.protocol)
+    for model_name, config in body.model_configs.items():
+        try:
+            validate_protocol_parameters(protocol, config.default_body)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, f"模型“{model_name}”默认 Body 无效：{exc}") from exc
+
+
+def _require_provider_models(body: ModelProviderConfiguration) -> None:
+    if not body.models:
+        raise HTTPException(422, "至少添加一个模型")
 
 
 @router.get("", response_model=ProviderListResponse)
@@ -229,6 +242,8 @@ def create_provider(
     body: ModelProviderConfiguration,
     repository: ModelRepositoryDependency,
 ) -> ProviderEnvelope:
+    _require_provider_models(body)
+    _validate_provider_default_bodies(body)
     try:
         provider = repository.create(
             ModelProviderRecord(**body.model_dump(mode="json"))
@@ -281,11 +296,7 @@ async def fetch_models(body: ProviderConnectionRequest) -> dict[str, Any]:
         )
     ) as client:
         for endpoint in build_model_candidates(body.base_url):
-            protocol = (
-                body.protocol.value
-                if isinstance(body.protocol, ModelProviderProtocol)
-                else body.protocol
-            )
+            protocol = _protocol_value(body.protocol)
             started_at = time.perf_counter()
             try:
                 response = await client.get(
@@ -319,34 +330,26 @@ async def fetch_models(body: ProviderConnectionRequest) -> dict[str, Any]:
 async def test_model_availability(body: ModelAvailabilityRequest) -> dict[str, Any]:
     prompt = "请回复：模型连接正常。不要补充其他内容。"
     messages = [{"role": "user", "content": prompt}]
-    forced_fields = {
-        "model": body.model_name,
-        "messages": messages,
-        "stream": False,
-    }
-    if body.protocol == "ANTHROPIC":
-        request_body = build_anthropic_request(
+    protocol = _protocol_value(body.protocol)
+    try:
+        request_body = build_model_request(
+            protocol,
             model_name=body.model_name,
             messages=messages,
             model_defaults=body.default_body,
-            model_parameters=forced_fields,
         )
-        invoke = invoke_anthropic
-        parse = parse_anthropic_response
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    request_body["model"] = body.model_name
+    request_body["stream"] = False
+    if protocol == "OPENAI_RESPONSES":
+        request_body["input"] = messages
     else:
-        request_body = build_chat_completion_request(
-            model_name=body.model_name,
-            messages=messages,
-            model_defaults=body.default_body,
-            model_parameters=forced_fields,
-        )
-        invoke = invoke_openai_compatible
-        parse = lambda response: parse_openai_compatible_response(
-            response, stream=False
-        )
+        request_body["messages"] = messages
     started_at = time.perf_counter()
     try:
-        response = await invoke(
+        response = await invoke_model_protocol(
+            protocol,
             base_url=body.base_url,
             api_key=body.api_key,
             request_body=request_body,
@@ -371,7 +374,7 @@ async def test_model_availability(body: ModelAvailabilityRequest) -> dict[str, A
                 "response_body": response_body,
                 "error": f"HTTP {response.status_code}",
             }
-        parsed = parse(response)
+        parsed = parse_model_response(protocol, response)
         return {
             "available": True,
             "latency_ms": latency_ms,
@@ -410,6 +413,14 @@ def update_provider(
     repository: ModelRepositoryDependency,
 ) -> ProviderEnvelope:
     current = _get_provider_or_404(provider_id, repository)
+    protocol_changed = _protocol_value(current.protocol) != _protocol_value(body.protocol)
+    if protocol_changed:
+        body = body.model_copy(
+            update={"models": [], "model_configs": {}, "model_endpoint": None}
+        )
+    else:
+        _require_provider_models(body)
+    _validate_provider_default_bodies(body)
     record = ModelProviderRecord(
         id=current.id,
         created_at=current.created_at,

@@ -1,0 +1,29 @@
+{
+  "id": "3369af4e-2fe4-48cf-aeea-7060c957f91f",
+  "batch_execution_id": "4e08f602-cbac-4c1a-b695-907ac8237c13",
+  "case_id": "C-1",
+  "row_number": 1,
+  "call_number": 1,
+  "status": "QUEUED",
+  "execution_status": "NOT_STARTED",
+  "verdict": "NOT_EVALUATED",
+  "evaluation": {
+    "verdict": "NOT_EVALUATED",
+    "rules": []
+  },
+  "source_values": {
+    "case_name": "C-1",
+    "question": "退款"
+  },
+  "start_inputs": {
+    "question": "退款",
+    "body": {
+      "kind": "case"
+    }
+  },
+  "workflow_execution_ids": [],
+  "created_at": "2026-07-31T22:14:55.320Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": null
+}

@@ -1,0 +1,43 @@
+{
+  "workflow_execution_id": "dfc95c7f-5807-4371-acd9-9584d858c13f",
+  "workflow_id": "4b703d5c-6133-4ea6-ad1f-ea31788d9276",
+  "node_execution_id": "eca06418-5fc8-4ad9-9d42-b0822b6e8281",
+  "node_id": "a02d04d8-61c4-4074-8b01-abd5ba48e979",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "a02d04d8-61c4-4074-8b01-abd5ba48e979",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:02:56",
+  "finished_at": "2026-08-01 05:02:56",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {},
+    "question": "two",
+    "answer": "two"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:02:56.006Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:02:56.007Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:02:56.009Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

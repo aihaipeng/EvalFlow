@@ -1,0 +1,117 @@
+{
+  "id": "034e7798-b362-4dc7-b1ab-d0f6464b9ce9",
+  "workflow_id": "aeb59595-dc72-4612-9aa6-490fceabbee8",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "aeb59595-dc72-4612-9aa6-490fceabbee8",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "0fc253a9-82ed-48e3-9c99-386df1303524",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "441beb5c-9895-460c-a4ee-c1dd897a8480",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = 'ready'",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.25
+          },
+          "outputs": [
+            {
+              "name": "result",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "265ed6ff-4f12-4cf7-ac0c-0251737d97a1",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "3186a5dc-e189-486d-9c47-e59f833b784e",
+        "source_node_id": "0fc253a9-82ed-48e3-9c99-386df1303524",
+        "target_node_id": "441beb5c-9895-460c-a4ee-c1dd897a8480"
+      },
+      {
+        "id": "bfe835e8-1c6d-4428-9af5-1ea9208a2568",
+        "source_node_id": "441beb5c-9895-460c-a4ee-c1dd897a8480",
+        "target_node_id": "265ed6ff-4f12-4cf7-ac0c-0251737d97a1"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:13.184Z",
+  "started_at": "2026-07-31T21:03:13.186Z",
+  "finished_at": "2026-07-31T21:03:13.769Z",
+  "duration_ms": 583,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "441beb5c-9895-460c-a4ee-c1dd897a8480",
+        "node_execution_id": "26a3d706-12e1-475b-b258-49b67bd600dd",
+        "committed_at": "2026-07-31T21:03:13.757Z",
+        "values": {
+          "result": "ready"
+        }
+      }
+    ],
+    "final": {
+      "result": "ready"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "0fc253a9-82ed-48e3-9c99-386df1303524",
+      "node_execution_id": "3c86bd48-8c08-4603-927e-32dc8b86607e",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "441beb5c-9895-460c-a4ee-c1dd897a8480",
+      "node_execution_id": "26a3d706-12e1-475b-b258-49b67bd600dd",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "265ed6ff-4f12-4cf7-ac0c-0251737d97a1",
+      "node_execution_id": "35a45ba4-eb68-4acb-b5bb-60ee7f90c9c9",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

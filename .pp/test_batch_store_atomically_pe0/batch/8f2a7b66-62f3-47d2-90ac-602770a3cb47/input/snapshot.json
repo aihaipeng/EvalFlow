@@ -1,0 +1,14 @@
+{
+  "id": "set-1",
+  "columns": [
+    "question"
+  ],
+  "cases": [
+    {
+      "id": "C-1",
+      "values": {
+        "question": "hello"
+      }
+    }
+  ]
+}

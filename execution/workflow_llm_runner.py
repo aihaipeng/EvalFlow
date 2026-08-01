@@ -7,12 +7,10 @@ import time
 from typing import Any
 
 from execution.model_gateway import (
-    anthropic_headers,
-    anthropic_messages_url,
-    build_anthropic_request,
-    build_chat_completion_request,
-    chat_completions_url,
+    build_model_request,
+    parse_model_payload,
 )
+from execution.model_protocols import model_inference_url, model_protocol_headers
 from execution.workflow_execution_store import (
     execution_error as _error,
     local_execution_time,
@@ -111,36 +109,18 @@ class LlmNodeRunner(NodeRunnerBase):
             document["model"] = node.model.model_dump(mode="json")
             defaults = provider.model_configs.get(node.model.model_name)
             default_body = defaults.default_body if defaults else {}
-            if provider.protocol == "ANTHROPIC":
-                system_prompt = ""
-                anthropic_messages = []
-                for message in resolved_messages:
-                    if message["role"] == "system":
-                        system_prompt = message["content"]
-                    else:
-                        anthropic_messages.append(message)
-                request_body = build_anthropic_request(
-                    model_name=node.model.model_name,
-                    system_prompt=system_prompt,
-                    messages=anthropic_messages,
-                    model_defaults=default_body,
-                    model_parameters=generation_parameters,
-                )
-                url = anthropic_messages_url(provider.base_url)
-                headers = anthropic_headers(provider.api_key)
-            else:
-                request_body = build_chat_completion_request(
-                    model_name=node.model.model_name,
-                    messages=resolved_messages,
-                    model_defaults=default_body,
-                    model_parameters=generation_parameters,
-                )
-                url = chat_completions_url(provider.base_url)
-                headers = {
-                    "accept": "application/json",
-                    "authorization": f"Bearer {provider.api_key}",
-                    "content-type": "application/json",
-                }
+            request_body = build_model_request(
+                provider.protocol,
+                model_name=node.model.model_name,
+                messages=resolved_messages,
+                model_defaults=default_body,
+                model_parameters=generation_parameters,
+            )
+            url = model_inference_url(provider.protocol, provider.base_url)
+            headers = model_protocol_headers(provider.protocol, provider.api_key)
+            parse_response = lambda payload: parse_model_payload(
+                provider.protocol, payload
+            )
             request_body["stream"] = False
         except (WorkflowValueError, ValueError) as exc:
             code = (
@@ -245,7 +225,21 @@ class LlmNodeRunner(NodeRunnerBase):
                     )
                 else:
                     try:
-                        outputs = collect_outputs(node.outputs, {"response": raw_response})
+                        parsed_response = parse_response(raw_response)
+                    except ValueError as exc:
+                        final_status = "FAILED"
+                        final_error = _error(
+                            "LLM_RESPONSE_PARSE_ERROR",
+                            f"{provider.protocol} 响应解析失败: {exc}",
+                            {"protocol": provider.protocol},
+                        )
+                        attempt.update({"status": "SUCCESS", "error": None})
+                        break
+                    try:
+                        outputs = collect_outputs(
+                            node.outputs,
+                            {"response": raw_response, "result": parsed_response},
+                        )
                     except WorkflowOutputSourceError as exc:
                         final_status = "FAILED"
                         final_error = _error(

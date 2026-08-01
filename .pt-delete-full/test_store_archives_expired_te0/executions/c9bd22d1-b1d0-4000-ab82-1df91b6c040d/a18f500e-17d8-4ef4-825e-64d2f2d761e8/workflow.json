@@ -1,0 +1,11 @@
+{
+  "id": "a18f500e-17d8-4ef4-825e-64d2f2d761e8",
+  "workflow_id": "c9bd22d1-b1d0-4000-ab82-1df91b6c040d",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "6b4b080c-13ce-45dd-9baa-aa0a563c7f92"
+  },
+  "status": "RUNNING",
+  "created_at": "2026-07-20T12:00:00.000Z",
+  "finished_at": "2026-07-20T12:01:00.000Z"
+}

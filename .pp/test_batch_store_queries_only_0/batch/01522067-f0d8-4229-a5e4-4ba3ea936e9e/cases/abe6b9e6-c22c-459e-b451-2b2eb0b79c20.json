@@ -1,0 +1,17 @@
+{
+  "id": "abe6b9e6-c22c-459e-b451-2b2eb0b79c20",
+  "batch_execution_id": "01522067-f0d8-4229-a5e4-4ba3ea936e9e",
+  "case_id": "C-13",
+  "row_number": 13,
+  "status": "SUCCESS",
+  "finished_at": null,
+  "error": null,
+  "call_number": 13,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "PASS"
+  },
+  "source_values": {
+    "question": "question-13"
+  }
+}

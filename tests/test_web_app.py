@@ -13,6 +13,44 @@ from web.app import app, create_app
 from web.workflow_services import WorkflowServices, get_workflow_services
 
 
+def test_sidebar_navigation_uses_keyboard_reachable_buttons():
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    javascript = (root / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    styles = (root / "web" / "static" / "style.css").read_text(encoding="utf-8")
+
+    assert html.count('<button type="button" class="sidebar-item') == 4
+    assert 'aria-current="page"' in html
+    assert "item.setAttribute('aria-current', 'page');" in javascript
+    assert ".sidebar-item:focus-visible" in styles
+    assert "@media (max-width: 1040px)" in styles
+    assert ":root { --sidebar-w: 64px; }" in styles
+    assert "height: 100dvh;" in styles
+    assert "min-height: 720px;" not in styles
+
+
+def test_large_feature_bundles_load_only_when_their_directory_is_opened():
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    javascript = (root / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    test_sets = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
+
+    assert 'data-feature-css="/assets/test-sets.css?v=' in html
+    assert 'data-feature-js="/assets/test-sets.js?v=' in html
+    assert 'data-feature-css="/assets/workflow-canvas.css?v=' in html
+    assert 'data-feature-js="/assets/workflow-canvas.js?v=' in html
+    assert '<link rel="stylesheet" href="/assets/test-sets.css' not in html
+    assert '<link rel="stylesheet" href="/assets/workflow-canvas.css' not in html
+    assert '<script src="/assets/test-sets.js' not in html
+    assert '<script src="/assets/workflow-canvas.js' not in html
+    assert "function ensureFeatureAssets(view)" in javascript
+    assert "loadFeatureStylesheet(view, stylesheet)" in javascript
+    assert ".then(function () { return loadFeatureScript(view, script); })" in javascript
+    assert "delete featureAssetLoads[view];" in javascript
+    assert "viewWorkflowsWithAssets();" in javascript
+    assert "document.querySelector('.sidebar-item.active" not in test_sets
+
+
 def test_async_api_routes_are_limited_to_real_async_network_io():
     web_dir = Path(__file__).resolve().parents[1] / "web"
     async_routes: set[tuple[str, str]] = set()
@@ -46,13 +84,50 @@ def test_index_serves_frontend():
     client = TestClient(app)
     response = client.get("/")
     favicon = client.get("/assets/favicon.png")
+    styles = (Path(__file__).resolve().parents[1] / "web" / "static" / "style.css").read_text(encoding="utf-8")
 
     assert response.status_code == 200
-    assert "Agent Bench" in response.text
+    assert "EvalFlow" in response.text
+    assert "Agent Bench" not in response.text
+    assert 'class="sidebar-brand" aria-label="EvalFlow"' in response.text
+    assert '<span class="sidebar-brand-eval">Eval</span><span class="sidebar-brand-flow">Flow</span>' in response.text
+    assert "justify-content: center;\n    padding: 0 20px;" in styles
+    assert "letter-spacing: 0;\n    text-align: center;" in styles
+    assert '.sidebar-brand-wordmark {' in styles
+    assert 'transform: skewX(-8deg);' in styles
+    assert 'sidebar-brand-arrow' not in response.text
+    assert '.sidebar-brand-arrow {' not in styles
     assert '<link rel="icon" type="image/png" sizes="100x100" href="/assets/favicon.png" />' in response.text
     assert favicon.status_code == 200
     assert favicon.headers["content-type"] == "image/png"
     assert favicon.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_global_toasts_stack_at_top_center_for_five_seconds():
+    static_dir = Path(__file__).resolve().parents[1] / "web" / "static"
+    index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+    app_js = (static_dir / "app.js").read_text(encoding="utf-8")
+    styles = (static_dir / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="toast-container" class="toast-container"' in index_html
+    assert 'id="toast"' not in index_html
+    assert "var TOAST_DURATION_MS = 5000;" in app_js
+    assert "container.appendChild(el);" in app_js
+    assert "el.setAttribute('role', tone === 'error' ? 'alert' : 'status');" in app_js
+    assert ".toast-container {" in styles
+    assert "top: 24px;" in styles
+    assert "left: 50%;" in styles
+    assert "transform: translateX(-50%);" in styles
+    assert "width: max-content;" in styles
+    assert "align-items: center;" in styles
+    assert "flex-direction: column;" in styles
+    assert "z-index: 20000;" in styles
+    toast_rule = styles[styles.index(".toast {"):]
+    toast_rule = toast_rule[:toast_rule.index("}")]
+    assert "width: fit-content;" in toast_rule
+    assert "max-width: min(420px, calc(100vw - 48px));" in toast_rule
+    assert "bottom:" not in toast_rule
+    assert "pointer-events: auto;" not in toast_rule
 
 
 def test_index_loads_new_workflow_structural_studio():

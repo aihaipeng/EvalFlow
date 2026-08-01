@@ -9,6 +9,8 @@ import {basicSetup} from 'codemirror';
 import parseCurl from 'parse-curl';
 import {Rnd} from 'react-rnd';
 import {split as splitShellWords} from 'shellwords';
+import {workflowNodeExecutionDuration} from './workflow-execution-timing.mjs';
+import {clampInspectorPosition} from './workflow-inspector-layout.mjs';
 import {
     Background,
     BaseEdge,
@@ -42,11 +44,11 @@ import {
     Eye,
     FileClock,
     FileText,
-    FolderOpen,
     Globe2,
     LayoutGrid,
     LoaderCircle,
     MessageSquareText,
+    Pencil,
     Play,
     Plus,
     Redo2,
@@ -77,19 +79,124 @@ const NODE_TYPES = {
 };
 
 const INSERTABLE_TYPES = ['HTTP', 'LLM', 'SCRIPT'];
-const INITIAL_OVERVIEW_SCALE = 0.67;
+const DIALOG_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function useDialogAccessibility(onClose, active = true) {
+    const dialogRef = useRef(null);
+    const closeRef = useRef(onClose);
+    closeRef.current = onClose;
+    useEffect(() => {
+        if (!active) return undefined;
+        const dialog = dialogRef.current;
+        const returnFocus = document.activeElement;
+        if (!dialog) return undefined;
+        const focusable = () => Array.from(dialog.querySelectorAll(DIALOG_FOCUSABLE))
+            .filter((element) => element.offsetParent !== null);
+        (focusable()[0] || dialog).focus();
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeRef.current();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const elements = focusable();
+            if (!elements.length) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = elements[0];
+            const last = elements[elements.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        dialog.addEventListener('keydown', handleKeyDown);
+        return () => {
+            dialog.removeEventListener('keydown', handleKeyDown);
+            if (returnFocus?.isConnected) returnFocus.focus();
+        };
+    }, [active]);
+    return dialogRef;
+}
 const NODE_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'INTERRUPTED'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const HTTP_BODY_TYPES = ['none', 'form-data', 'x-www-form-urlencoded', 'raw'];
 const OUTPUT_VARIABLE_TYPES = ['string', 'integer', 'number', 'boolean', 'object', 'array', 'null'];
+
+function documentTheme() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+
+function useDocumentTheme() {
+    const [theme, setTheme] = useState(documentTheme);
+
+    useEffect(() => {
+        const root = document.documentElement;
+        const observer = new MutationObserver(() => setTheme(documentTheme()));
+        observer.observe(root, {attributes: true, attributeFilter: ['data-theme']});
+        return () => observer.disconnect();
+    }, []);
+
+    return theme;
+}
+
 const DEFAULT_SCRIPT_MAIN_PY = 'msg = "介绍一下自己"\nprint(msg)';
-const LLM_PARAMETERS_REFERENCE = JSON.stringify({
-    thinking: {type: 'disabled'},
-    temperature: 0,
-    top_p: 0.8,
-    max_tokens: 1024,
-    response_format: {type: 'json_object'},
-}, null, 2);
+const MODEL_PROTOCOL_LABELS = {
+    OPENAI_COMPATIBLE: 'OpenAI Chat Completions',
+    OPENAI_RESPONSES: 'OpenAI Responses API',
+    ANTHROPIC: 'Anthropic Claude Messages',
+};
+const LLM_PARAMETERS_REFERENCES = {
+    OPENAI_COMPATIBLE: {
+        temperature: 0,
+        top_p: 0.8,
+        max_tokens: 1024,
+        response_format: {type: 'json_object'},
+    },
+    OPENAI_RESPONSES: {
+        reasoning: {effort: 'medium'},
+        max_output_tokens: 1024,
+        text: {format: {type: 'json_object'}},
+    },
+    ANTHROPIC: {
+        temperature: 0,
+        top_p: 0.8,
+        max_tokens: 1024,
+        thinking: {type: 'disabled'},
+    },
+};
+const MODEL_PROTOCOL_FORBIDDEN_FIELDS = {
+    OPENAI_COMPATIBLE: ['input', 'instructions', 'max_output_tokens', 'system', 'anthropic_version'],
+    OPENAI_RESPONSES: ['messages', 'max_tokens', 'max_completion_tokens', 'response_format', 'system', 'stop_sequences'],
+    ANTHROPIC: ['input', 'instructions', 'max_output_tokens', 'max_completion_tokens', 'response_format', 'reasoning', 'reasoning_effort', 'text', 'seed', 'frequency_penalty', 'presence_penalty', 'logprobs', 'top_logprobs'],
+};
+
+function modelProtocolLabel(protocol) {
+    return MODEL_PROTOCOL_LABELS[protocol] || protocol || '未知协议';
+}
+
+function llmParametersReference(protocol) {
+    return JSON.stringify(
+        LLM_PARAMETERS_REFERENCES[protocol] || LLM_PARAMETERS_REFERENCES.OPENAI_COMPATIBLE,
+        null,
+        2,
+    );
+}
+
+function modelParametersProtocolError(protocol, parameters) {
+    if (!parameters || Array.isArray(parameters) || typeof parameters !== 'object') return '';
+    const forbidden = new Set(MODEL_PROTOCOL_FORBIDDEN_FIELDS[protocol] || []);
+    const incompatible = Object.keys(parameters).filter((field) => forbidden.has(field)).sort();
+    return incompatible.length
+        ? `${modelProtocolLabel(protocol)} 不支持参数：${incompatible.join('、')}。请移除其他协议的字段后重试`
+        : '';
+}
 const DEFAULT_LLM_MESSAGES = [
     {role: 'SYSTEM', content: ''},
     {role: 'USER', content: ''},
@@ -858,6 +965,7 @@ function WorkflowNode({data, selected}) {
                 <span className="wf-node-icon"><Icon size={17} strokeWidth={2} /></span>
                 <span className="wf-node-caption">{meta.caption}</span>
                 <span className="wf-node-actions">
+                    <button type="button" title="配置" aria-label={`配置 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onConfigure?.();}}><Settings2 size={13} /></button>
                     <button type="button" title="日志" aria-label={`查看 ${data.label} 日志`} onClick={(event) => {event.stopPropagation(); data.onOpenLogs?.();}}><FileText size={13} /></button>
                     {data.nodeType !== 'END' && <button type="button" disabled={testRunning} title="运行" aria-label={`运行 ${data.label}`} onClick={(event) => {event.stopPropagation(); data.onRun?.();}}><Play size={13} /></button>}
                 </span>
@@ -866,7 +974,6 @@ function WorkflowNode({data, selected}) {
             <footer className="wf-node-footer">
                 <span className={`wf-node-status is-${statusClass}`}><i />{status}</span>
                 <span className="wf-node-meta">
-                    {meta.executable && <span className="wf-node-runtime">{meta.runtime}</span>}
                     {data.savedAt && !data.isDirty && <span className="wf-node-saved-state"><Check size={10} />已保存</span>}
                     <span className={`wf-node-execution is-${statusClass}`} aria-label={`执行耗时 ${executionDuration}`}>
                         <LoaderCircle className="wf-execution-spinner" size={12} />
@@ -996,6 +1103,7 @@ function AlignmentGuides({guides}) {
 }
 
 function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
+    const dialogRef = useDialogAccessibility(onCancel, Boolean(dialog));
     if (!dialog) return null;
     const updateRow = (id, patch) => onRowsChange(dialog.rows.map((row) => (
         row.id === id ? {...row, ...patch} : row
@@ -1008,7 +1116,7 @@ function NodeTestVariablesDialog({dialog, onRowsChange, onCancel, onSubmit}) {
         <div className="wf-node-test-overlay" role="presentation" onMouseDown={(event) => {
             if (event.target === event.currentTarget) onCancel();
         }}>
-            <section className="wf-node-test-dialog" role="dialog" aria-modal="true" aria-labelledby="wf-node-test-title">
+            <section ref={dialogRef} className="wf-node-test-dialog" role="dialog" aria-modal="true" aria-labelledby="wf-node-test-title" tabIndex={-1}>
                 <header>
                     <div><strong id="wf-node-test-title">临时测试变量</strong><span>{dialog.nodeLabel}</span></div>
                     <button type="button" onClick={onCancel} title="关闭" aria-label="关闭临时测试变量"><X size={16} /></button>
@@ -1109,7 +1217,7 @@ function ModelSelector({
                                     <button type="button" className="wf-model-provider-heading" aria-expanded={!isCollapsed} onClick={() => toggleProvider(provider.id)}>
                                         <ChevronRight className={isCollapsed ? '' : 'is-open'} size={14} />
                                         <strong>{modelProviderName(provider)}</strong>
-                                        <span><i />已连接</span>
+                                        <span><i />{modelProtocolLabel(provider.protocol)}</span>
                                     </button>
                                     {!isCollapsed && provider.filteredModels.map((model) => {
                                         const selected = provider.id === providerId && model === modelName;
@@ -1194,9 +1302,6 @@ function NodeRunHistory({runs, nodeType, temporaryRun = null}) {
                                     </>
                                 ) : (
                                     <>
-                                        <div className="wf-llm-run-meta">
-                                            <span>{run.model ? `${run.model.provider_id} / ${run.model.model_name}` : nodeType}</span>
-                                        </div>
                                         {inputsContent && <HttpLogSection title="inputs" text={inputsContent} />}
                                         {requestContent && <HttpLogSection title="request" text={requestContent} />}
                                         {responseContent && <HttpLogSection title="response" text={responseContent} />}
@@ -1327,6 +1432,7 @@ function Inspector({
     const [variableLoadState, setVariableLoadState] = useState('idle');
     const [variableLoadError, setVariableLoadError] = useState('');
     const [editorScale, setEditorScale] = useState(1);
+    const editorRndRef = useRef(null);
     const editorBaseSizeRef = useRef(null);
     const onLoadVariablesRef = useRef(onLoadVariables);
     const variableDeclarationRevision = JSON.stringify(node?.data.outputVariables || []);
@@ -1395,11 +1501,16 @@ function Inspector({
         node.data.providerId || '',
         node.data.modelName || '',
     );
+    const selectedModelProtocol = modelReference.provider?.protocol || 'OPENAI_COMPATIBLE';
+    const protocolParametersError = isLlm && modelReference.state === 'valid'
+        ? modelParametersProtocolError(selectedModelProtocol, node.data.modelParameters)
+        : '';
     const llmMessages = isLlm ? cloneLlmMessages(node.data.llmMessages) : [];
     const llmErrors = llmMessageErrors(llmMessages);
     const llmRunReady = !isLlm || (
         modelReference.state === 'valid'
         && !modelParametersError
+        && !protocolParametersError
         && llmErrors.size === 0
     );
     const llmSaveAllowed = true;
@@ -1427,6 +1538,30 @@ function Inspector({
         const heightScale = ref.offsetHeight / base.height;
         const nextScale = Math.max(0.75, Math.min(1.35, Math.min(widthScale, heightScale)));
         setEditorScale(Number(nextScale.toFixed(3)));
+    };
+    const constrainEditorPosition = (ref, position) => {
+        const parent = ref?.parentElement;
+        if (!parent) return position;
+        return clampInspectorPosition({
+            x: position.x,
+            y: position.y,
+            width: ref.offsetWidth,
+            height: ref.offsetHeight,
+            parentWidth: parent.clientWidth,
+            parentHeight: parent.clientHeight,
+        });
+    };
+    const finishEditorResize = (event, direction, ref, _delta, position) => {
+        updateEditorScale(event, direction, ref);
+        editorRndRef.current?.updatePosition(
+            constrainEditorPosition(ref, position),
+        );
+    };
+    const finishEditorDrag = (_event, data) => {
+        if (!data.node) return;
+        editorRndRef.current?.updatePosition(
+            constrainEditorPosition(data.node, {x: data.x, y: data.y}),
+        );
     };
     const resizeHandleClasses = {
         top: 'wf-resize-handle wf-resize-top',
@@ -1568,6 +1703,7 @@ function Inspector({
     };
     return (
         <Rnd
+            ref={editorRndRef}
             className="wf-node-editor-rnd"
             default={{x: (window.innerWidth - width) / 2, y: (window.innerHeight - 58 - height) / 2, width, height}}
             minWidth={560}
@@ -1579,7 +1715,8 @@ function Inspector({
             cancel="button,input,textarea,.wf-inspector-tabs,.wf-inspector-body"
             resizeHandleClasses={resizeHandleClasses}
             onResize={updateEditorScale}
-            onResizeStop={updateEditorScale}
+            onResizeStop={finishEditorResize}
+            onDragStop={finishEditorDrag}
         >
             <div
                 className="wf-inspector-scale-shell"
@@ -1660,7 +1797,7 @@ function Inspector({
                                                         const isLast = index === llmMessages.length - 1;
                                                         const error = llmErrors.get(message.id);
                                                         return (
-                                                            <article className={`wf-llm-message is-${String(message.role).toLowerCase()}${error ? ' has-error' : ''}`} key={message.id}>
+                                                            <article className="wf-llm-message" key={message.id}>
                                                                 <header>
                                                                     <div className="wf-llm-message-role">
                                                                         <strong>{message.role}</strong>
@@ -1675,6 +1812,8 @@ function Inspector({
                                                                 </header>
                                                                 <textarea
                                                                     aria-label={`${message.role} 消息内容`}
+                                                                    aria-invalid={Boolean(error)}
+                                                                    title={error || undefined}
                                                                     value={message.content || ''}
                                                                     placeholder={message.role === 'SYSTEM'
                                                                         ? '输入模型的角色、目标和约束；留空时执行请求不发送 SYSTEM'
@@ -1706,10 +1845,10 @@ function Inspector({
                                                     <span>JSON</span>
                                                     <button type="button" onClick={beautifyModelParameters} title="格式化模型高级参数 JSON" aria-label="格式化模型高级参数 JSON"><WandSparkles size={13} />Beautify</button>
                                                 </div>
-                                                <textarea aria-label="模型高级参数 JSON" spellCheck="false" value={modelParametersText} placeholder={LLM_PARAMETERS_REFERENCE} onChange={(event) => updateModelParameters(event.target.value)} />
+                                                <textarea aria-label="模型高级参数 JSON" spellCheck="false" value={modelParametersText} placeholder={llmParametersReference(selectedModelProtocol)} onChange={(event) => updateModelParameters(event.target.value)} />
                                             </div>
                                         )}
-                                        {modelParametersError && <span className="wf-model-parameters-error" role="alert">{modelParametersError}</span>}
+                                        {(modelParametersError || protocolParametersError) && <span className="wf-model-parameters-error" role="alert">{modelParametersError || protocolParametersError}</span>}
                                     </section>
                                 </section>
                             )}
@@ -1898,6 +2037,7 @@ function Inspector({
 }
 
 function WorkflowStudio({options}) {
+    const theme = useDocumentTheme();
     const graph = useMemo(() => graphFromDraft(options.draft), [options.draft]);
     const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
@@ -1923,7 +2063,7 @@ function WorkflowStudio({options}) {
     const [nameEditing, setNameEditing] = useState(false);
     const [descriptionEditing, setDescriptionEditing] = useState(false);
     const [workflowId, setWorkflowId] = useState(options.id || null);
-    const [saveState, setSaveState] = useState(options.id ? '已保存' : '未保存');
+    const [, setSaveState] = useState(options.id ? '已保存' : '未保存');
     const [modelProviders, setModelProviders] = useState([]);
     const [providerLoadState, setProviderLoadState] = useState('loading');
     const [providerLoadError, setProviderLoadError] = useState('');
@@ -1937,6 +2077,7 @@ function WorkflowStudio({options}) {
         name: options.name || '未命名工作流',
         description: String(options.description ?? options.draft?.description ?? ''),
     });
+    const metadataDraft = useRef({...savedMetadata.current});
     const pasteSequence = useRef(0);
     const marqueeRef = useRef(null);
     const initialLayoutDone = useRef(false);
@@ -1955,7 +2096,7 @@ function WorkflowStudio({options}) {
     const hiddenNodeTestsRef = useRef(new Set());
     const studioClosedRef = useRef(false);
     const canvasRef = useRef(null);
-    const {screenToFlowPosition, fitView, getNodes, getViewport, setViewport} = useReactFlow();
+    const {screenToFlowPosition, fitView, getNodes} = useReactFlow();
 
     const loadModelProviders = useCallback(async () => {
         const sequence = providerLoadSequence.current + 1;
@@ -2014,6 +2155,7 @@ function WorkflowStudio({options}) {
                 name: saved.name ?? name,
                 description: saved.description ?? description,
             };
+            metadataDraft.current = {...savedMetadata.current};
             if (!forNodeRun) {
                 setSaveState('已保存');
                 setNodes((current) => current.map((node) => ({
@@ -2053,6 +2195,7 @@ function WorkflowStudio({options}) {
                     name: saved.name ?? name,
                     description: saved.description ?? description,
                 };
+                metadataDraft.current = {...savedMetadata.current};
             }
             setWorkflowName(savedMetadata.current.name);
             setWorkflowDescription(savedMetadata.current.description);
@@ -2067,30 +2210,32 @@ function WorkflowStudio({options}) {
         }
     }, [options, persistDraft]);
 
-    const commitWorkflowName = useCallback(async () => {
+    const commitWorkflowName = useCallback(async (nextName = workflowName) => {
         if (nameEditCancelled.current) {
             nameEditCancelled.current = false;
+            metadataDraft.current.name = savedMetadata.current.name;
             setWorkflowName(savedMetadata.current.name);
             setNameEditing(false);
             return;
         }
-        if (!workflowName.trim()) {
+        if (!nextName.trim()) {
             setWorkflowName(savedMetadata.current.name);
             setNameEditing(false);
             if (window.showToast) window.showToast('Workflow 名称不能为空', 'error');
             return;
         }
-        if (await persistMetadata(workflowName, workflowDescription)) setNameEditing(false);
+        if (await persistMetadata(nextName, workflowDescription)) setNameEditing(false);
     }, [persistMetadata, workflowDescription, workflowName]);
 
-    const commitWorkflowDescription = useCallback(async () => {
+    const commitWorkflowDescription = useCallback(async (nextDescription = workflowDescription) => {
         if (descriptionEditCancelled.current) {
             descriptionEditCancelled.current = false;
+            metadataDraft.current.description = savedMetadata.current.description;
             setWorkflowDescription(savedMetadata.current.description);
             setDescriptionEditing(false);
             return;
         }
-        if (await persistMetadata(workflowName, workflowDescription)) setDescriptionEditing(false);
+        if (await persistMetadata(workflowName, nextDescription)) setDescriptionEditing(false);
     }, [persistMetadata, workflowDescription, workflowName]);
 
     useEffect(() => {
@@ -2501,7 +2646,7 @@ function WorkflowStudio({options}) {
             const run = byNode.get(node.id);
             if (!run) return node;
             const historyRun = nodeExecutionHistoryRun(run);
-            return {...node, data: {...node.data, status: run.status, executionDurationMs: run.duration_ms || 0, executionId: run.status === 'RUNNING' ? run.node_execution_id : null, runHistory: [historyRun].concat((node.data.runHistory || []).filter((item) => item.id !== run.node_execution_id)).slice(0, 10)}};
+            return {...node, data: {...node.data, status: run.status, executionDurationMs: workflowNodeExecutionDuration(run, node.data.executionDurationMs), executionId: run.status === 'RUNNING' ? run.node_execution_id : null, runHistory: [historyRun].concat((node.data.runHistory || []).filter((item) => item.id !== run.node_execution_id)).slice(0, 10)}};
         }));
     }, [setNodes]);
 
@@ -2539,18 +2684,6 @@ function WorkflowStudio({options}) {
             if (window.showToast) window.showToast(error instanceof Error ? error.message : '节点执行记录加载失败', 'error');
         }
     }, [expandedWorkflowExecutionId, historyNodeExecutions]);
-
-    const openExecutionDirectory = useCallback(async () => {
-        if (!workflowIdRef.current) return;
-        try {
-            const response = await fetch(`/api/workflows/${encodeURIComponent(workflowIdRef.current)}/execution-directory`, {method: 'POST', headers: {accept: 'application/json'}});
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-            if (window.showToast) window.showToast('已打开执行记录目录', 'success');
-        } catch (error) {
-            if (window.showToast) window.showToast(error instanceof Error ? error.message : '执行记录目录打开失败', 'error');
-        }
-    }, []);
 
     const interruptWorkflow = useCallback(async () => {
         const state = workflowRunRef.current;
@@ -2604,6 +2737,7 @@ function WorkflowStudio({options}) {
             let run = startedPayload.execution;
             while (!['SUCCESS', 'FAILED', 'INTERRUPTED'].includes(run.status)) {
                 await new Promise((resolve) => window.setTimeout(resolve, 250));
+                if (studioClosedRef.current) return;
                 const [runResponse, nodesResponse] = await Promise.all([
                     fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}`, {headers: {accept: 'application/json'}}),
                     fetch(`/api/workflows/${encodeURIComponent(activeWorkflowId)}/runs/${encodeURIComponent(workflowState.runId)}/nodes`, {headers: {accept: 'application/json'}}),
@@ -2777,6 +2911,10 @@ function WorkflowStudio({options}) {
         ...node,
         data: {
             ...node.data,
+            onConfigure: () => {
+                setEditorInitialTab('settings');
+                setEditorNodeId(node.id);
+            },
             onRun: () => requestNodeTest(node.id),
             onOpenLogs: () => {
                 setEditorInitialTab('logs');
@@ -2934,18 +3072,7 @@ function WorkflowStudio({options}) {
 
     const fitInitialOverview = useCallback(async () => {
         await fitView({padding: 0.16, duration: 0});
-        const viewport = getViewport();
-        const bounds = canvasRef.current?.getBoundingClientRect();
-        if (!bounds || !viewport.zoom) return;
-        const ratio = INITIAL_OVERVIEW_SCALE;
-        const centerX = bounds.width / 2;
-        const centerY = bounds.height / 2;
-        await setViewport({
-            x: centerX - (centerX - viewport.x) * ratio,
-            y: centerY - (centerY - viewport.y) * ratio,
-            zoom: viewport.zoom * ratio,
-        }, {duration: 0});
-    }, [fitView, getViewport, setViewport]);
+    }, [fitView]);
 
     useEffect(() => {
         if (initialLayoutDone.current) return;
@@ -2967,7 +3094,6 @@ function WorkflowStudio({options}) {
 
     const close = useCallback(() => {
         studioClosedRef.current = true;
-        if (workflowRunRef.current.active) void interruptWorkflow();
         nodeTestSourcesRef.current.forEach((_active, nodeId) => {
             hiddenNodeTestsRef.current.add(nodeId);
             void interruptNodeTest(nodeId);
@@ -2978,7 +3104,7 @@ function WorkflowStudio({options}) {
         });
         if (options.onClose) options.onClose();
         if (workflowElapsedTimer.current !== null) window.clearInterval(workflowElapsedTimer.current);
-    }, [interruptNodeTest, interruptWorkflow, options]);
+    }, [interruptNodeTest, options]);
 
     const closeInspector = useCallback(() => {
         if (editorNodeId) {
@@ -3007,8 +3133,8 @@ function WorkflowStudio({options}) {
                             autoFocus
                             value={workflowName}
                             maxLength={200}
-                            onChange={(event) => {setWorkflowName(event.target.value); setSaveState('未保存');}}
-                            onBlur={commitWorkflowName}
+                            onChange={(event) => {metadataDraft.current.name = event.target.value; setWorkflowName(event.target.value); setSaveState('未保存');}}
+                            onBlur={(event) => commitWorkflowName(metadataDraft.current.name === workflowName ? event.currentTarget.value : metadataDraft.current.name)}
                             onKeyDown={(event) => {
                                 if (event.key === 'Enter') event.currentTarget.blur();
                                 if (event.key === 'Escape') {
@@ -3022,44 +3148,45 @@ function WorkflowStudio({options}) {
                         <button
                             type="button"
                             className="wf-workflow-name"
-                            onDoubleClick={() => setNameEditing(true)}
-                        >{workflowName}</button>
+                            title="编辑工作流名称"
+                            aria-label={`编辑工作流名称：${workflowName}`}
+                            onClick={() => {metadataDraft.current.name = workflowName; setNameEditing(true);}}
+                        ><span>{workflowName}</span><Pencil size={13} /></button>
                     )}
-                    <span className="wf-save-state"><i />{saveState}</span>
-                </div>
-                <div className={`wf-header-description ${descriptionEditing ? 'is-editing' : ''}`}>
-                    <FileText size={15} />
-                    {descriptionEditing ? (
-                        <div className="wf-description-editor">
-                            <textarea
-                                autoFocus
-                                value={workflowDescription}
-                                maxLength={4000}
-                                rows={5}
-                                onChange={(event) => {setWorkflowDescription(event.target.value); setSaveState('未保存');}}
-                                onBlur={commitWorkflowDescription}
-                                onKeyDown={(event) => {
-                                    if (event.key === 'Escape') {
-                                        descriptionEditCancelled.current = true;
-                                        event.currentTarget.blur();
-                                    }
-                                }}
-                                aria-label="工作流说明"
-                            />
-                        </div>
-                    ) : (
-                        <button
-                            type="button"
-                            aria-label="工作流说明"
-                            onDoubleClick={() => setDescriptionEditing(true)}
-                        >{workflowDescription || '添加工作流说明'}</button>
-                    )}
+                    <div className={`wf-header-description ${descriptionEditing ? 'is-editing' : ''}`}>
+                        <FileText size={15} />
+                        {descriptionEditing ? (
+                            <div className="wf-description-editor">
+                                <textarea
+                                    autoFocus
+                                    value={workflowDescription}
+                                    maxLength={4000}
+                                    rows={5}
+                                    onChange={(event) => {metadataDraft.current.description = event.target.value; setWorkflowDescription(event.target.value); setSaveState('未保存');}}
+                                    onBlur={(event) => commitWorkflowDescription(metadataDraft.current.description === workflowDescription ? event.currentTarget.value : metadataDraft.current.description)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Escape') {
+                                            descriptionEditCancelled.current = true;
+                                            event.currentTarget.blur();
+                                        }
+                                    }}
+                                    aria-label="工作流说明"
+                                />
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                aria-label="编辑工作流说明"
+                                title="编辑工作流说明"
+                                onClick={() => {metadataDraft.current.description = workflowDescription; setDescriptionEditing(true);}}
+                            ><span>{workflowDescription || '添加工作流说明'}</span><Pencil size={13} /></button>
+                        )}
+                    </div>
                 </div>
                 <div className="wf-header-actions">
                     {workflowRunState !== 'IDLE' && <span className={`wf-workflow-timer is-${workflowRunState.toLowerCase()}`} aria-label={`Workflow 执行耗时 ${formatExecutionDuration(workflowElapsedMs)}`}><LoaderCircle size={13} />{formatExecutionDuration(workflowElapsedMs)}</span>}
                     <button type="button" disabled={!options.executionEnabled || workflowRunState === 'RUNNING'} className="wf-secondary-button" onClick={runAll} title={options.executionEnabled ? '运行 Workflow' : '执行接口尚未接入'}><Play size={15} />运行</button>
                     <button type="button" disabled={!workflowId} className={historyOpen ? 'is-active' : ''} onClick={async () => {const next = !historyOpen; setHistoryOpen(next); if (next) await loadWorkflowHistory();}}><FileClock size={15} />历史</button>
-                    <button type="button" disabled={!workflowId} onClick={openExecutionDirectory}><FolderOpen size={15} />执行记录</button>
                     <button type="button" disabled={workflowRunState !== 'RUNNING'} className="wf-danger-button" onClick={interruptWorkflow}><Square size={14} />中断</button>
                     <button type="button" className="wf-primary-button" onClick={save}><Save size={15} />保存</button>
                 </div>
@@ -3107,6 +3234,7 @@ function WorkflowStudio({options}) {
                     </aside>
                 )}
                 <ReactFlow
+                    colorMode={theme}
                     nodes={decoratedNodes}
                     edges={decoratedEdges}
                     nodeTypes={nodeTypes}
@@ -3202,9 +3330,9 @@ function WorkflowStudio({options}) {
                     deleteKeyCode={null}
                     proOptions={{hideAttribution: true}}
                 >
-                    <Background color="#c8d1de" gap={20} size={1.2} />
+                    <Background color={theme === 'dark' ? '#3a4656' : '#c8d1de'} gap={20} size={1.2} />
                     <AlignmentGuides guides={alignmentGuides} />
-                    <MiniMap pannable zoomable nodeColor={(node) => NODE_TYPES[node.data.nodeType]?.color || '#64748b'} maskColor="rgba(238, 242, 247, 0.76)" />
+                    <MiniMap pannable zoomable nodeColor={(node) => NODE_TYPES[node.data.nodeType]?.color || '#64748b'} maskColor={theme === 'dark' ? 'rgba(15, 20, 27, 0.72)' : 'rgba(238, 242, 247, 0.76)'} />
                     <Controls showInteractive={false} />
                     <div className="wf-floating-toolbar">
                         <button type="button" disabled={!canUndo} onClick={undo} title="回退" aria-label="回退"><Undo2 size={16} /></button>

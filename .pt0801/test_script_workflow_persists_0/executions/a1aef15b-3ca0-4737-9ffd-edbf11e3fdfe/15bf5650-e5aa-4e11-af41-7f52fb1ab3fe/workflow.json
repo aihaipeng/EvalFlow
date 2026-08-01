@@ -1,0 +1,133 @@
+{
+  "id": "15bf5650-e5aa-4e11-af41-7f52fb1ab3fe",
+  "workflow_id": "a1aef15b-3ca0-4737-9ffd-edbf11e3fdfe",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "a1aef15b-3ca0-4737-9ffd-edbf11e3fdfe",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "aaf7b8b8-4057-446a-aede-cfa5914ac620",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "hello"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "0a7cf54a-b825-4bb3-aa57-ed18dc30d902",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = context[\"question\"].upper()\nprint(result)",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "20c409cb-b9cf-43ab-be68-c83b5f350fd1",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "befbedc5-267a-43b4-ade7-84f13d878222",
+        "source_node_id": "aaf7b8b8-4057-446a-aede-cfa5914ac620",
+        "target_node_id": "0a7cf54a-b825-4bb3-aa57-ed18dc30d902"
+      },
+      {
+        "id": "1e7ace7b-f77a-4255-a7ed-cd9569182007",
+        "source_node_id": "0a7cf54a-b825-4bb3-aa57-ed18dc30d902",
+        "target_node_id": "20c409cb-b9cf-43ab-be68-c83b5f350fd1"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:11.099Z",
+  "started_at": "2026-07-31T20:58:11.101Z",
+  "finished_at": "2026-07-31T20:58:11.390Z",
+  "duration_ms": 289,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "aaf7b8b8-4057-446a-aede-cfa5914ac620",
+        "node_execution_id": "b812468b-ce57-4d7f-bc9d-f6f92dc7aa69",
+        "committed_at": "2026-07-31T20:58:11.108Z",
+        "values": {
+          "question": "hello"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "0a7cf54a-b825-4bb3-aa57-ed18dc30d902",
+        "node_execution_id": "758c8dc1-9bac-42ad-a1cc-5a1721455eba",
+        "committed_at": "2026-07-31T20:58:11.377Z",
+        "values": {
+          "answer": "HELLO"
+        }
+      }
+    ],
+    "final": {
+      "question": "hello",
+      "answer": "HELLO"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "aaf7b8b8-4057-446a-aede-cfa5914ac620",
+      "node_execution_id": "b812468b-ce57-4d7f-bc9d-f6f92dc7aa69",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "0a7cf54a-b825-4bb3-aa57-ed18dc30d902",
+      "node_execution_id": "758c8dc1-9bac-42ad-a1cc-5a1721455eba",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "20c409cb-b9cf-43ab-be68-c83b5f350fd1",
+      "node_execution_id": "420e481f-628a-43dc-b548-de9f4f716bb8",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,42 @@
+{
+  "workflow_execution_id": "c4977a36-f041-45b9-b15a-72bf77badca4",
+  "workflow_id": "f685e867-7ae3-4116-87d8-6aa9e8718f0e",
+  "node_execution_id": "333e10f4-7a70-486a-ad9d-218eedd0673b",
+  "node_id": "5d005b5a-5db7-4ead-aa48-4a2e06fa9ffd",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "5d005b5a-5db7-4ead-aa48-4a2e06fa9ffd",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:21:33",
+  "finished_at": "2026-08-01 05:21:33",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "真实请求",
+    "model_text": "Anthropic OK"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:21:33.920Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:21:33.921Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:21:33.922Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

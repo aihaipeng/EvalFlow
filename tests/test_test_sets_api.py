@@ -66,6 +66,17 @@ def test_test_set_api_crud_and_metrics(tmp_path) -> None:
         assert updated["columns"] == ["question"]
         assert updated["cases"][0]["values"] == {"question": "问题一"}
 
+        metadata_response = client.put(
+            f"/api/test-sets/{created['id']}/metadata",
+            json={"name": "客服回归测试集", "description": "仅更新元数据"},
+        )
+        assert metadata_response.status_code == 200, metadata_response.text
+        metadata_updated = metadata_response.json()["test_set"]
+        assert metadata_updated["name"] == "客服回归测试集"
+        assert metadata_updated["description"] == "仅更新元数据"
+        assert metadata_updated["columns"] == ["question"]
+        assert metadata_updated["cases"][0]["values"] == {"question": "问题一"}
+
         deleted = client.delete(f"/api/test-sets/{created['id']}")
         assert deleted.status_code == 200
         assert client.get(f"/api/test-sets/{created['id']}").status_code == 404

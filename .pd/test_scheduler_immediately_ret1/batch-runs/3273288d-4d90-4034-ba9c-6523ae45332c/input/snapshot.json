@@ -1,0 +1,26 @@
+{
+  "id": "ddf642bf-c98c-482c-8427-ec98493015a5",
+  "name": "测试集-5ac048d2",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "bad"
+      }
+    }
+  ],
+  "created_at": "2026-07-31T21:08:17.742+00:00",
+  "updated_at": "2026-07-31T21:08:17.742+00:00"
+}

@@ -1,0 +1,51 @@
+{
+  "workflow_execution_id": "5e63e246-11b4-4bbe-9e13-f7dce6712c8d",
+  "workflow_id": "03052e43-801a-400c-90f0-6ff6d7e60e93",
+  "node_execution_id": "c1242262-0d52-475c-b85b-ff7bdacb7282",
+  "node_id": "fa74e69d-7144-4112-b42c-b83ad3b13add",
+  "type": "START",
+  "structural_snapshot": {
+    "id": "fa74e69d-7144-4112-b42c-b83ad3b13add",
+    "type": "START",
+    "name": "START",
+    "description": "",
+    "inputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:03:12",
+  "finished_at": "2026-08-01 05:03:12",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:03:12.210Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:03:12.211Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:03:12.212Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "input_validation": {
+      "status": "SUCCESS",
+      "inputs": {},
+      "error": null
+    },
+    "context_commit": {
+      "status": "SUCCESS",
+      "outputs": {},
+      "error": null
+    }
+  }
+}

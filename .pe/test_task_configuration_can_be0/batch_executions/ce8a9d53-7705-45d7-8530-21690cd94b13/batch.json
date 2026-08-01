@@ -1,0 +1,184 @@
+{
+  "id": "ce8a9d53-7705-45d7-8530-21690cd94b13",
+  "name": "Saved During Run",
+  "description": "用于回归裁判模型",
+  "configuration": {
+    "name": "Saved During Run",
+    "description": "用于回归裁判模型",
+    "test_set_id": "6fe4e6fc-2e06-452e-85be-ccbeb13dc758",
+    "test_set_name": "Slow Set",
+    "workflow_id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+    "workflow_name": "Slow Workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      }
+    ],
+    "evaluation_rules": [],
+    "case_concurrency": 1,
+    "failure_retry_count": 2,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "question",
+    "rule_display_column": "expected",
+    "updated_at": "2026-07-31T21:16:39.332Z"
+  },
+  "execution_configuration": {
+    "name": "Slow Task",
+    "description": "用于回归裁判模型",
+    "test_set_id": "6fe4e6fc-2e06-452e-85be-ccbeb13dc758",
+    "test_set_name": "Slow Set",
+    "workflow_id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+    "workflow_name": "Slow Workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      }
+    ],
+    "evaluation_rules": [],
+    "case_concurrency": 1,
+    "failure_retry_count": 2,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "question",
+    "rule_display_column": "expected",
+    "updated_at": "2026-07-31T21:16:39.313Z"
+  },
+  "execution_round_id": "adb7aa64-1719-4e84-9363-44fbfb79d6bd",
+  "execution_round_number": 1,
+  "status": "STOPPED",
+  "input": {
+    "test_set_id": "6fe4e6fc-2e06-452e-85be-ccbeb13dc758",
+    "test_set_name": "Slow Set",
+    "columns": [
+      "question",
+      "expected"
+    ],
+    "display_columns": {
+      "case": "question",
+      "rule": "expected"
+    },
+    "updated_at": "2026-07-31T21:16:39.278+00:00",
+    "call_order": {
+      "mode": "SEQUENTIAL",
+      "random_seed": null
+    }
+  },
+  "workflow": {
+    "id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+    "name": "Slow Workflow",
+    "structural_snapshot": {
+      "workflow": {
+        "id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+        "name": "Slow Workflow",
+        "description": ""
+      },
+      "nodes": [
+        {
+          "node": {
+            "id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+            "type": "START",
+            "name": "START",
+            "description": "",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          },
+          "position_x": 0.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+            "type": "SCRIPT",
+            "name": "SCRIPT",
+            "description": "",
+            "script": "import time\ntime.sleep(1)\nresult = context[\"question\"]",
+            "execution": {
+              "timeout_seconds": 600.0,
+              "max_attempts": 0,
+              "retry_interval_seconds": 0.0,
+              "delay_seconds": 0.0
+            },
+            "outputs": [
+              {
+                "name": "answer",
+                "type": "string",
+                "source": "result"
+              }
+            ]
+          },
+          "position_x": 200.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "7715e9a2-be2b-42b4-a7d4-98e45d8cc08b",
+            "type": "END",
+            "name": "END",
+            "description": "",
+            "outputs": [
+              {
+                "name": "answer",
+                "type": "string",
+                "source": "answer"
+              }
+            ]
+          },
+          "position_x": 400.0,
+          "position_y": 0.0
+        }
+      ],
+      "edges": [
+        {
+          "id": "dc5dfe5d-468c-40b7-af68-91080f0a7869",
+          "source_node_id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+          "target_node_id": "55132a0a-83e4-48a4-9397-8e451af618ba"
+        },
+        {
+          "id": "68f3ba56-e8f3-4319-a11c-15d7cf5eac14",
+          "source_node_id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+          "target_node_id": "7715e9a2-be2b-42b4-a7d4-98e45d8cc08b"
+        }
+      ]
+    }
+  },
+  "variables": [
+    {
+      "source": "TEST_SET",
+      "key": "question",
+      "value": "question",
+      "type": "string"
+    }
+  ],
+  "evaluation_rules": [],
+  "case_concurrency": 1,
+  "failure_retry_count": 2,
+  "total_cases": 2,
+  "summary": {
+    "queued": 1,
+    "running": 0,
+    "success": 1,
+    "failed": 0,
+    "interrupted": 0,
+    "pass": 0,
+    "fail": 0,
+    "error": 0,
+    "not_evaluated": 2
+  },
+  "created_at": "2026-07-31T21:16:39.296Z",
+  "execution_created_at": "2026-07-31T21:16:39.314Z",
+  "updated_at": "2026-07-31T21:16:39.332Z",
+  "started_at": "2026-07-31T21:16:39.325Z",
+  "finished_at": "2026-07-31T21:16:40.659Z",
+  "error": null,
+  "execution_mode": null
+}

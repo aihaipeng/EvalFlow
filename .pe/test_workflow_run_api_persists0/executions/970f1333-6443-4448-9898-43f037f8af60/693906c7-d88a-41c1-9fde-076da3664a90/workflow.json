@@ -1,0 +1,133 @@
+{
+  "id": "693906c7-d88a-41c1-9fde-076da3664a90",
+  "workflow_id": "970f1333-6443-4448-9898-43f037f8af60",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "970f1333-6443-4448-9898-43f037f8af60",
+      "name": " 质量检测 ",
+      "description": "本机开发验证"
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+          "type": "START",
+          "name": "开始",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "请审核"
+            }
+          ]
+        },
+        "position_x": 10.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "type": "SCRIPT",
+          "name": "规则校验",
+          "description": "",
+          "script": "result = context['question']",
+          "execution": {
+            "timeout_seconds": 30.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "result",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 260.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+          "type": "END",
+          "name": "结束",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 510.0,
+        "position_y": 20.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "9d9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "target_node_id": "550e8400-e29b-41d4-a716-446655440000"
+      },
+      {
+        "id": "ad9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "550e8400-e29b-41d4-a716-446655440000",
+        "target_node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:17:02.458Z",
+  "started_at": "2026-07-31T21:17:02.462Z",
+  "finished_at": "2026-07-31T21:17:02.777Z",
+  "duration_ms": 315,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "node_execution_id": "ffd27f20-e73b-4f57-8b5b-068a44e622f5",
+        "committed_at": "2026-07-31T21:17:02.471Z",
+        "values": {
+          "question": "请审核"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "550e8400-e29b-41d4-a716-446655440000",
+        "node_execution_id": "b5cf5565-e99f-4553-bb90-0533f9be9cd1",
+        "committed_at": "2026-07-31T21:17:02.763Z",
+        "values": {
+          "result": "请审核"
+        }
+      }
+    ],
+    "final": {
+      "question": "请审核",
+      "result": "请审核"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+      "node_execution_id": "ffd27f20-e73b-4f57-8b5b-068a44e622f5",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "node_execution_id": "b5cf5565-e99f-4553-bb90-0533f9be9cd1",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+      "node_execution_id": "e4b5c8be-0ee4-467e-a494-c8e7db07950a",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

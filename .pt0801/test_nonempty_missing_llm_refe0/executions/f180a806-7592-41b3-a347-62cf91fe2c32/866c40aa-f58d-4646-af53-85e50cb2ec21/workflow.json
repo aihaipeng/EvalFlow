@@ -1,0 +1,125 @@
+{
+  "id": "866c40aa-f58d-4646-af53-85e50cb2ec21",
+  "workflow_id": "f180a806-7592-41b3-a347-62cf91fe2c32",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "f180a806-7592-41b3-a347-62cf91fe2c32",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "74bea878-971a-4664-9bb6-8fbf63bd1f65",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "f309b9b5-4501-4f52-bb55-5551af1f68f4",
+          "type": "LLM",
+          "name": "已删除模型",
+          "description": "",
+          "model": {
+            "provider_id": "missing-provider",
+            "model_name": "missing-model"
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": ""
+              },
+              {
+                "role": "USER",
+                "content": "请回答"
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {},
+            "parameters_text": ""
+          },
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "0d9b307b-787d-4a56-b41e-1f6cbc5161ec",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "9e5365e7-4b01-42f0-9abd-c833670f43f0",
+        "source_node_id": "74bea878-971a-4664-9bb6-8fbf63bd1f65",
+        "target_node_id": "f309b9b5-4501-4f52-bb55-5551af1f68f4"
+      },
+      {
+        "id": "f2866c02-9980-494a-b455-d432641e3b8a",
+        "source_node_id": "f309b9b5-4501-4f52-bb55-5551af1f68f4",
+        "target_node_id": "0d9b307b-787d-4a56-b41e-1f6cbc5161ec"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:13.157Z",
+  "started_at": "2026-07-31T20:58:13.161Z",
+  "finished_at": "2026-07-31T20:58:13.189Z",
+  "duration_ms": 28,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "74bea878-971a-4664-9bb6-8fbf63bd1f65",
+      "node_execution_id": "082b9e25-a82a-445f-90c3-c26290b01a57",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "f309b9b5-4501-4f52-bb55-5551af1f68f4",
+      "node_execution_id": "b4ffca69-05f1-4413-8268-c72687f526c7",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "0d9b307b-787d-4a56-b41e-1f6cbc5161ec",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 已删除模型",
+    "details": {
+      "node_id": "f309b9b5-4501-4f52-bb55-5551af1f68f4",
+      "node_execution_id": "b4ffca69-05f1-4413-8268-c72687f526c7"
+    }
+  }
+}

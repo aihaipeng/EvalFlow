@@ -1,0 +1,117 @@
+{
+  "id": "bb5249b8-67ba-485e-a7c1-4619a73cb24b",
+  "workflow_id": "157d04ee-7eac-4b7d-a70f-a5fd5f0135c5",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "157d04ee-7eac-4b7d-a70f-a5fd5f0135c5",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "37b3b7e0-d991-4016-99c7-21cf717a0f88",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "5e93c436-2fb2-4ebc-857c-900f9d9f5b50",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = None",
+          "execution": {
+            "timeout_seconds": 0.125,
+            "max_attempts": 1,
+            "retry_interval_seconds": 0.2,
+            "delay_seconds": 0.15
+          },
+          "outputs": [
+            {
+              "name": "result",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "779bb023-e512-42b8-944e-41b60c150af9",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "98e09575-29fd-462b-b8bc-b88915afcb0c",
+        "source_node_id": "37b3b7e0-d991-4016-99c7-21cf717a0f88",
+        "target_node_id": "5e93c436-2fb2-4ebc-857c-900f9d9f5b50"
+      },
+      {
+        "id": "cd29739e-b18d-4e57-8755-8799dc116c51",
+        "source_node_id": "5e93c436-2fb2-4ebc-857c-900f9d9f5b50",
+        "target_node_id": "779bb023-e512-42b8-944e-41b60c150af9"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:14.770Z",
+  "started_at": "2026-07-31T20:58:14.773Z",
+  "finished_at": "2026-07-31T20:58:14.825Z",
+  "duration_ms": 51,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "5e93c436-2fb2-4ebc-857c-900f9d9f5b50",
+        "node_execution_id": "90ad83f5-dcf4-4fd5-b0a3-3660a9e28fa9",
+        "committed_at": "2026-07-31T20:58:14.800Z",
+        "values": {
+          "result": "ok"
+        }
+      }
+    ],
+    "final": {
+      "result": "ok"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "37b3b7e0-d991-4016-99c7-21cf717a0f88",
+      "node_execution_id": "0cb25d70-7f9d-4fec-b0c3-389d0d62281f",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "5e93c436-2fb2-4ebc-857c-900f9d9f5b50",
+      "node_execution_id": "90ad83f5-dcf4-4fd5-b0a3-3660a9e28fa9",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "779bb023-e512-42b8-944e-41b60c150af9",
+      "node_execution_id": "3fc972a7-ad7b-41e2-a14e-7f747b5aa62d",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

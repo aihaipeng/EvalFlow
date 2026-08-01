@@ -1,0 +1,195 @@
+{
+  "id": "faadb926-e69c-42dc-9c05-601262478726",
+  "name": "退款测试",
+  "description": "退款场景回归",
+  "configuration": {
+    "name": "退款测试",
+    "description": "退款场景回归",
+    "test_set_id": "1ea226ba-a393-41bd-ac4e-324b681c9200",
+    "test_set_name": "测试集-477d981a",
+    "workflow_id": "fead87c2-444a-4f66-ae03-18e3a867eb6b",
+    "workflow_name": "Batch workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      },
+      {
+        "source": "CUSTOM",
+        "key": "body",
+        "value": "{\"kind\":\"case\"}",
+        "type": "object"
+      }
+    ],
+    "evaluation_rules": [],
+    "case_concurrency": 2,
+    "failure_retry_count": 0,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "case_name",
+    "rule_display_column": "case_name",
+    "updated_at": "2026-08-01T00:21:47.535Z"
+  },
+  "execution_configuration": {
+    "name": "退款测试",
+    "description": "退款场景回归",
+    "test_set_id": "1ea226ba-a393-41bd-ac4e-324b681c9200",
+    "test_set_name": "测试集-477d981a",
+    "workflow_id": "fead87c2-444a-4f66-ae03-18e3a867eb6b",
+    "workflow_name": "Batch workflow",
+    "variables": [
+      {
+        "source": "TEST_SET",
+        "key": "question",
+        "value": "question",
+        "type": "string"
+      },
+      {
+        "source": "CUSTOM",
+        "key": "body",
+        "value": "{\"kind\":\"case\"}",
+        "type": "object"
+      }
+    ],
+    "evaluation_rules": [],
+    "case_concurrency": 2,
+    "failure_retry_count": 0,
+    "call_order": "SEQUENTIAL",
+    "case_display_column": "case_name",
+    "rule_display_column": "case_name",
+    "updated_at": "2026-08-01T00:21:47.535Z"
+  },
+  "execution_round_id": "d6ae3d6c-b397-4977-9b1f-6595c859babb",
+  "execution_round_number": 1,
+  "status": "QUEUED",
+  "input": {
+    "test_set_id": "1ea226ba-a393-41bd-ac4e-324b681c9200",
+    "test_set_name": "测试集-477d981a",
+    "columns": [
+      "case_name",
+      "question"
+    ],
+    "display_columns": {
+      "case": "case_name",
+      "rule": "case_name"
+    },
+    "updated_at": "2026-08-01T00:21:47.527+00:00",
+    "call_order": {
+      "mode": "SEQUENTIAL",
+      "random_seed": null
+    }
+  },
+  "workflow": {
+    "id": "fead87c2-444a-4f66-ae03-18e3a867eb6b",
+    "name": "Batch workflow",
+    "structural_snapshot": {
+      "workflow": {
+        "id": "fead87c2-444a-4f66-ae03-18e3a867eb6b",
+        "name": "Batch workflow",
+        "description": ""
+      },
+      "nodes": [
+        {
+          "node": {
+            "id": "adb4bec7-654b-4da3-bb5b-1547f3e63010",
+            "type": "START",
+            "name": "START",
+            "description": "",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          },
+          "position_x": 0.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "38688308-7304-49e4-9e15-737601c069c2",
+            "type": "SCRIPT",
+            "name": "SCRIPT",
+            "description": "",
+            "script": "result = context[\"question\"]",
+            "execution": {
+              "timeout_seconds": 10.0,
+              "max_attempts": 0,
+              "retry_interval_seconds": 0.0,
+              "delay_seconds": 0.0
+            },
+            "outputs": [
+              {
+                "name": "answer",
+                "type": "string",
+                "source": "result"
+              }
+            ]
+          },
+          "position_x": 200.0,
+          "position_y": 0.0
+        },
+        {
+          "node": {
+            "id": "c507d660-f250-490e-8217-3d9d679eaa52",
+            "type": "END",
+            "name": "END",
+            "description": "",
+            "outputs": []
+          },
+          "position_x": 400.0,
+          "position_y": 0.0
+        }
+      ],
+      "edges": [
+        {
+          "id": "ba04d3c9-fa6a-4361-9630-58c420d1db40",
+          "source_node_id": "adb4bec7-654b-4da3-bb5b-1547f3e63010",
+          "target_node_id": "38688308-7304-49e4-9e15-737601c069c2"
+        },
+        {
+          "id": "673304ab-95c6-426d-a767-c5d4823e1426",
+          "source_node_id": "38688308-7304-49e4-9e15-737601c069c2",
+          "target_node_id": "c507d660-f250-490e-8217-3d9d679eaa52"
+        }
+      ]
+    }
+  },
+  "variables": [
+    {
+      "source": "TEST_SET",
+      "key": "question",
+      "value": "question",
+      "type": "string"
+    },
+    {
+      "source": "CUSTOM",
+      "key": "body",
+      "value": "{\"kind\":\"case\"}",
+      "type": "object"
+    }
+  ],
+  "evaluation_rules": [],
+  "case_concurrency": 2,
+  "failure_retry_count": 0,
+  "total_cases": 1,
+  "summary": {
+    "queued": 1,
+    "running": 0,
+    "success": 0,
+    "failed": 0,
+    "interrupted": 0,
+    "pass": 0,
+    "fail": 0,
+    "error": 0,
+    "not_evaluated": 1
+  },
+  "created_at": "2026-08-01T00:21:47.532Z",
+  "execution_created_at": "2026-08-01T00:21:47.535Z",
+  "updated_at": "2026-08-01T00:21:47.535Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": null
+}

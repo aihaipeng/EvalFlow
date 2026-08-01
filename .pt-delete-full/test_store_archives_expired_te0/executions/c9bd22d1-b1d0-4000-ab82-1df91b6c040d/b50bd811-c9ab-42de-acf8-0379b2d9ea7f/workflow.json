@@ -1,0 +1,10 @@
+{
+  "id": "b50bd811-c9ab-42de-acf8-0379b2d9ea7f",
+  "workflow_id": "c9bd22d1-b1d0-4000-ab82-1df91b6c040d",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "SUCCESS",
+  "created_at": "2026-07-30T12:00:00.000Z",
+  "finished_at": "2026-07-20T12:01:00.000Z"
+}

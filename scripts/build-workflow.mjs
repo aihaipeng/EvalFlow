@@ -28,11 +28,17 @@ for (const path of [`${outputBase}.js`, `${outputBase}.css`, `${outputBase}.js.L
 
 const bundleContent = await readFile(`${outputBase}.js`, "utf8");
 const bundleVersion = createHash("sha256").update(bundleContent).digest("hex").slice(0, 12);
+const stylesheetContent = await readFile(`${outputBase}.css`, "utf8");
+const stylesheetVersion = createHash("sha256").update(stylesheetContent).digest("hex").slice(0, 12);
 const executionContent = await readFile("web/static/execution.js", "utf8");
 const executionVersion = createHash("sha256").update(executionContent).digest("hex").slice(0, 12);
 const indexPath = "web/static/index.html";
 const indexContent = await readFile(indexPath, "utf8");
-const versionedWorkflowIndex = indexContent.replace(
+const versionedWorkflowStyles = indexContent.replace(
+  /\/assets\/workflow-canvas\.css(?:\?v=[^"']+)?/,
+  `/assets/workflow-canvas.css?v=${stylesheetVersion}`,
+);
+const versionedWorkflowIndex = versionedWorkflowStyles.replace(
   /\/assets\/workflow-canvas\.js(?:\?v=[^"']+)?/,
   `/assets/workflow-canvas.js?v=${bundleVersion}`,
 );

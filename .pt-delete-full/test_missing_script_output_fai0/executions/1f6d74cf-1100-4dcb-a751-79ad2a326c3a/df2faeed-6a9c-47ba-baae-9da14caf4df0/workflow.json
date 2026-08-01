@@ -1,0 +1,112 @@
+{
+  "id": "df2faeed-6a9c-47ba-baae-9da14caf4df0",
+  "workflow_id": "1f6d74cf-1100-4dcb-a751-79ad2a326c3a",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "1f6d74cf-1100-4dcb-a751-79ad2a326c3a",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "8ce9a25d-bc59-4d8c-865a-1ea36bb228ef",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "3f234012-a7fa-4abb-8060-fa0db29db779",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "print('done')",
+          "execution": {
+            "timeout_seconds": 5.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "missing"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "01b191f4-4686-4abb-a378-a3c90bed0f02",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "61bd50d6-7411-46e0-ac2a-861af2aaf9cb",
+        "source_node_id": "8ce9a25d-bc59-4d8c-865a-1ea36bb228ef",
+        "target_node_id": "3f234012-a7fa-4abb-8060-fa0db29db779"
+      },
+      {
+        "id": "2d0d4eec-cd07-409a-adfe-2083f798b08c",
+        "source_node_id": "3f234012-a7fa-4abb-8060-fa0db29db779",
+        "target_node_id": "01b191f4-4686-4abb-a378-a3c90bed0f02"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:11.732Z",
+  "started_at": "2026-07-31T21:03:11.734Z",
+  "finished_at": "2026-07-31T21:03:12.014Z",
+  "duration_ms": 280,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "8ce9a25d-bc59-4d8c-865a-1ea36bb228ef",
+      "node_execution_id": "4d5dfa69-7a73-49f4-bf73-490a8931a178",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "3f234012-a7fa-4abb-8060-fa0db29db779",
+      "node_execution_id": "fd81ae44-a20a-43f3-b732-55462ef310e7",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "01b191f4-4686-4abb-a378-a3c90bed0f02",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: SCRIPT",
+    "details": {
+      "node_id": "3f234012-a7fa-4abb-8060-fa0db29db779",
+      "node_execution_id": "fd81ae44-a20a-43f3-b732-55462ef310e7"
+    }
+  }
+}

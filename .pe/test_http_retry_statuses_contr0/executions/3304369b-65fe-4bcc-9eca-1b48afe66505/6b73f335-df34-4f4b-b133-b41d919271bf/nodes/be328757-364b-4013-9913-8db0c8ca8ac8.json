@@ -1,0 +1,135 @@
+{
+  "workflow_execution_id": "6b73f335-df34-4f4b-b133-b41d919271bf",
+  "workflow_id": "3304369b-65fe-4bcc-9eca-1b48afe66505",
+  "node_execution_id": "be328757-364b-4013-9913-8db0c8ca8ac8",
+  "node_id": "38a2f93a-28d7-47c5-ba42-6cbadd525a69",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "38a2f93a-28d7-47c5-ba42-6cbadd525a69",
+    "type": "HTTP",
+    "name": "Request Options",
+    "description": "",
+    "request": {
+      "method": "GET",
+      "url": "https://example.test",
+      "follow_redirects": false,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "none",
+        "content": null,
+        "template_text": null
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "DIRECT",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": false
+    },
+    "response": {
+      "mode": "TEXT",
+      "success_statuses": [
+        200
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 2,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        500
+      ]
+    },
+    "outputs": []
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 05:17:11",
+  "finished_at": "2026-08-01 05:17:11",
+  "duration_ms": 10,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:11.689Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:17:11.695Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:17:11.699Z",
+      "reason": "HTTP_STATUS_ERROR"
+    }
+  ],
+  "error": {
+    "code": "HTTP_STATUS_ERROR",
+    "message": "HTTP 返回状态码 418",
+    "details": {
+      "status_code": 418
+    }
+  },
+  "network": {
+    "proxy": {
+      "mode": "DIRECT",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": false
+  },
+  "request": {
+    "method": "GET",
+    "url": "https://example.test",
+    "headers": [],
+    "body_type": "none",
+    "body": null
+  },
+  "redirects": [],
+  "response": {
+    "status_code": 418,
+    "headers": [],
+    "body_type": "TEXT",
+    "body": "failed"
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "FAILED",
+      "started_at": "2026-08-01 05:17:11",
+      "finished_at": "2026-08-01 05:17:11",
+      "duration_ms": 2,
+      "request": {
+        "method": "GET",
+        "url": "https://example.test",
+        "headers": [],
+        "body_type": "none",
+        "body": null
+      },
+      "redirects": [],
+      "response": {
+        "status_code": 418,
+        "headers": [],
+        "body_type": "TEXT",
+        "body": "failed"
+      },
+      "error": {
+        "code": "HTTP_STATUS_ERROR",
+        "message": "HTTP 返回状态码 418",
+        "details": {
+          "status_code": 418
+        }
+      }
+    }
+  ]
+}

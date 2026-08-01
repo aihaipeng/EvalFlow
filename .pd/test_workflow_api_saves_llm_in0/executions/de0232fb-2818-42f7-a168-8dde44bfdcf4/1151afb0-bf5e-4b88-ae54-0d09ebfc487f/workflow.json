@@ -1,0 +1,143 @@
+{
+  "id": "1151afb0-bf5e-4b88-ae54-0d09ebfc487f",
+  "workflow_id": "de0232fb-2818-42f7-a168-8dde44bfdcf4",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "de0232fb-2818-42f7-a168-8dde44bfdcf4",
+      "name": "LLM 参数草稿",
+      "description": "本机开发验证"
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+          "type": "START",
+          "name": "开始",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "请审核"
+            }
+          ]
+        },
+        "position_x": 10.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "type": "LLM",
+          "name": "参数草稿",
+          "description": "",
+          "model": {
+            "provider_id": "ba9f46ae2cf14d3fbd472db42dc96419",
+            "model_name": "chat"
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": ""
+              },
+              {
+                "role": "USER",
+                "content": "请回答"
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {},
+            "parameters_text": "{\"temperature\":"
+          },
+          "execution": {
+            "timeout_seconds": 30.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": []
+        },
+        "position_x": 260.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+          "type": "END",
+          "name": "结束",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 510.0,
+        "position_y": 20.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "9d9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "target_node_id": "550e8400-e29b-41d4-a716-446655440000"
+      },
+      {
+        "id": "ad9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "550e8400-e29b-41d4-a716-446655440000",
+        "target_node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:08:33.678Z",
+  "started_at": "2026-07-31T21:08:33.680Z",
+  "finished_at": "2026-07-31T21:08:33.710Z",
+  "duration_ms": 30,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "node_execution_id": "c98b0413-d3d2-4a1b-bbbc-ac03aa03f764",
+        "committed_at": "2026-07-31T21:08:33.698Z",
+        "values": {
+          "question": "请审核"
+        }
+      }
+    ],
+    "final": {
+      "question": "请审核"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+      "node_execution_id": "c98b0413-d3d2-4a1b-bbbc-ac03aa03f764",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "node_execution_id": "02549e26-609b-4a67-aad3-2e8e742d18f1",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 参数草稿",
+    "details": {
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "node_execution_id": "02549e26-609b-4a67-aad3-2e8e742d18f1"
+    }
+  }
+}

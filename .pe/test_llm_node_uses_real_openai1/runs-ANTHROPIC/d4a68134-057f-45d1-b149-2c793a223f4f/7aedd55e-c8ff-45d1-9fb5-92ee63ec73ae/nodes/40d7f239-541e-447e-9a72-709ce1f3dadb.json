@@ -1,0 +1,178 @@
+{
+  "workflow_execution_id": "7aedd55e-c8ff-45d1-9fb5-92ee63ec73ae",
+  "workflow_id": "d4a68134-057f-45d1-b149-2c793a223f4f",
+  "node_execution_id": "40d7f239-541e-447e-9a72-709ce1f3dadb",
+  "node_id": "8347dbc3-b451-4f0c-bb62-78ed5f4ec3c3",
+  "type": "LLM",
+  "structural_snapshot": {
+    "id": "8347dbc3-b451-4f0c-bb62-78ed5f4ec3c3",
+    "type": "LLM",
+    "name": "ANTHROPIC",
+    "description": "",
+    "model": {
+      "provider_id": "1426de846faa46f1aeadf3682f34ddf4",
+      "model_name": "local-anthropic"
+    },
+    "context": {
+      "messages": [
+        {
+          "role": "SYSTEM",
+          "content": "系统"
+        },
+        {
+          "role": "USER",
+          "content": "示例问题"
+        },
+        {
+          "role": "ASSISTANT",
+          "content": "示例回答"
+        },
+        {
+          "role": "USER",
+          "content": "问题：${question}"
+        }
+      ]
+    },
+    "generation": {
+      "parameters": {
+        "max_tokens": 64
+      },
+      "parameters_text": ""
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "model_text",
+        "type": "string",
+        "source": "response.content[0].text"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:17:14",
+  "finished_at": "2026-08-01 05:17:14",
+  "duration_ms": 348,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "真实请求"
+  },
+  "outputs": {
+    "model_text": "Anthropic OK"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:14.520Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:17:14.529Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:17:14.870Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "model": {
+    "provider_id": "1426de846faa46f1aeadf3682f34ddf4",
+    "model_name": "local-anthropic"
+  },
+  "request": {
+    "model": "local-anthropic",
+    "messages": [
+      {
+        "role": "user",
+        "content": "示例问题"
+      },
+      {
+        "role": "assistant",
+        "content": "示例回答"
+      },
+      {
+        "role": "user",
+        "content": "问题：真实请求"
+      }
+    ],
+    "max_tokens": 64,
+    "stream": false,
+    "system": "系统",
+    "temperature": 0
+  },
+  "response": {
+    "id": "msg-1",
+    "content": [
+      {
+        "type": "text",
+        "text": "Anthropic OK"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 4,
+      "output_tokens": 2
+    }
+  },
+  "response_received": true,
+  "usage": {
+    "input_tokens": 4,
+    "output_tokens": 2,
+    "total_tokens": 6
+  },
+  "usage_errors": [],
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "SUCCESS",
+      "started_at": "2026-08-01 05:17:14",
+      "finished_at": "2026-08-01 05:17:14",
+      "duration_ms": 338,
+      "request": {
+        "model": "local-anthropic",
+        "messages": [
+          {
+            "role": "user",
+            "content": "示例问题"
+          },
+          {
+            "role": "assistant",
+            "content": "示例回答"
+          },
+          {
+            "role": "user",
+            "content": "问题：真实请求"
+          }
+        ],
+        "max_tokens": 64,
+        "stream": false,
+        "system": "系统",
+        "temperature": 0
+      },
+      "response": {
+        "id": "msg-1",
+        "content": [
+          {
+            "type": "text",
+            "text": "Anthropic OK"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 4,
+          "output_tokens": 2
+        }
+      },
+      "response_received": true,
+      "error": null,
+      "truncated_fields": []
+    }
+  ]
+}

@@ -38,6 +38,13 @@ class TestSetUpdateRequest(TestSetCreateRequest):
     pass
 
 
+class TestSetMetadataUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=1000)
+
+
 def _case_payload(case: TestCaseWrite) -> dict:
     return {"id": case.id, "values": case.values}
 
@@ -125,6 +132,23 @@ def update_test_set(
             description=body.description,
             columns=body.columns,
             cases=[_case_payload(case) for case in body.cases],
+        )
+    except TestSetRepositoryError as error:
+        _handle_error(error)
+    return {"test_set": _record_payload(record)}
+
+
+@router.put("/{test_set_id}/metadata")
+def update_test_set_metadata(
+    test_set_id: str,
+    body: TestSetMetadataUpdateRequest,
+    services: WorkflowServicesDependency,
+) -> dict:
+    try:
+        record = services.test_sets.update_metadata(
+            test_set_id,
+            name=body.name,
+            description=body.description,
         )
     except TestSetRepositoryError as error:
         _handle_error(error)

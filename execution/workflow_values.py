@@ -218,7 +218,7 @@ def _read_output_part(current: Any, part: str | int) -> Any:
 
 
 def extract_output(source: str, facts: dict[str, Any]) -> Any:
-    """执行以 request/response 为根的字段、下标与数组过滤表达式。"""
+    """执行以可用事实为根的字段、下标与数组过滤表达式。"""
 
     root = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", source)
     if root is None or root.group(0) not in facts:

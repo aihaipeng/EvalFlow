@@ -1,0 +1,36 @@
+{
+  "id": "c310f259-0f25-4342-9e34-263b9f8b221b",
+  "batch_execution_id": "ca33d650-80b4-4ee8-96cf-5a4f5cec6008",
+  "case_id": "C-2",
+  "row_number": 2,
+  "call_number": 2,
+  "status": "FAILED",
+  "execution_status": "FAILED",
+  "verdict": "NOT_EVALUATED",
+  "evaluation": {
+    "verdict": "NOT_EVALUATED",
+    "rules": []
+  },
+  "source_values": {
+    "case_name": "C-2",
+    "question": "bad"
+  },
+  "start_inputs": {
+    "question": "bad"
+  },
+  "workflow_execution_ids": [
+    "53b4783a-c5dd-403e-9be4-4796555c69a2",
+    "5b53e006-ab11-4daf-a100-c7b5447e2e2b"
+  ],
+  "created_at": "2026-07-31T21:21:04.214Z",
+  "started_at": "2026-07-31T21:21:04.871Z",
+  "finished_at": "2026-07-31T21:21:05.153Z",
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: SCRIPT",
+    "details": {
+      "node_id": "bd5a3302-495f-46ff-a970-956c626f83fe",
+      "node_execution_id": "be220e1f-9807-47fd-92d4-b19e3bcb9667"
+    }
+  }
+}

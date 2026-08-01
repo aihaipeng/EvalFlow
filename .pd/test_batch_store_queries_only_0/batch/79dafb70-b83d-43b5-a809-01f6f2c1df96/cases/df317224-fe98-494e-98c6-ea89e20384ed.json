@@ -1,0 +1,17 @@
+{
+  "id": "df317224-fe98-494e-98c6-ea89e20384ed",
+  "batch_execution_id": "79dafb70-b83d-43b5-a809-01f6f2c1df96",
+  "case_id": "C-14",
+  "row_number": 14,
+  "status": "FAILED",
+  "finished_at": null,
+  "error": null,
+  "call_number": 14,
+  "execution_status": "SUCCESS",
+  "evaluation": {
+    "verdict": "FAIL"
+  },
+  "source_values": {
+    "question": "question-14"
+  }
+}

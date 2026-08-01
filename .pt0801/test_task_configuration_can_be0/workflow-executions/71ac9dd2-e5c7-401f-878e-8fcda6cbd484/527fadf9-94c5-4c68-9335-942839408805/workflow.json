@@ -1,0 +1,152 @@
+{
+  "id": "527fadf9-94c5-4c68-9335-942839408805",
+  "workflow_id": "71ac9dd2-e5c7-401f-878e-8fcda6cbd484",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "348f646d-9073-4fc4-bae5-f18520c9fef1",
+    "case_run_id": "13ffa888-64a0-4cc1-b5f8-38132765e6e5",
+    "case_id": "case-1",
+    "row_number": 1
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "71ac9dd2-e5c7-401f-878e-8fcda6cbd484",
+      "name": "Slow Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "915ce7dc-6ff7-4255-864c-a5ca82c662e5",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "hello"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "e42ec90c-d935-4247-bf56-19b95a40f2cb",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "import time\ntime.sleep(1)\nresult = context[\"question\"]",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "7fa38417-1688-42e0-96bc-46a70e34c059",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "4fdbf593-e969-45d9-a387-a11a227863ad",
+        "source_node_id": "915ce7dc-6ff7-4255-864c-a5ca82c662e5",
+        "target_node_id": "e42ec90c-d935-4247-bf56-19b95a40f2cb"
+      },
+      {
+        "id": "bb8a30f1-257e-4b0d-93cf-d8e719e55083",
+        "source_node_id": "e42ec90c-d935-4247-bf56-19b95a40f2cb",
+        "target_node_id": "7fa38417-1688-42e0-96bc-46a70e34c059"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:57:47.254Z",
+  "started_at": "2026-07-31T20:57:47.257Z",
+  "finished_at": "2026-07-31T20:57:48.551Z",
+  "duration_ms": 1294,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "915ce7dc-6ff7-4255-864c-a5ca82c662e5",
+        "node_execution_id": "016cb052-3ddf-497a-b43e-e27843e38073",
+        "committed_at": "2026-07-31T20:57:47.264Z",
+        "values": {
+          "input": {},
+          "question": "hello"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "e42ec90c-d935-4247-bf56-19b95a40f2cb",
+        "node_execution_id": "081547d7-4630-4c7e-b96f-72a52b1ac19e",
+        "committed_at": "2026-07-31T20:57:48.541Z",
+        "values": {
+          "answer": "hello"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "hello",
+      "answer": "hello"
+    }
+  },
+  "result": {
+    "answer": "hello"
+  },
+  "nodes": [
+    {
+      "node_id": "915ce7dc-6ff7-4255-864c-a5ca82c662e5",
+      "node_execution_id": "016cb052-3ddf-497a-b43e-e27843e38073",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "e42ec90c-d935-4247-bf56-19b95a40f2cb",
+      "node_execution_id": "081547d7-4630-4c7e-b96f-72a52b1ac19e",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "7fa38417-1688-42e0-96bc-46a70e34c059",
+      "node_execution_id": "b86c042d-ad93-43b6-8a87-526c6066be2b",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

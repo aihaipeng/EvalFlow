@@ -1,0 +1,98 @@
+{
+  "workflow_execution_id": "a2df5960-e312-4554-ad8f-6e946066c3d5",
+  "workflow_id": "25a7a16b-2af4-4144-a228-1a87d1dc9ee8",
+  "node_execution_id": "f617f645-6615-4b41-b45a-eef0b0f044bf",
+  "node_id": "f9417791-6bc9-4def-a017-9ec3f3269426",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "f9417791-6bc9-4def-a017-9ec3f3269426",
+    "type": "HTTP",
+    "name": "空白 HTTP",
+    "description": "",
+    "request": {
+      "method": "POST",
+      "url": "",
+      "follow_redirects": true,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "none",
+        "content": null,
+        "template_text": null
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "SYSTEM",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": true
+    },
+    "response": {
+      "mode": "AUTO",
+      "success_statuses": [
+        "200-299"
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 600.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        408,
+        429,
+        500,
+        502,
+        503,
+        504
+      ]
+    },
+    "outputs": []
+  },
+  "status": "FAILED",
+  "started_at": null,
+  "finished_at": "2026-08-01 05:17:06",
+  "duration_ms": null,
+  "attempt_count": 0,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:06.712Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:17:06.714Z",
+      "reason": "HTTP_CONFIGURATION_INCOMPLETE"
+    }
+  ],
+  "error": {
+    "code": "HTTP_CONFIGURATION_INCOMPLETE",
+    "message": "节点“空白 HTTP”未完成请求配置",
+    "details": {
+      "missing_fields": [
+        "request.url"
+      ],
+      "suggestion": "打开节点设置，填写请求 URL；CUSTOM 模式还必须填写 Proxy URL"
+    }
+  },
+  "network": {
+    "proxy": {
+      "mode": "SYSTEM",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": true
+  },
+  "request": null,
+  "redirects": [],
+  "response": null,
+  "attempts": []
+}

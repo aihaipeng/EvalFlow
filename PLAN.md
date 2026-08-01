@@ -1,5 +1,61 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.36 前端交互与页面易用性优化（已完成，2026-08-01）
+
+### 业务背景与目标
+
+- Why：测试人员需要在本机高频维护测试集、配置 Workflow 和追踪批量任务。当前侧栏与弹窗键盘操作不完整，部分编辑入口依赖无提示双击，Workflow 初始缩放过小，关键任务信息被操作列挤压，同时大型前端资源在首页一次性加载，增加学习成本和等待时间。
+- Who / Where：4 至 5 名桌面端测试工程师，在测试集管理、供应商管理、工作流画布和任务调度中反复创建、编辑、执行与排障。
+- What / Priority：P0 不改变数据与调度语义；P1 修复核心导航、弹窗焦点、可访问名称和编辑入口；P2 优化画布可读性、表格信息层级、点击目标、测试集分页与目录资源按需加载；移动端不作为本机产品主场景，但窄桌面窗口必须可正常滚动且不能遮挡核心操作。
+- How to Measure：仅使用键盘可以切换四个目录、打开和关闭弹窗并回到触发按钮；核心编辑不再依赖双击猜测；打开 10 个以上节点的 Workflow 后节点标题可直接阅读；1280x720 下任务进度和通过率完整展示，供应商列表无无意义横向滚动；测试集详情默认不超过 20 行；首次进入测试集目录时不下载 Workflow bundle，反之亦然。
+
+### 子任务与独立验收
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.36.1 | 键盘与编辑入口 | 侧栏、任务/供应商/测试集弹窗、测试集与 Workflow 元数据、节点配置 / 语义化导航、Esc、焦点循环与回归、显式编辑入口、输入可访问名称 | 前端契约测试、键盘浏览器 E2E | 无 | completed |
+| 13.36.2 | 信息密度与画布可读性 | Workflow 初始视口、任务与供应商列表、图标按钮、测试集详情 / 可读缩放、关键列优先、合理点击区域、20 行默认分页 | CSS/前端测试、1280x720 明暗主题截图与流程检查 | 13.36.1 | completed |
+| 13.36.3 | 目录资源按需加载 | 首页脚本入口、测试集与 Workflow 构建产物 / 按目录加载且重复进入不重复下载 | 资源加载契约测试、浏览器 Network/功能回归 | 13.36.1 | completed |
+| 13.36.4 | 完整回归与价值验证 | 受影响前端、构建产物和真实本地数据 / 可发布结果 | 单元测试、静态检查、npm build、完整 pytest、桌面端 E2E | 13.36.1-13.36.3 | completed |
+
+### 实施约束
+
+- 保留当前业务语言、数据模型、API 和调度状态语义，不以易用性改造改变执行结果或统计口径。
+- 桌面高频操作优先；所有新增交互必须同时支持鼠标和键盘，并保持深浅色主题一致。
+- 大型资源只在首次进入对应目录时加载，加载中显示明确状态，加载失败可重试且不能使其他目录不可用。
+
+### 验证记录
+
+- 前端专项回归 `62 passed`；最终布局与画布增量测试 `2 passed`。`npm run build`、静态 JavaScript 语法、Python `compileall` 和 `git diff --check` 通过。
+- 1280x720 深色主题浏览器回归确认：供应商列表无横向滚动；任务名称可换行，进度和通过率获得更大展示区域；创建任务弹窗支持 Esc 关闭并将焦点返回“创建任务”；测试集详情默认 20 行且单元格具有“用例 + 字段”可访问名称；11 节点 Workflow 使用标准 `fitView` 完整构图，节点提供显式“配置”按钮并可单击打开设置面板。
+- 首页不再静态加载约 4.0 MB 的测试集 JS 和约 960 KB 的 Workflow JS；两套 CSS/JS 仅在首次进入对应目录时按顺序加载，构建哈希继续生效。
+- 全量回归结果为 `366 passed, 4 skipped, 1 failed`。失败项为 `OPENAI_RESPONSES` 模型可用性测试仍传入协议已禁止的 `messages` 字段；用户确认该项属于接口协议改造，本次跳过且未修改相关后端逻辑。
+
+## T13.35 本机执行历史分层归档（实施中，2026-07-31）
+
+### 业务背景与目标
+
+- Why：批量调度会为每个 Case 和节点生成独立 JSON。万级用例会带来十万级小文件，增加目录扫描、备份和磁盘管理成本；同时测试人员必须能继续逐节点查看历史请求、响应和日志。
+- Who / Where：本机运行调度中的测试人员，在 Batch 详情或 Workflow 调试视图追溯近期与历史执行；本机维护者需要可预测地控制 `run_storage` 的文件数量和容量。
+- What / Priority：P0 将终态 Workflow Execution 的完整 JSON 在 7 天后归并为本机 ZIP 归档，并维持现有读取 API 透明可用。成功、失败和中断执行采用同一策略；不接入远程对象存储。Batch Case JSON 分片、配额和大字段外置属于后续阶段，不在本次 P0 擅自改变语义。
+- How to Measure：归档前 7 天内执行仍以原目录读取；归档后原执行目录被移除，同一 `get_workflow` 和 `get_nodes` 调用返回等价数据；运行中或未到期执行不会归档；归档按 `workflow/date/batch` 合并，且 manifest 能列出所有 Execution；现有调试 API 无需变更。
+
+### 已确认业务决策
+
+1. 完整日志在线保留 7 天。
+2. 成功、失败、超时和中断执行均使用同一保留策略。
+3. 仅使用本机 `run_storage`；不接入 S3、MinIO 或其他远程存储。
+4. 历史节点日志必须仍能通过当前 Workflow 调试入口查看，允许归档读取有短暂额外延迟。
+
+### 子任务与独立验收
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.35.1 | 归档格式与透明读取 | 终态执行目录 / 按 workflow、UTC 日期、batch 分组的 ZIP + manifest | Workflow 与 Node JSON 归档后读取等价、归档不碰未到期/活动执行 | 无 | completed |
+| 13.35.2 | 生命周期清理与中断恢复 | 7 天保留策略、启动恢复、周期性本机归档 / 清理临时文件与已验证的重复热目录 | 时间边界、并发执行豁免、归档中断后热副本收敛、无法验证的数据不删除、关闭可停止 | 13.35.1 | completed |
+| 13.35.3 | Batch 小文件治理 | Batch Case JSON / 分页可读的归档索引或批量分片 | 万级 Case 不产生万级常驻文件、详情分页等价 | 13.35.1 | pending |
+| 13.35.4 | 回归与真实流程 | Store、API、调度、前端调试入口 | 专项测试、完整 pytest、静态检查、构建和 Batch->节点日志回归 | 13.35.1-13.35.3 | pending |
+
 > 2026-07-31 清理说明：已被正式测试集、供应商、HTTP/LLM 节点和 Run 配置页面替代的独立 prototype、预览截图及 prototype 静态页面均已删除。下文中的 prototype 路径仅保留为历史实施记录，不再代表当前仓库中存在的交付物；生产事实来源以 `web/frontend/`、`web/static/` 当前入口和对应 API 为准。
 
 ## T13.34 测试集数据库化与可视化维护（已完成，2026-07-31）
@@ -3270,3 +3326,32 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - 专项前端及 Workflow 回归 `87 passed, 1 warning`；全量 `uv run pytest -q` -> `228 passed, 4 skipped, 1 warning in 17.62s`。4 项跳过为未注入真实供应商环境变量的 live 测试，warning 为既有 Starlette/httpx 弃用提示。
 - `uv run python -m compileall -q execution web tests storage`、`npm run build`、`git diff --check` 和契约矛盾扫描均通过；SQLite integrity=ok、foreign_key_check=[]，数据库无 Execution/日志表。
 - 运行服务已重启到当前代码，只保留 `127.0.0.1:8010` 一个监听端口；最终 Workflow 列表只保留用户当前 `未命名工作流`。
+
+### 24.14 企业机房故障诊断真实批量联调（in progress，2026-07-31）
+
+#### 业务背景与验收目标
+
+- Why：用接近企业智能体的约 210 KB 大响应、真实 DeepSeek 调用和 100 条测试集验证批量调度、节点日志、规则判定及本地运行存储链路，不再只依赖小响应或固定字符串测试。
+- Who / Where：企业数据中心测试工程师在本机 Agent Bench 中导入告警用例，调用本机诊断智能体 Mock，并在调度详情页按“用例 / 规则 / 结果 / 详情”定位问题。
+- What / Priority：P0 端到端验收。场景覆盖冷却、供电、网络丢包、磁盘 I/O 饱和和内存泄漏五类故障；每条用例执行 1 个 HTTP、5 个 SCRIPT、3 个 `deepseek-v4-pro` LLM 节点。
+- How to Measure：Excel 恰有 100 条用例；测试集、Workflow 和 Batch 可回读；首批需覆盖五类故障且 HTTP/解析/三路 LLM/汇总全部成功；固定规则对 Excel 注入的动态预期生成 `PASS`；相关回归与前端构建通过。
+
+#### 子任务与验证记录
+
+| 子任务 | 输入 / 输出 | 验证方法 | 状态 |
+| --- | --- | --- | --- |
+| Mock 大响应 | `POST /datacenter/diagnose`，720 条指标、900 条日志 | HTTP 200，响应 209970 bytes | completed |
+| 100 条 Excel | `C:\Users\Administrator\Desktop\testcases.xlsx`，10 列 | openpyxl 回读为 100 条；原文件备份为 `testcases.before-datacenter-demo.xlsx` | completed |
+| 测试集与 Workflow | 测试集 `5e5ff22d-3e6a-4ad1-bf95-a1566f1057f2`；Workflow `28846628-c478-43bb-ad4c-e7ea5388045b` | API 回读 100 条、11 节点、12 条边 | completed |
+| 批量调度 | Batch `2fc06618-dca2-4543-9fad-f9ed25ce54e4`，并发 2，100 条 | 已启动；首 10 条覆盖五类场景且均为 `SUCCESS / PASS` | in progress |
+| 回归验证 | Workflow、Batch、Test Set 相关测试与前端构建 | `81 passed, 1 warning`；`npm run build` 成功 | completed |
+
+#### 实现与运行事实
+
+- Mock 服务运行于 `127.0.0.1:9000`；真实首条用例 HTTP 节点耗时约 383 ms，解析节点得到 720 个指标点、48 条 ERROR 日志、最高温度 47.2、最大丢包率 4.8% 和最大磁盘延迟 84 ms。
+- Workflow 拓扑为 `START -> HTTP -> 解析 SCRIPT -> 三路 LLM -> 三路标准化 SCRIPT -> 汇总 SCRIPT -> END`；三路 LLM 分别复核根因、风险等级和处置动作，均使用模型管理中的 `DeppSeek / deepseek-v4-pro`，单节点最大输出 1200 tokens。
+- Excel 的 `expected_root_cause / expected_risk_level / expected_action` 只通过变量注入参与汇总节点比较；调度规则固定检查 `context.root_cause_match / risk_level_match / action_match == true`，从而支持逐行动态预期。
+- 详情展示列配置为 `query`，规则展示列配置为 `rule_description`；首条用例三项规则实际值与预期值均为 `true`，终态 `SUCCESS / PASS`，全工作流约 33 秒。
+- 创建脚本和资源索引分别保存在 `scripts/setup_datacenter_demo.py`、`run_storage/datacenter-demo-setup.json`；测试集生成脚本为 `scripts/generate_datacenter_cases.py`。
+- 存储中途采样：22 个已创建的 Workflow Execution 共 266 个 JSON 文件、98,280,306 bytes，约 4.47 MB/用例；按相同输出规模线性估算 100 条约 447 MB，Batch 自身 102 个文件仅 260,065 bytes。主要占用来自大 HTTP 响应随节点 Context/日志重复持久化，而不是 Batch 索引。
+- 本节结果取代此前“真实内网 FastAPI 联调仍未完成”的历史限制；当前批量任务仍在运行，完成后的最终 100 条汇总和存储占用需继续回填。

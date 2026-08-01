@@ -1,0 +1,46 @@
+{
+  "workflow_execution_id": "03be71cf-f4b9-4026-a8c8-a3f12372e7f4",
+  "workflow_id": "1130a5af-f422-4b87-b447-b092e6f24139",
+  "node_execution_id": "2b17ba0d-44a0-404e-9d81-ad2a94936fcb",
+  "node_id": "80c6fe6b-80f1-4dfd-b14d-8877662406b3",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "80c6fe6b-80f1-4dfd-b14d-8877662406b3",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:03:16",
+  "finished_at": "2026-08-01 05:03:16",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {
+      "question": "中文 \"quote\" \\ path\nnext line",
+      "path": "template",
+      "query": "a b",
+      "header": "template-header"
+    }
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:03:16.776Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:03:16.777Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:03:16.778Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

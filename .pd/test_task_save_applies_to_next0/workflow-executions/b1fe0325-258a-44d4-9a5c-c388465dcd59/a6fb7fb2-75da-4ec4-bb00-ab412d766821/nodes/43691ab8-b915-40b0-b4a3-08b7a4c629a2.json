@@ -1,0 +1,51 @@
+{
+  "workflow_execution_id": "a6fb7fb2-75da-4ec4-bb00-ab412d766821",
+  "workflow_id": "b1fe0325-258a-44d4-9a5c-c388465dcd59",
+  "node_execution_id": "43691ab8-b915-40b0-b4a3-08b7a4c629a2",
+  "node_id": "36275c3b-6561-411f-b5bd-4c1adc2fc2b5",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "36275c3b-6561-411f-b5bd-4c1adc2fc2b5",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "string",
+        "source": "answer"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:08:12",
+  "finished_at": "2026-08-01 05:08:12",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "input": {},
+    "question": "changed",
+    "answer": "v2:changed"
+  },
+  "outputs": {
+    "answer": "v2:changed"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:08:12.144Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:08:12.146Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:08:12.148Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,28 @@
+{
+  "id": "fdd7a57b-890f-4772-8028-ca164af10e84",
+  "batch_execution_id": "4fdb4b7a-7918-424e-a9c7-fda154d60cec",
+  "case_id": "C-1",
+  "row_number": 1,
+  "call_number": 1,
+  "status": "SUCCESS",
+  "execution_status": "SUCCESS",
+  "verdict": "NOT_EVALUATED",
+  "evaluation": {
+    "verdict": "NOT_EVALUATED",
+    "rules": []
+  },
+  "source_values": {
+    "case_name": "C-1",
+    "question": "one"
+  },
+  "start_inputs": {
+    "question": "one"
+  },
+  "workflow_execution_ids": [
+    "a2841b33-fc97-4505-ac17-6b983ca80bc2"
+  ],
+  "created_at": "2026-08-01T00:15:30.845Z",
+  "started_at": "2026-08-01T00:15:30.853Z",
+  "finished_at": "2026-08-01T00:15:31.166Z",
+  "error": null
+}

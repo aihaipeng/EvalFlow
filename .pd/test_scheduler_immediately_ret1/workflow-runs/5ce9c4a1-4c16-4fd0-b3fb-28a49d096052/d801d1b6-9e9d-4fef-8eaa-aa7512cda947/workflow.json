@@ -1,0 +1,141 @@
+{
+  "id": "d801d1b6-9e9d-4fef-8eaa-aa7512cda947",
+  "workflow_id": "5ce9c4a1-4c16-4fd0-b3fb-28a49d096052",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "3273288d-4d90-4034-ba9c-6523ae45332c",
+    "case_run_id": "1eddc9af-de15-48d0-948a-7919d8621e4d",
+    "case_id": "C-1",
+    "row_number": 1
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "5ce9c4a1-4c16-4fd0-b3fb-28a49d096052",
+      "name": "Batch workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "e4767d5c-9af2-47a2-9865-73c83b226d0b",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "bad"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "b2ef334d-d376-4fc6-8153-cb63df596dc4",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "raise RuntimeError(\"service unavailable\")",
+          "execution": {
+            "timeout_seconds": 10.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "3638312f-32e2-48f8-bb1e-52682e0b64fe",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "99408376-c9ba-4fbb-a94b-f9a9ed3300c0",
+        "source_node_id": "e4767d5c-9af2-47a2-9865-73c83b226d0b",
+        "target_node_id": "b2ef334d-d376-4fc6-8153-cb63df596dc4"
+      },
+      {
+        "id": "a4561476-cbb6-47a7-8692-293cb3b918dc",
+        "source_node_id": "b2ef334d-d376-4fc6-8153-cb63df596dc4",
+        "target_node_id": "3638312f-32e2-48f8-bb1e-52682e0b64fe"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:08:18.332Z",
+  "started_at": "2026-07-31T21:08:18.334Z",
+  "finished_at": "2026-07-31T21:08:18.603Z",
+  "duration_ms": 270,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "e4767d5c-9af2-47a2-9865-73c83b226d0b",
+        "node_execution_id": "01c2e7f0-6225-4ac1-9bf0-0b2c38072819",
+        "committed_at": "2026-07-31T21:08:18.340Z",
+        "values": {
+          "input": {},
+          "question": "bad"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "bad"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "e4767d5c-9af2-47a2-9865-73c83b226d0b",
+      "node_execution_id": "01c2e7f0-6225-4ac1-9bf0-0b2c38072819",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "b2ef334d-d376-4fc6-8153-cb63df596dc4",
+      "node_execution_id": "ba2af642-fe77-4bae-ba66-772cc9eba6cb",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "3638312f-32e2-48f8-bb1e-52682e0b64fe",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: SCRIPT",
+    "details": {
+      "node_id": "b2ef334d-d376-4fc6-8153-cb63df596dc4",
+      "node_execution_id": "ba2af642-fe77-4bae-ba66-772cc9eba6cb"
+    }
+  }
+}

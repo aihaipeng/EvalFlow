@@ -1,0 +1,35 @@
+{
+  "id": "e8170c11-51d5-4628-b407-76ff738b01c2",
+  "name": "数据库测试集",
+  "description": "",
+  "columns": [
+    "question",
+    "expected"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "case-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "question": "hello",
+        "expected": "HELLO"
+      }
+    },
+    {
+      "id": "case-2",
+      "position": 1,
+      "call_number": 2,
+      "values": {
+        "question": "world",
+        "expected": "WORLD"
+      }
+    }
+  ],
+  "created_at": "2026-08-01T00:40:54.430+00:00",
+  "updated_at": "2026-08-01T00:40:54.430+00:00"
+}

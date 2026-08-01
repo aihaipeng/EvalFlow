@@ -2,24 +2,24 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8" />
-    <title>Agent Bench</title>
+    <title>EvalFlow</title>
     <link rel="icon" type="image/png" sizes="100x100" href="/assets/favicon.png" />
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/execution.css" />
+    <link rel="stylesheet" href="/style.css?v=892b54237f75" />
+    <link rel="stylesheet" href="/execution.css?v=7d6a25c51d99" />
     <link rel="stylesheet" href="/model-providers.css" />
-    <link rel="stylesheet" href="/assets/workflow-canvas.css" />
-    <link rel="stylesheet" href="/assets/test-sets.css?v=0bb45cbb7bad" />
 </head>
 <body>
     <div class="app-layout">
         <!-- 左侧竖栏 -->
         <nav class="sidebar">
-            <div class="sidebar-brand">Agent Bench</div>
+            <div class="sidebar-brand" aria-label="EvalFlow">
+                <span class="sidebar-brand-wordmark" aria-hidden="true"><span class="sidebar-brand-eval">Eval</span><span class="sidebar-brand-flow">Flow</span></span>
+            </div>
             <ul class="sidebar-nav">
-                <li class="sidebar-item active" data-view="sets"><span class="sidebar-icon" data-icon="database" aria-hidden="true"></span><span>测试集管理</span></li>
-                <li class="sidebar-item" data-view="models"><span class="sidebar-icon" data-icon="providers" aria-hidden="true"></span><span>供应商管理</span></li>
-                <li class="sidebar-item" data-view="workflows"><span class="sidebar-icon" data-icon="workflow" aria-hidden="true"></span><span>工作流管理</span></li>
-                <li class="sidebar-item" data-view="batch-runs"><span class="sidebar-icon" data-icon="runs" aria-hidden="true"></span><span>运行调度</span></li>
+                <li><button type="button" class="sidebar-item active" data-view="sets" data-feature-css="/assets/test-sets.css?v=c21a4a3adea8" data-feature-js="/assets/test-sets.js?v=a0030f1db450" aria-current="page"><span class="sidebar-icon" data-icon="database" aria-hidden="true"></span><span>测试集管理</span></button></li>
+                <li><button type="button" class="sidebar-item" data-view="models"><span class="sidebar-icon" data-icon="providers" aria-hidden="true"></span><span>供应商管理</span></button></li>
+                <li><button type="button" class="sidebar-item" data-view="workflows" data-feature-css="/assets/workflow-canvas.css?v=ad8e379dd245" data-feature-js="/assets/workflow-canvas.js?v=f713e5cc6181"><span class="sidebar-icon" data-icon="workflow" aria-hidden="true"></span><span>工作流管理</span></button></li>
+                <li><button type="button" class="sidebar-item" data-view="batch-runs"><span class="sidebar-icon" data-icon="runs" aria-hidden="true"></span><span>任务调度</span></button></li>
             </ul>
             <div class="sidebar-footer">
                 <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到黑夜模式" aria-pressed="false" title="切换到黑夜模式">
@@ -36,13 +36,11 @@
     </div>
 
     <!-- Toast -->
-    <div id="toast" class="toast hidden"></div>
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-relevant="additions"></div>
 
-    <script src="/assets/icons.js"></script>
+    <script src="/assets/icons.js?v=143c9e59fc5c"></script>
     <script src="/model-providers.js"></script>
     <script src="/app.js"></script>
-    <script src="/assets/test-sets.js?v=fa86667d92ca"></script>
-    <script src="/assets/workflow-canvas.js?v=98f63b3d01eb"></script>
-    <script src="/execution.js?v=79724d02c4cf"></script>
+    <script src="/execution.js?v=5d5025f0cd85"></script>
 </body>
 </html>

@@ -41,6 +41,20 @@ def test_dark_theme_uses_semantic_surfaces_for_selected_scope():
     assert ".theme-toggle" in style_css
 
 
+def test_sidebar_colors_follow_light_and_dark_themes():
+    style_css = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "--sidebar-bg: #ffffff;" in style_css
+    assert "--sidebar-bg: #172033;" in style_css
+    assert "--sidebar-active-bg: #eaf0ff;" in style_css
+    assert "--sidebar-active-bg: #284889;" in style_css
+    assert "background: var(--sidebar-bg);" in style_css
+    assert "color: var(--sidebar-text);" in style_css
+    assert "background: var(--sidebar-active-bg);" in style_css
+    assert "background: var(--sidebar-toggle-bg);" in style_css
+    assert "color: var(--sidebar-brand-flow);" in style_css
+
+
 def test_image_icon_buttons_use_transparent_theme_aware_interaction_states():
     style_css = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
 

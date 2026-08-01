@@ -1,0 +1,26 @@
+{
+  "id": "b34e7857-6a80-4d87-b212-ebc72b9cb6a2",
+  "batch_execution_id": "0e5bc218-32db-433f-a56d-b82ce4ff8406",
+  "case_id": "case-2",
+  "row_number": 2,
+  "call_number": 2,
+  "status": "QUEUED",
+  "execution_status": "NOT_STARTED",
+  "verdict": "NOT_EVALUATED",
+  "evaluation": {
+    "verdict": "NOT_EVALUATED",
+    "rules": []
+  },
+  "source_values": {
+    "question": "world",
+    "expected": "WORLD"
+  },
+  "start_inputs": {
+    "question": "world"
+  },
+  "workflow_execution_ids": [],
+  "created_at": "2026-08-01T00:15:21.595Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": null
+}

@@ -1,0 +1,42 @@
+{
+  "id": "4b7797d1-39ef-484d-a7e3-a15dbe00da65",
+  "batch_execution_id": "b5096944-2fc3-4618-bf67-eeb596d4b3c3",
+  "case_id": "C-1",
+  "row_number": 1,
+  "call_number": 1,
+  "status": "FAILED",
+  "execution_status": "SUCCESS",
+  "verdict": "FAIL",
+  "evaluation": {
+    "verdict": "FAIL",
+    "rules": [
+      {
+        "name": "",
+        "result_path": "context.answer",
+        "operator": "EQ",
+        "expected_value": "DIFFERENT",
+        "type": "string",
+        "actual": "GOOD",
+        "expected": "DIFFERENT",
+        "status": "FAIL",
+        "message": "实际值不符合预期"
+      }
+    ]
+  },
+  "source_values": {
+    "case_name": "C-1",
+    "question": "good"
+  },
+  "start_inputs": {
+    "question": "good"
+  },
+  "workflow_execution_ids": [
+    "b6f9a212-9033-47ce-9ddf-ad854702c6e0",
+    "57c5d4ca-43dc-411c-85b1-d9367f04ce42",
+    "c0ef7e92-2e82-4370-88bb-aaa8ac549e54"
+  ],
+  "created_at": "2026-08-01T00:15:27.461Z",
+  "started_at": "2026-08-01T00:15:27.468Z",
+  "finished_at": "2026-08-01T00:15:28.466Z",
+  "error": null
+}

@@ -1,0 +1,152 @@
+{
+  "id": "e6256b9e-c203-44a5-b6db-f343bb0d1f8c",
+  "workflow_id": "f6d46641-e4b9-4f5e-bd93-4d6e75386b4d",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "892910c6-f950-4374-91bb-ccf0993021ac",
+    "case_run_id": "eb2c612f-9c84-4dc2-bb4b-06818571cd88",
+    "case_id": "case-1",
+    "row_number": 1
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "f6d46641-e4b9-4f5e-bd93-4d6e75386b4d",
+      "name": "Reusable Workflow v2",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "375c8a7f-16a2-401f-b2e9-ec4b3ba526a8",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "changed"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "16a719ad-5ef5-4832-900e-d3443736249f",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = \"v2:\" + context[\"question\"]",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "be5bf851-2efd-48f8-8415-e75012cdc06d",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "3d4ef880-110a-4a16-8131-f6b8fc8d7ea4",
+        "source_node_id": "375c8a7f-16a2-401f-b2e9-ec4b3ba526a8",
+        "target_node_id": "16a719ad-5ef5-4832-900e-d3443736249f"
+      },
+      {
+        "id": "5fde3fb3-7e97-4e00-b6be-8f3e315845c5",
+        "source_node_id": "16a719ad-5ef5-4832-900e-d3443736249f",
+        "target_node_id": "be5bf851-2efd-48f8-8415-e75012cdc06d"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:57:46.781Z",
+  "started_at": "2026-07-31T20:57:46.783Z",
+  "finished_at": "2026-07-31T20:57:47.092Z",
+  "duration_ms": 308,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "375c8a7f-16a2-401f-b2e9-ec4b3ba526a8",
+        "node_execution_id": "12d83c3a-e023-4743-b95c-57de0132fbab",
+        "committed_at": "2026-07-31T20:57:46.792Z",
+        "values": {
+          "input": {},
+          "question": "changed"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "16a719ad-5ef5-4832-900e-d3443736249f",
+        "node_execution_id": "1c459106-d660-4ec0-af40-8896ff06473c",
+        "committed_at": "2026-07-31T20:57:47.074Z",
+        "values": {
+          "answer": "v2:changed"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "changed",
+      "answer": "v2:changed"
+    }
+  },
+  "result": {
+    "answer": "v2:changed"
+  },
+  "nodes": [
+    {
+      "node_id": "375c8a7f-16a2-401f-b2e9-ec4b3ba526a8",
+      "node_execution_id": "12d83c3a-e023-4743-b95c-57de0132fbab",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "16a719ad-5ef5-4832-900e-d3443736249f",
+      "node_execution_id": "1c459106-d660-4ec0-af40-8896ff06473c",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "be5bf851-2efd-48f8-8415-e75012cdc06d",
+      "node_execution_id": "3e3b4955-b6fd-4d8e-a8ce-867b07a1c34f",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

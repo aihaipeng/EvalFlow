@@ -1,0 +1,239 @@
+{
+  "workflow_execution_id": "242dfa79-0687-4576-b6ae-3af00d3134b5",
+  "workflow_id": "2d7d7dee-fdbd-428d-8916-da0fb0fc5b52",
+  "node_execution_id": "33908c56-5ebf-4a99-88e9-04fa73b552e5",
+  "node_id": "7767fd05-ae46-4a33-b605-df5b42ba8152",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "7767fd05-ae46-4a33-b605-df5b42ba8152",
+    "type": "HTTP",
+    "name": "本机查询",
+    "description": "",
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:55740/items",
+      "follow_redirects": true,
+      "headers": [],
+      "params": [
+        {
+          "key": "wanted",
+          "value": "${lookup_id}"
+        }
+      ],
+      "body": {
+        "type": "none",
+        "content": null,
+        "template_text": null
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "DIRECT",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": true
+    },
+    "response": {
+      "mode": "AUTO",
+      "success_statuses": [
+        "200-299"
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        500,
+        502,
+        503,
+        504
+      ]
+    },
+    "outputs": [
+      {
+        "name": "selected_name",
+        "type": "string",
+        "source": "response.body.data[id==3].name"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:58:16",
+  "finished_at": "2026-08-01 04:58:16",
+  "duration_ms": 318,
+  "attempt_count": 1,
+  "inputs": {
+    "lookup_id": 3
+  },
+  "outputs": {
+    "selected_name": "three"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:16.259Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:16.263Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:58:16.577Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "network": {
+    "proxy": {
+      "mode": "DIRECT",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": true
+  },
+  "request": {
+    "method": "GET",
+    "url": "http://127.0.0.1:55740/items?wanted=3",
+    "headers": [
+      {
+        "key": "host",
+        "value": "127.0.0.1:55740"
+      },
+      {
+        "key": "accept",
+        "value": "*/*"
+      },
+      {
+        "key": "accept-encoding",
+        "value": "gzip, deflate, zstd"
+      },
+      {
+        "key": "connection",
+        "value": "keep-alive"
+      },
+      {
+        "key": "user-agent",
+        "value": "python-httpx/0.28.1"
+      }
+    ],
+    "body_type": "none",
+    "body": null
+  },
+  "redirects": [],
+  "response": {
+    "status_code": 200,
+    "headers": [
+      {
+        "key": "server",
+        "value": "BaseHTTP/0.6 Python/3.14.6"
+      },
+      {
+        "key": "date",
+        "value": "Fri, 31 Jul 2026 20:58:16 GMT"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      },
+      {
+        "key": "content-length",
+        "value": "64"
+      }
+    ],
+    "body_type": "JSON",
+    "body": {
+      "data": [
+        {
+          "id": 2,
+          "name": "two"
+        },
+        {
+          "id": 3,
+          "name": "three"
+        }
+      ]
+    }
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "SUCCESS",
+      "started_at": "2026-08-01 04:58:16",
+      "finished_at": "2026-08-01 04:58:16",
+      "duration_ms": 312,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:55740/items?wanted=3",
+        "headers": [
+          {
+            "key": "host",
+            "value": "127.0.0.1:55740"
+          },
+          {
+            "key": "accept",
+            "value": "*/*"
+          },
+          {
+            "key": "accept-encoding",
+            "value": "gzip, deflate, zstd"
+          },
+          {
+            "key": "connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "user-agent",
+            "value": "python-httpx/0.28.1"
+          }
+        ],
+        "body_type": "none",
+        "body": null
+      },
+      "redirects": [],
+      "response": {
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "server",
+            "value": "BaseHTTP/0.6 Python/3.14.6"
+          },
+          {
+            "key": "date",
+            "value": "Fri, 31 Jul 2026 20:58:16 GMT"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json"
+          },
+          {
+            "key": "content-length",
+            "value": "64"
+          }
+        ],
+        "body_type": "JSON",
+        "body": {
+          "data": [
+            {
+              "id": 2,
+              "name": "two"
+            },
+            {
+              "id": 3,
+              "name": "three"
+            }
+          ]
+        }
+      },
+      "error": null
+    }
+  ]
+}

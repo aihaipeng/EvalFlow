@@ -1,0 +1,152 @@
+{
+  "id": "aae09a1b-142e-4e45-9a39-d149ac3bd5f8",
+  "workflow_id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "ce8a9d53-7705-45d7-8530-21690cd94b13",
+    "case_run_id": "f68df34e-7871-4bea-ba68-a5ee36d9ce27",
+    "case_id": "case-1",
+    "row_number": 1
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "715a4cbe-a591-44de-84b4-b77d7be68183",
+      "name": "Slow Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "hello"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "import time\ntime.sleep(1)\nresult = context[\"question\"]",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "7715e9a2-be2b-42b4-a7d4-98e45d8cc08b",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "dc5dfe5d-468c-40b7-af68-91080f0a7869",
+        "source_node_id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+        "target_node_id": "55132a0a-83e4-48a4-9397-8e451af618ba"
+      },
+      {
+        "id": "68f3ba56-e8f3-4319-a11c-15d7cf5eac14",
+        "source_node_id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+        "target_node_id": "7715e9a2-be2b-42b4-a7d4-98e45d8cc08b"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:16:39.332Z",
+  "started_at": "2026-07-31T21:16:39.336Z",
+  "finished_at": "2026-07-31T21:16:40.651Z",
+  "duration_ms": 1316,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+        "node_execution_id": "1b939c85-cbbe-4da8-b20b-8975b80c33f3",
+        "committed_at": "2026-07-31T21:16:39.343Z",
+        "values": {
+          "input": {},
+          "question": "hello"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+        "node_execution_id": "63bea4f7-6c9a-4a11-ba0a-86b6f8a2e630",
+        "committed_at": "2026-07-31T21:16:40.639Z",
+        "values": {
+          "answer": "hello"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "hello",
+      "answer": "hello"
+    }
+  },
+  "result": {
+    "answer": "hello"
+  },
+  "nodes": [
+    {
+      "node_id": "caf7dddc-f415-4768-a7d8-68fc1ec2ee52",
+      "node_execution_id": "1b939c85-cbbe-4da8-b20b-8975b80c33f3",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "55132a0a-83e4-48a4-9397-8e451af618ba",
+      "node_execution_id": "63bea4f7-6c9a-4a11-ba0a-86b6f8a2e630",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "7715e9a2-be2b-42b4-a7d4-98e45d8cc08b",
+      "node_execution_id": "bca0c931-3d30-4892-bfaa-3cf625aad0bc",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

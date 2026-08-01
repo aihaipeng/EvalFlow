@@ -1,0 +1,141 @@
+{
+  "id": "e4ce51fc-5a4b-4dbe-a11b-a4ca3b42d2d1",
+  "workflow_id": "7853458b-bb7d-42b1-b680-17677dd6f2c2",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "7853458b-bb7d-42b1-b680-17677dd6f2c2",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "b2b1fba2-15f1-4d3d-9139-dd604141d701",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "1482561c-dc4a-4ea2-9a0b-79cf69ba5641",
+          "type": "HTTP",
+          "name": "空白 HTTP",
+          "description": "",
+          "request": {
+            "method": "POST",
+            "url": "",
+            "follow_redirects": true,
+            "headers": [],
+            "params": [],
+            "body": {
+              "type": "none",
+              "content": null,
+              "template_text": null
+            }
+          },
+          "network": {
+            "proxy": {
+              "mode": "SYSTEM",
+              "url": null,
+              "username": null,
+              "password": null
+            },
+            "verify_ssl": true
+          },
+          "response": {
+            "mode": "AUTO",
+            "success_statuses": [
+              "200-299"
+            ]
+          },
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0,
+            "retry_non_idempotent": false,
+            "retry_statuses": [
+              408,
+              429,
+              500,
+              502,
+              503,
+              504
+            ]
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "1c3bce0d-19b8-4537-83f8-74dd1b00763c",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "7cc4d5bf-4077-4e6f-8415-5f40ce646011",
+        "source_node_id": "b2b1fba2-15f1-4d3d-9139-dd604141d701",
+        "target_node_id": "1482561c-dc4a-4ea2-9a0b-79cf69ba5641"
+      },
+      {
+        "id": "5d875297-9746-415b-a2d7-9ccee9e27056",
+        "source_node_id": "1482561c-dc4a-4ea2-9a0b-79cf69ba5641",
+        "target_node_id": "1c3bce0d-19b8-4537-83f8-74dd1b00763c"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:12.155Z",
+  "started_at": "2026-07-31T21:03:12.158Z",
+  "finished_at": "2026-07-31T21:03:12.172Z",
+  "duration_ms": 14,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "b2b1fba2-15f1-4d3d-9139-dd604141d701",
+      "node_execution_id": "f1e71a3b-5aa2-413a-8e07-e86911c41a8a",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "1482561c-dc4a-4ea2-9a0b-79cf69ba5641",
+      "node_execution_id": "9d58b0da-b00d-433a-97e3-5c4a153cc314",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "1c3bce0d-19b8-4537-83f8-74dd1b00763c",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 空白 HTTP",
+    "details": {
+      "node_id": "1482561c-dc4a-4ea2-9a0b-79cf69ba5641",
+      "node_execution_id": "9d58b0da-b00d-433a-97e3-5c4a153cc314"
+    }
+  }
+}

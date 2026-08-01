@@ -1,0 +1,152 @@
+{
+  "id": "fa87c97c-c24b-48b4-abbd-389a02e5ebce",
+  "workflow_id": "dd736360-eb6a-4653-94a6-1b75e2802e73",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "6219c044-2cbf-4dab-9aa3-fb4be7dbd0ed",
+    "case_run_id": "500fec58-01fe-4bf5-b7a7-afd960a46367",
+    "case_id": "case-1",
+    "row_number": 1
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "dd736360-eb6a-4653-94a6-1b75e2802e73",
+      "name": "Slow Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "4ea2d831-0241-4943-a534-3eac7f90b5e6",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "hello"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "5f7fb83e-c446-4ea3-b8d2-49a43b1f73a4",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "import time\ntime.sleep(1)\nresult = context[\"question\"]",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "43c3a41e-e175-4f7d-b6a5-3bd936d4a7d0",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "5bcaf9cc-3531-4c3e-95ac-a0a638522305",
+        "source_node_id": "4ea2d831-0241-4943-a534-3eac7f90b5e6",
+        "target_node_id": "5f7fb83e-c446-4ea3-b8d2-49a43b1f73a4"
+      },
+      {
+        "id": "13fc27f3-434f-4c6f-873c-c7f51b7dfe02",
+        "source_node_id": "5f7fb83e-c446-4ea3-b8d2-49a43b1f73a4",
+        "target_node_id": "43c3a41e-e175-4f7d-b6a5-3bd936d4a7d0"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:21:01.255Z",
+  "started_at": "2026-07-31T21:21:01.258Z",
+  "finished_at": "2026-07-31T21:21:02.541Z",
+  "duration_ms": 1284,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "4ea2d831-0241-4943-a534-3eac7f90b5e6",
+        "node_execution_id": "82084fd3-fee5-4d99-931a-3b62d415f5a8",
+        "committed_at": "2026-07-31T21:21:01.265Z",
+        "values": {
+          "input": {},
+          "question": "hello"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "5f7fb83e-c446-4ea3-b8d2-49a43b1f73a4",
+        "node_execution_id": "49b3f161-4877-4321-8469-094b22edf675",
+        "committed_at": "2026-07-31T21:21:02.530Z",
+        "values": {
+          "answer": "hello"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "hello",
+      "answer": "hello"
+    }
+  },
+  "result": {
+    "answer": "hello"
+  },
+  "nodes": [
+    {
+      "node_id": "4ea2d831-0241-4943-a534-3eac7f90b5e6",
+      "node_execution_id": "82084fd3-fee5-4d99-931a-3b62d415f5a8",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "5f7fb83e-c446-4ea3-b8d2-49a43b1f73a4",
+      "node_execution_id": "49b3f161-4877-4321-8469-094b22edf675",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "43c3a41e-e175-4f7d-b6a5-3bd936d4a7d0",
+      "node_execution_id": "c072abfb-c3fa-4831-aae4-625427d6f145",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,152 @@
+{
+  "id": "49ed1ee6-411b-4935-ac65-1957b5c08701",
+  "workflow_id": "42b466b3-c65f-4213-b459-067fb4f15b34",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "3098604e-1a4c-4551-a9a7-d936fd6fb62b",
+    "case_run_id": "0269504b-a571-4998-885b-d96c9ef35c3a",
+    "case_id": "case-2",
+    "row_number": 2
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "42b466b3-c65f-4213-b459-067fb4f15b34",
+      "name": "Batch API Workflow",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "762ef723-f18a-4096-8cab-04ab2572f737",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "world"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "3859bb5e-48c8-48ad-9cac-b58dae739f62",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = context[\"question\"].upper()",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "87f6316a-fe2f-4bdc-bf6c-524b4a3e8f48",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "b9499a7b-af35-4ac1-ac45-2b51e84e6919",
+        "source_node_id": "762ef723-f18a-4096-8cab-04ab2572f737",
+        "target_node_id": "3859bb5e-48c8-48ad-9cac-b58dae739f62"
+      },
+      {
+        "id": "a87eb7a5-ecb3-45b8-b6b8-85e3a222a457",
+        "source_node_id": "3859bb5e-48c8-48ad-9cac-b58dae739f62",
+        "target_node_id": "87f6316a-fe2f-4bdc-bf6c-524b4a3e8f48"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:08:14.074Z",
+  "started_at": "2026-07-31T21:08:14.076Z",
+  "finished_at": "2026-07-31T21:08:14.359Z",
+  "duration_ms": 283,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "762ef723-f18a-4096-8cab-04ab2572f737",
+        "node_execution_id": "ac818ebb-37e3-4727-92ee-35d59638b72a",
+        "committed_at": "2026-07-31T21:08:14.083Z",
+        "values": {
+          "input": {},
+          "question": "world"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "3859bb5e-48c8-48ad-9cac-b58dae739f62",
+        "node_execution_id": "4cc22f87-5d22-4823-bd6c-e8d3452e545f",
+        "committed_at": "2026-07-31T21:08:14.348Z",
+        "values": {
+          "answer": "WORLD"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "world",
+      "answer": "WORLD"
+    }
+  },
+  "result": {
+    "answer": "WORLD"
+  },
+  "nodes": [
+    {
+      "node_id": "762ef723-f18a-4096-8cab-04ab2572f737",
+      "node_execution_id": "ac818ebb-37e3-4727-92ee-35d59638b72a",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "3859bb5e-48c8-48ad-9cac-b58dae739f62",
+      "node_execution_id": "4cc22f87-5d22-4823-bd6c-e8d3452e545f",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "87f6316a-fe2f-4bdc-bf6c-524b4a3e8f48",
+      "node_execution_id": "5fc97d86-eae6-4f7a-884c-41b74fc0e968",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}

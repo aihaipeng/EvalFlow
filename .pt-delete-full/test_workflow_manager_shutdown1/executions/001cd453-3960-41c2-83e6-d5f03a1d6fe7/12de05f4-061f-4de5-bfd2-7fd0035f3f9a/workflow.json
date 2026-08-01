@@ -1,0 +1,109 @@
+{
+  "id": "12de05f4-061f-4de5-bfd2-7fd0035f3f9a",
+  "workflow_id": "001cd453-3960-41c2-83e6-d5f03a1d6fe7",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "INTERRUPTED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "001cd453-3960-41c2-83e6-d5f03a1d6fe7",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "02c5554a-09b3-45a7-a8ec-99f39dc0d4cd",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "10c416e3-073d-4a6c-b26b-dc165adf421a",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "import time\ntime.sleep(30)\nresult = 'late'",
+          "execution": {
+            "timeout_seconds": 60.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "result",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "77bee2f0-8c47-455a-8913-a0e0eb3236d7",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "6b6d1e9a-74d8-4dd8-b865-678c17c656fb",
+        "source_node_id": "02c5554a-09b3-45a7-a8ec-99f39dc0d4cd",
+        "target_node_id": "10c416e3-073d-4a6c-b26b-dc165adf421a"
+      },
+      {
+        "id": "da4d272b-eb5c-48db-87fc-4bb6fd041b57",
+        "source_node_id": "10c416e3-073d-4a6c-b26b-dc165adf421a",
+        "target_node_id": "77bee2f0-8c47-455a-8913-a0e0eb3236d7"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:03:14.104Z",
+  "started_at": "2026-07-31T21:03:14.105Z",
+  "finished_at": "2026-07-31T21:03:14.384Z",
+  "duration_ms": 278,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "02c5554a-09b3-45a7-a8ec-99f39dc0d4cd",
+      "node_execution_id": "efd1674e-e4e4-4055-913c-6cf4ecc5c8e4",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "10c416e3-073d-4a6c-b26b-dc165adf421a",
+      "node_execution_id": "e9174a1a-773a-4c8e-8fce-c71c01337796",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "77bee2f0-8c47-455a-8913-a0e0eb3236d7",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "GLOBAL_INTERRUPTED"
+    }
+  ],
+  "error": {
+    "code": "USER_INTERRUPTED",
+    "message": "用户中断 Workflow",
+    "details": null
+  }
+}

@@ -66,14 +66,34 @@ class WorkflowApplicationService:
                 "Workflow 存在活动 Execution，请先全局中断并等待终态"
             )
 
-        staged = self.manager.store.stage_workflow_root_deletion(workflow_id)
+        try:
+            staged = self.manager.store.stage_workflow_root_deletion(workflow_id)
+        except (OSError, WorkflowExecutionError):
+            staged = None
         try:
             deleted = self.repository.delete(workflow_id)
         except Exception:
-            self.manager.store.restore_workflow_root_deletion(workflow_id, staged)
+            try:
+                self.manager.store.restore_workflow_root_deletion(workflow_id, staged)
+            except (OSError, WorkflowExecutionError) as exc:
+                raise WorkflowApplicationConflictError(
+                    "Workflow 删除失败，且 Execution 目录恢复失败，请重启服务后重试"
+                ) from exc
             raise
         if not deleted:
-            self.manager.store.restore_workflow_root_deletion(workflow_id, staged)
+            try:
+                self.manager.store.restore_workflow_root_deletion(workflow_id, staged)
+            except (OSError, WorkflowExecutionError) as exc:
+                raise WorkflowApplicationConflictError(
+                    "Workflow 删除失败，且 Execution 目录恢复失败，请重启服务后重试"
+                ) from exc
             raise WorkflowApplicationNotFoundError(f"Workflow 不存在: {workflow_id}")
-        self.manager.store.finalize_workflow_root_deletion(staged)
+        try:
+            if staged is None:
+                self.manager.store.delete_workflow_root(workflow_id)
+            else:
+                self.manager.store.finalize_workflow_root_deletion(staged)
+                self.manager.store.delete_archived_workflow(workflow_id)
+        except (OSError, WorkflowExecutionError):
+            pass
         return current

@@ -2,20 +2,29 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
 from execution import (
     DEFAULT_ANTHROPIC_MAX_TOKENS,
     anthropic_messages_url,
     build_anthropic_request,
     build_chat_completion_request,
+    build_model_request,
+    build_responses_request,
     chat_completions_url,
     deep_merge_model_request,
     extract_streaming_usage,
     invoke_anthropic,
     invoke_openai_compatible,
+    invoke_openai_responses,
+    model_inference_url,
     model_http_client_options,
+    model_protocol_headers,
     parse_anthropic_response,
+    parse_model_payload,
     parse_openai_compatible_response,
+    parse_openai_responses_response,
+    responses_url,
 )
 
 
@@ -96,6 +105,126 @@ def test_chat_completions_url_preserves_gateway_base_path():
     assert chat_completions_url(
         "https://gateway.example/v1/chat/completions"
     ) == "https://gateway.example/v1/chat/completions"
+
+
+def test_responses_request_and_url_use_native_contract():
+    request = build_responses_request(
+        model_name="gpt-5",
+        messages=[{"role": "user", "content": "hello"}],
+        model_defaults={
+            "reasoning": {"effort": "medium"},
+            "temperature": 0.2,
+            "max_output_tokens": 512,
+        },
+        model_parameters={
+            "reasoning": {"summary": "auto"},
+            "max_output_tokens": 256,
+        },
+    )
+
+    assert request == {
+        "model": "gpt-5",
+        "input": [{"role": "user", "content": "hello"}],
+        "stream": False,
+        "reasoning": {"effort": "medium", "summary": "auto"},
+        "temperature": 0.2,
+        "max_output_tokens": 256,
+    }
+    assert "messages" not in request
+    assert responses_url("https://api.openai.com/v1") == (
+        "https://api.openai.com/v1/responses"
+    )
+    assert responses_url("https://gateway.example/v1/responses") == (
+        "https://gateway.example/v1/responses"
+    )
+    assert responses_url("https://gateway.example/v1/chat/completions") == (
+        "https://gateway.example/v1/responses"
+    )
+
+
+def test_protocol_urls_normalize_other_protocol_endpoints():
+    assert chat_completions_url("https://gateway.example/v1/responses") == (
+        "https://gateway.example/v1/chat/completions"
+    )
+    assert anthropic_messages_url(
+        "https://gateway.example/v1/chat/completions"
+    ) == "https://gateway.example/v1/messages"
+    assert responses_url("https://gateway.example/v1/messages") == (
+        "https://gateway.example/v1/responses"
+    )
+
+
+@pytest.mark.parametrize(
+    ("protocol", "parameters", "field"),
+    [
+        ("OPENAI_COMPATIBLE", {"input": "wrong"}, "input"),
+        ("OPENAI_RESPONSES", {"messages": []}, "messages"),
+        ("ANTHROPIC", {"response_format": {"type": "json_object"}}, "response_format"),
+    ],
+)
+def test_protocol_request_rejects_fields_from_other_protocols(
+    protocol, parameters, field
+):
+    with pytest.raises(ValueError, match=field):
+        build_model_request(
+            protocol,
+            model_name="model",
+            messages=[{"role": "user", "content": "hello"}],
+            model_parameters=parameters,
+        )
+
+
+@pytest.mark.parametrize(
+    ("protocol", "url_suffix", "request_field", "payload", "expected_output"),
+    [
+        (
+            "OPENAI_COMPATIBLE",
+            "/chat/completions",
+            "messages",
+            {"choices": [{"message": {"content": "chat"}}]},
+            "chat",
+        ),
+        (
+            "OPENAI_RESPONSES",
+            "/responses",
+            "input",
+            {"status": "completed", "output_text": "responses"},
+            "responses",
+        ),
+        (
+            "ANTHROPIC",
+            "/messages",
+            "messages",
+            {"content": [{"type": "text", "text": "claude"}]},
+            "claude",
+        ),
+    ],
+)
+def test_protocol_adapter_contract_matrix(
+    protocol, url_suffix, request_field, payload, expected_output
+):
+    request = build_model_request(
+        protocol,
+        model_name="model",
+        messages=[
+            {"role": "system", "content": "policy"},
+            {"role": "user", "content": "hello"},
+        ],
+    )
+    headers = model_protocol_headers(protocol, "secret")
+
+    assert model_inference_url(
+        protocol, "https://gateway.example/v1/chat/completions"
+    ).endswith(url_suffix)
+    assert request_field in request
+    assert parse_model_payload(protocol, payload)["output"] == expected_output
+    if protocol == "ANTHROPIC":
+        assert request["system"] == "policy"
+        assert "authorization" not in headers
+        assert headers["x-api-key"] == "secret"
+    else:
+        assert headers["authorization"] == "Bearer secret"
+        assert "x-api-key" not in headers
 
 
 def test_anthropic_request_uses_required_default_and_user_overrides():
@@ -237,6 +366,68 @@ def test_openai_compatible_transport_forwards_body_without_parameter_translation
             "enable_thinking": True,
             "vendor_extension": {"level": "high"},
         },
+    }
+
+
+def test_openai_responses_transport_and_parser_keep_native_contract():
+    captured = {}
+    native_response = {
+        "id": "resp_1",
+        "object": "response",
+        "status": "completed",
+        "output": [
+            {
+                "type": "reasoning",
+                "content": [
+                    {"type": "reasoning_text", "text": "internal reasoning"}
+                ],
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {"type": "output_text", "text": "model "},
+                    {"type": "output_text", "text": "ready"},
+                ],
+            }
+        ],
+        "usage": {"input_tokens": 9, "output_tokens": 3, "total_tokens": 12},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers["authorization"]
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=native_response)
+
+    async def invoke():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await invoke_openai_responses(
+                base_url="https://gateway.example/v1/chat/completions",
+                api_key="responses-secret",
+                request_body={
+                    "model": "gpt-5",
+                    "input": [{"role": "user", "content": "check"}],
+                    "reasoning": {"effort": "low"},
+                },
+                client=client,
+            )
+
+    response = asyncio.run(invoke())
+
+    assert captured == {
+        "url": "https://gateway.example/v1/responses",
+        "authorization": "Bearer responses-secret",
+        "body": {
+            "model": "gpt-5",
+            "input": [{"role": "user", "content": "check"}],
+            "reasoning": {"effort": "low"},
+        },
+    }
+    assert parse_openai_responses_response(response) == {
+        "output": "model ready",
+        "usage": {"input_tokens": 9, "output_tokens": 3, "total_tokens": 12},
+        "finish_reason": "completed",
     }
 
 

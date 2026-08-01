@@ -1,0 +1,58 @@
+{
+  "workflow_execution_id": "98452f45-09e8-4571-bba5-a6da3a8c66f0",
+  "workflow_id": "542d5d93-cedc-4a2f-83d1-a40babef5146",
+  "node_execution_id": "1915603d-ff7e-4f4d-89a5-89e4d66bdcfd",
+  "node_id": "531290f0-986f-4037-a0da-5839a4fe5093",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "531290f0-986f-4037-a0da-5839a4fe5093",
+    "type": "END",
+    "name": "END",
+    "description": "",
+    "outputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "source": "agent_answer.text"
+      },
+      {
+        "name": "score",
+        "type": "number",
+        "source": "agent_answer.score"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:58:11",
+  "finished_at": "2026-08-01 04:58:11",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "agent_answer": {
+      "text": "通过",
+      "score": 0.95
+    }
+  },
+  "outputs": {
+    "text": "通过",
+    "score": 0.95
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:11.708Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:11.710Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:58:11.712Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

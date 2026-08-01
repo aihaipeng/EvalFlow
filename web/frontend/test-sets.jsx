@@ -1,13 +1,13 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, Eraser, Eye, FileUp, Info, LayoutGrid, Plus, RefreshCw, Save, Search, Settings2, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, Eraser, FileText, FileUp, Info, LayoutGrid, Pencil, Plus, RefreshCw, Save, Search, Settings2, Trash2, X } from "lucide-react";
 import { Workbook } from "@fortune-sheet/react";
 import * as XLSX from "xlsx";
 import "@fortune-sheet/react/dist/index.css";
 import "./test-sets.css";
 
 const PAGE_SIZE = 20;
-const CASE_PAGE_SIZE = 50;
+const CASE_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 async function request(url, options = {}) {
@@ -29,6 +29,41 @@ async function request(url, options = {}) {
 
 function toast(message, type = "success") {
   if (typeof window.showToast === "function") window.showToast(message, type);
+}
+
+const MODAL_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function useModalAccessibility(onClose) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const returnFocus = document.activeElement;
+    if (!dialog) return undefined;
+    const focusable = () => Array.from(dialog.querySelectorAll(MODAL_FOCUSABLE)).filter((element) => element.offsetParent !== null);
+    (focusable()[0] || dialog).focus();
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const elements = focusable();
+      if (!elements.length) { event.preventDefault(); dialog.focus(); return; }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    dialog.addEventListener("keydown", handleKeyDown);
+    return () => {
+      dialog.removeEventListener("keydown", handleKeyDown);
+      if (returnFocus?.isConnected) returnFocus.focus();
+    };
+  }, []);
+  return dialogRef;
 }
 
 function makeId(prefix) {
@@ -174,8 +209,29 @@ function Metrics({ items }) {
   return <div className="ts-metrics">{items.map(([key, value]) => <article key={key}><span>{key}</span><strong>{value}</strong></article>)}</div>;
 }
 
-function PageControls({ total, unit, page, pages, pageSize, onPageChange, onPageSizeChange }) {
-  return <div className="ts-footer"><div className="ts-page-summary"><span>共 {total} {unit}</span><label>每页<select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))}>{PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size} 条</option>)}</select></label></div><div className="ts-pagination"><button aria-label="上一页" title="上一页" disabled={page <= 1} onClick={() => onPageChange(page - 1)}><ChevronLeft className="ui-icon" /></button><span>{page} / {pages}</span><button aria-label="下一页" title="下一页" disabled={page >= pages} onClick={() => onPageChange(page + 1)}><ChevronRight className="ui-icon" /></button></div></div>;
+function PageControls({ total, unit, page, pages, pageSize, onPageChange, onPageSizeChange, management = false }) {
+  const footerClass = management ? "global-list-footer management-list-footer" : "ts-footer";
+  const summaryClass = management ? "global-page-summary" : "ts-page-summary";
+  const paginationClass = management ? "global-pagination" : "ts-pagination";
+  return <div className={footerClass}><div className={summaryClass}><span>共 {total} {unit}</span><label>每页<select className={management ? "input global-page-size" : undefined} value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))}>{PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{management ? size : `${size} 条`}</option>)}</select></label></div><div className={paginationClass}><button aria-label="上一页" title="上一页" disabled={page <= 1} onClick={() => onPageChange(page - 1)}><ChevronLeft className="ui-icon" /></button><span>{page} / {pages}</span><button aria-label="下一页" title="下一页" disabled={page >= pages} onClick={() => onPageChange(page + 1)}><ChevronRight className="ui-icon" /></button></div></div>;
+}
+
+function ConfirmModal({ title, message, detail, confirmLabel = "确认", danger = false, onClose, onConfirm }) {
+  const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useModalAccessibility(onClose);
+
+  async function confirm() {
+    setSubmitting(true);
+    const shouldClose = await onConfirm();
+    if (shouldClose !== false) onClose();
+    else setSubmitting(false);
+  }
+
+  return <div className="ts-modal-layer ts-confirm-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={submitting ? undefined : onClose} /><div className="ts-modal ts-confirm-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-confirm-modal-title" tabIndex={-1}>
+    <header><h2 id="ts-confirm-modal-title">{title}</h2><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" disabled={submitting} onClick={onClose}><X className="ui-icon" /></button></header>
+    <div className="ts-modal-body"><p>{message}</p>{detail && <p className="ts-confirm-detail">{detail}</p>}</div>
+    <footer><button className="ts-btn secondary" disabled={submitting} onClick={onClose}>取消</button><button className={`ts-btn ${danger ? "danger" : "primary"}`} disabled={submitting} onClick={confirm}>{danger && <Trash2 className="ui-icon" />}{submitting ? "处理中…" : confirmLabel}</button></footer>
+  </div></div>;
 }
 
 function ListView({ onCreate, onOpen }) {
@@ -184,44 +240,61 @@ function ListView({ onCreate, onOpen }) {
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [state, setState] = useState({ items: [], metrics: {}, total: 0 });
   const [loading, setLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const initialQueryEffect = useRef(true);
+  const loadRequestId = useRef(0);
 
   async function load(nextPage = page, nextQuery = query, nextPageSize = pageSize) {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const payload = await request(`/api/test-sets?page=${nextPage}&page_size=${nextPageSize}&name_query=${encodeURIComponent(nextQuery)}`);
+      if (requestId !== loadRequestId.current) return;
       setState(payload);
     } catch (error) {
-      toast(`加载测试集失败：${error.message}`, "error");
-    } finally { setLoading(false); }
+      if (requestId === loadRequestId.current) toast(`加载测试集失败：${error.message}`, "error");
+    } finally {
+      if (requestId === loadRequestId.current) setLoading(false);
+    }
   }
 
   useEffect(() => { load(page, query, pageSize); }, [page, pageSize]);
   useEffect(() => {
-    const timer = setTimeout(() => { setPage(1); load(1, query, pageSize); }, 250);
+    if (initialQueryEffect.current) {
+      initialQueryEffect.current = false;
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      if (page === 1) load(1, query, pageSize);
+      else setPage(1);
+    }, 250);
     return () => clearTimeout(timer);
-  }, [query, pageSize]);
+  }, [query]);
 
-  async function remove(item) {
-    if (!window.confirm(`确定删除测试集“${item.name}”吗？此操作不可恢复。`)) return;
+  async function confirmRemove() {
     try {
-      await request(`/api/test-sets/${item.id}`, { method: "DELETE" });
+      await request(`/api/test-sets/${pendingDelete.id}`, { method: "DELETE" });
       toast("测试集已删除");
       await load(page, query);
-    } catch (error) { toast(`删除失败：${error.message}`, "error"); }
+      return true;
+    } catch (error) {
+      toast(`删除失败：${error.message}`, "error");
+      return false;
+    }
   }
 
   const pages = Math.max(1, Math.ceil(state.total / pageSize));
-  return <section className="ts-page">
-    <div className="ts-heading"><div><h1>测试集管理</h1><p>从 Excel 选择内容创建测试集，后续用例统一存储在数据库中。</p></div><button className="ts-btn primary large" onClick={onCreate}><Plus className="ui-icon" />新建测试集</button></div>
+  return <section className="ts-page execution-page">
+    <div className="ts-heading execution-page-header management-page-header"><div className="management-page-title"><h1>测试集管理</h1><span className="management-page-description">维护测试字段与用例</span></div></div>
     <Metrics items={[["测试集", state.metrics.test_set_count || 0], ["用例总数", state.metrics.case_count || 0], ["本周新增", state.metrics.recent_count || 0]]} />
-    <div className="ts-card">
-      <div className="ts-toolbar"><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索测试集名称或说明" /></label><button className="ts-btn secondary" onClick={() => load(page, query)}><RefreshCw className="ui-icon" />刷新</button></div>
-      <div className="ts-table-wrap"><table className="ts-table"><thead><tr><th>测试集名称</th><th>用例数</th><th>字段数</th><th>说明</th><th>最近更新</th><th /></tr></thead><tbody>
-        {!loading && !state.items.length && <tr><td colSpan="6" className="ts-empty">暂无测试集，点击“新建测试集”开始创建。</td></tr>}
-        {state.items.map((item) => <tr key={item.id}><td><button className="ts-name" onClick={() => onOpen(item.id)}><strong>{item.name}</strong></button></td><td>{item.case_count}</td><td>{item.column_count}</td><td title={item.description || "暂无说明"}>{truncate(item.description || "暂无说明", 20)}</td><td className="ts-time">{formatDateTime(item.updated_at)}</td><td><div className="ts-actions"><button className="ts-icon-button" title="查看测试集" aria-label="查看测试集" onClick={() => onOpen(item.id)}><Eye className="ui-icon" /></button><button className="ts-icon-button danger" title="删除测试集" aria-label="删除测试集" onClick={() => remove(item)}><Trash2 className="ui-icon" /></button></div></td></tr>)}
-      </tbody></table></div>
-      <PageControls total={state.total} unit="个测试集" page={page} pages={pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPage(1); setPageSize(size); }} />
-    </div>
+    <div className="toolbar execution-toolbar management-list-toolbar"><button className="btn btn-primary" type="button" onClick={onCreate}><Plus className="ui-icon" />新建测试集</button><button className="btn" type="button" disabled={loading} onClick={() => load(page, query)}><RefreshCw className="ui-icon" />刷新</button><span className="toolbar-sep" /><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索测试集名称或说明" /></label></div>
+    <div className="table-wrap execution-table-wrap management-list-wrap ts-table-wrap ts-list-table-wrap" aria-busy={loading}><table className="table execution-table management-list-table ts-table ts-list-table"><thead><tr><th>测试集名称</th><th>用例数</th><th>字段数</th><th>说明</th><th>最近更新</th><th className="management-list-actions-head">操作</th></tr></thead><tbody>
+      {loading && !state.items.length && <tr><td colSpan="6"><div className="execution-empty"><strong>正在加载测试集...</strong></div></td></tr>}
+      {!loading && !state.items.length && <tr><td colSpan="6"><div className="execution-empty"><strong>尚未创建测试集</strong><button className="btn btn-sm" type="button" onClick={onCreate}>新建测试集</button></div></td></tr>}
+      {!!state.items.length && state.items.map((item) => <tr key={item.id}><td className="management-list-primary" title={item.name}><button className="execution-name-button ts-name" onClick={() => onOpen(item.id)}>{item.name}</button></td><td>{item.case_count}</td><td>{item.column_count}</td><td className="management-list-text" title={item.description || "暂无说明"}>{truncate(item.description || "暂无说明", 20)}</td><td className="management-list-time ts-time">{formatDateTime(item.updated_at)}</td><td className="management-list-actions-cell"><div className="management-list-row-actions"><button className="btn-icon" title="删除测试集" aria-label="删除测试集" onClick={() => setPendingDelete(item)}><Trash2 className="ui-icon" /></button></div></td></tr>)}
+    </tbody></table></div>
+    <PageControls management total={state.total} unit="个测试集" page={page} pages={pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPage(1); setPageSize(size); }} />
+    {pendingDelete && <ConfirmModal title="删除测试集" message={`确定删除“${pendingDelete.name}”吗？`} detail="测试集及其全部用例将被删除，此操作不可恢复。" confirmLabel="删除" danger onClose={() => setPendingDelete(null)} onConfirm={confirmRemove} />}
   </section>;
 }
 
@@ -230,6 +303,7 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const appending = mode === "append";
+  const dialogRef = useModalAccessibility(onClose);
 
   async function save() {
     if (!appending && !name.trim()) return toast("请填写测试集名称", "error");
@@ -247,8 +321,8 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
     finally { setSaving(false); }
   }
 
-  return <div className="ts-modal-layer"><div className="ts-modal-backdrop" onClick={onClose} /><div className="ts-modal">
-    <header><div>{!appending && <span>步骤 3 / 3</span>}<h2>{appending ? "添加 Excel 用例" : "保存测试集"}</h2></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
+  return <div className="ts-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={onClose} /><div className="ts-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-save-modal-title" tabIndex={-1}>
+    <header><div>{!appending && <span>步骤 3 / 3</span>}<h2 id="ts-save-modal-title">{appending ? "添加 Excel 用例" : "保存测试集"}</h2></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
     <div className="ts-modal-body"><div className="ts-preview"><b><CircleCheck className="ui-icon" /></b><div><strong>选区已转换为数据库用例</strong><span>{dataset.cases.length} 条用例 · {dataset.columns.length} 个字段 · {sourceCount} 个 Excel · {sheetCount} 个 Sheet</span></div></div>
       {!appending && <><label className="ts-field"><span>测试集名称 <b>*</b></span><input maxLength="120" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="ts-field"><span>测试集说明</span><textarea maxLength="1000" rows="4" value={description} onChange={(event) => setDescription(event.target.value)} /><small>{description.length}/1000</small></label></>}
       <div className="ts-schema"><div><strong>字段映射预览</strong><span>字段默认按选中位置生成</span></div>{dataset.columns.map((column, index) => <p key={column}><code>{appending ? target.columns[index] : column}</code><span>第 {index + 1} 个选中列</span></p>)}</div>
@@ -351,20 +425,11 @@ function ImportView({ mode, target, onBack, onComplete }) {
 function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
   const [entries, setEntries] = useState(() => draft.columns.map((column) => ({ original: column, name: column, deleted: false })));
   const [saving, setSaving] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState(null);
   const remainingCount = entries.filter((entry) => !entry.deleted).length;
+  const dialogRef = useModalAccessibility(onClose);
 
-  async function persist() {
-    const kept = entries.filter((entry) => !entry.deleted);
-    if (!kept.length) return toast("测试集至少保留一个字段", "error");
-    const columns = kept.map((entry, index) => {
-      const name = entry.name.trim();
-      if (/^col_[1-9][0-9]*$/.test(name) && name === entry.original) return `col_${index + 1}`;
-      return name;
-    });
-    if (columns.some((column) => !column)) return toast("字段名不能为空", "error");
-    if (new Set(columns).size !== columns.length) return toast("字段名不能重复", "error");
-    const deletedCount = entries.length - kept.length;
-    if (deletedCount && !window.confirm(`确定删除选中的 ${deletedCount} 个字段吗？字段数据删除后不可恢复。`)) return;
+  async function saveColumns(kept, columns) {
     const cases = draft.cases.map((item) => ({
       id: item.id,
       values: Object.fromEntries(kept.map((entry, index) => [columns[index], item.values[entry.original] || ""])),
@@ -382,20 +447,40 @@ function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
       });
       onSaved(payload.test_set);
       toast("字段设置已保存并立即生效");
+      return true;
     } catch (error) {
       toast(`字段设置保存失败：${error.message}`, "error");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  return <div className="ts-modal-layer"><div className="ts-modal-backdrop" onClick={onClose} /><div className="ts-modal ts-column-settings-modal">
-    <header><div><h2>字段设置</h2><span>批量修改字段名称，或选择需要删除的字段</span></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
+  async function persist() {
+    const kept = entries.filter((entry) => !entry.deleted);
+    if (!kept.length) return toast("测试集至少保留一个字段", "error");
+    const columns = kept.map((entry, index) => {
+      const name = entry.name.trim();
+      if (/^col_[1-9][0-9]*$/.test(name) && name === entry.original) return `col_${index + 1}`;
+      return name;
+    });
+    if (columns.some((column) => !column)) return toast("字段名不能为空", "error");
+    if (new Set(columns).size !== columns.length) return toast("字段名不能重复", "error");
+    const deletedCount = entries.length - kept.length;
+    if (deletedCount) {
+      setPendingDeletion({ kept, columns, deletedCount });
+      return;
+    }
+    await saveColumns(kept, columns);
+  }
+
+  return <><div className="ts-modal-layer"><div className="ts-modal-backdrop" aria-hidden="true" onClick={onClose} /><div className="ts-modal ts-column-settings-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ts-column-settings-title" tabIndex={-1}>
+    <header><div><h2 id="ts-column-settings-title">字段设置</h2><span>批量修改字段名称，或选择需要删除的字段</span></div><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" onClick={onClose}><X className="ui-icon" /></button></header>
     <div className="ts-modal-body"><div className="ts-column-settings-head"><span>字段名称</span><span>删除</span></div><div className="ts-column-settings-list">
-      {entries.map((entry, index) => <div className={entry.deleted ? "deleted" : ""} key={entry.original}><b>{index + 1}</b><input maxLength="120" disabled={entry.deleted} value={entry.name} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, name: event.target.value } : item))} /><label><input type="checkbox" checked={entry.deleted} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, deleted: event.target.checked } : item))} /><span>删除</span></label></div>)}
+      {entries.map((entry, index) => <div className={entry.deleted ? "deleted" : ""} key={entry.original}><b>{index + 1}</b><input maxLength="120" aria-label={`字段 ${index + 1} 名称`} disabled={entry.deleted} value={entry.name} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, name: event.target.value } : item))} /><label><input type="checkbox" checked={entry.deleted} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, deleted: event.target.checked } : item))} /><span>删除</span></label></div>)}
     </div><p className="ts-column-settings-tip">保存后立即写入数据库；删除默认字段时，剩余的 <code>col_x</code> 会按顺序重新编号。</p></div>
     <footer><span className="ts-column-settings-count">保留 {remainingCount} 个字段</span><button className="ts-btn secondary" onClick={onClose}><X className="ui-icon" />取消</button><button className="ts-btn primary" disabled={saving || !remainingCount} onClick={persist}><Save className="ui-icon" />{saving ? "保存中…" : "保存并立即生效"}</button></footer>
-  </div></div>;
+  </div></div>{pendingDeletion && <ConfirmModal title="删除字段" message={`确定删除选中的 ${pendingDeletion.deletedCount} 个字段吗？`} detail="对应字段数据将从全部用例中删除，此操作不可恢复。" confirmLabel="删除字段" danger onClose={() => setPendingDeletion(null)} onConfirm={() => saveColumns(pendingDeletion.kept, pendingDeletion.columns)} />}</>;
 }
 
 function DetailView({ testSetId, initial, onBack, onImport }) {
@@ -404,13 +489,29 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [casePageSize, setCasePageSize] = useState(CASE_PAGE_SIZE);
+  const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [pendingCase, setPendingCase] = useState(null);
+  const [pendingCaseError, setPendingCaseError] = useState("");
+  const [savingPendingCase, setSavingPendingCase] = useState(false);
+  const pendingCaseRowRef = useRef(null);
+  const pendingCaseInputRef = useRef(null);
+  const pendingCaseSaveRef = useRef(null);
+  const savedMetadataRef = useRef({ name: initial?.name || "", description: initial?.description || "" });
+  const metadataDraftRef = useRef({ name: initial?.name || "", description: initial?.description || "" });
+  const nameEditCancelledRef = useRef(false);
+  const descriptionEditCancelledRef = useRef(false);
 
   useEffect(() => {
     if (initial?.id === testSetId) return;
-    request(`/api/test-sets/${testSetId}`).then((payload) => { setTestSet(payload.test_set); setDraft(payload.test_set); }).catch((error) => toast(`加载详情失败：${error.message}`, "error"));
+    request(`/api/test-sets/${testSetId}`).then((payload) => {
+      savedMetadataRef.current = { name: payload.test_set.name, description: payload.test_set.description };
+      metadataDraftRef.current = { ...savedMetadataRef.current };
+      setTestSet(payload.test_set);
+      setDraft(payload.test_set);
+    }).catch((error) => toast(`加载详情失败：${error.message}`, "error"));
   }, [testSetId]);
 
   if (!draft) return <div className="ts-loading-page">正在加载测试集…</div>;
@@ -419,14 +520,124 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
   const pages = Math.max(1, Math.ceil(filtered.length / casePageSize));
 
   function addCase() {
-    setDraft({ ...draft, cases: [...draft.cases, { id: makeId("case"), values: Object.fromEntries(draft.columns.map((column) => [column, ""])) }] });
-    setPage(Math.ceil((draft.cases.length + 1) / casePageSize));
+    if (pendingCase) {
+      pendingCaseInputRef.current?.focus();
+      return;
+    }
+    setPendingCase({ id: makeId("case"), values: Object.fromEntries(draft.columns.map((column) => [column, ""])) });
+    setPendingCaseError("");
+    setQuery("");
+    setPage(1);
+    requestAnimationFrame(() => pendingCaseInputRef.current?.focus());
+  }
+
+  function writeBody(cases) {
+    return JSON.stringify({ name: draft.name, description: draft.description, columns: draft.columns, cases: cases.map((item) => ({ id: item.id, values: item.values })) });
+  }
+
+  function isBlankCase(testCase) {
+    return draft.columns.every((column) => !String(testCase.values[column] ?? "").trim());
+  }
+
+  async function persistMetadata(nextName, nextDescription) {
+    try {
+      const payload = await request(`/api/test-sets/${draft.id}/metadata`, {
+        method: "PUT",
+        body: JSON.stringify({ name: nextName, description: nextDescription }),
+      });
+      const metadata = {
+        name: payload.test_set.name,
+        description: payload.test_set.description,
+        updated_at: payload.test_set.updated_at,
+      };
+      savedMetadataRef.current = { name: metadata.name, description: metadata.description };
+      metadataDraftRef.current = { ...savedMetadataRef.current };
+      setTestSet((current) => current ? { ...current, ...metadata } : payload.test_set);
+      setDraft((current) => current ? { ...current, ...metadata } : payload.test_set);
+      return true;
+    } catch (error) {
+      toast(`测试集信息保存失败：${error.message}`, "error");
+      return false;
+    }
+  }
+
+  async function commitName(nextName = draft.name) {
+    if (nameEditCancelledRef.current) {
+      nameEditCancelledRef.current = false;
+      metadataDraftRef.current.name = savedMetadataRef.current.name;
+      setDraft((current) => ({ ...current, name: savedMetadataRef.current.name }));
+      setEditingName(false);
+      return;
+    }
+    if (!nextName.trim()) {
+      setDraft((current) => ({ ...current, name: savedMetadataRef.current.name }));
+      setEditingName(false);
+      toast("测试集名称不能为空", "error");
+      return;
+    }
+    if (nextName === savedMetadataRef.current.name && draft.description === savedMetadataRef.current.description) {
+      setEditingName(false);
+      return;
+    }
+    if (await persistMetadata(nextName, draft.description)) setEditingName(false);
+  }
+
+  async function commitDescription(nextDescription = draft.description) {
+    if (descriptionEditCancelledRef.current) {
+      descriptionEditCancelledRef.current = false;
+      metadataDraftRef.current.description = savedMetadataRef.current.description;
+      setDraft((current) => ({ ...current, description: savedMetadataRef.current.description }));
+      setEditingDescription(false);
+      return;
+    }
+    if (draft.name === savedMetadataRef.current.name && nextDescription === savedMetadataRef.current.description) {
+      setEditingDescription(false);
+      return;
+    }
+    if (await persistMetadata(draft.name, nextDescription)) setEditingDescription(false);
+  }
+
+  async function savePendingCase() {
+    if (pendingCaseSaveRef.current) return pendingCaseSaveRef.current;
+    if (!pendingCase) return null;
+    if (isBlankCase(pendingCase)) {
+      setPendingCase(null);
+      setPendingCaseError("");
+      return null;
+    }
+    const nextCases = [pendingCase, ...draft.cases];
+    setSavingPendingCase(true);
+    setPendingCaseError("");
+    const savePromise = request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(nextCases) })
+      .then((payload) => {
+        setTestSet(payload.test_set);
+        setDraft(payload.test_set);
+        setPendingCase(null);
+        setPage(1);
+        toast("新用例已保存");
+        return payload;
+      })
+      .catch((error) => {
+        setPendingCaseError(`保存失败：${error.message}。内容已保留，请修改后再次点击行外或重试。`);
+        toast(`新增用例保存失败：${error.message}`, "error");
+        return null;
+      })
+      .finally(() => {
+        setSavingPendingCase(false);
+        pendingCaseSaveRef.current = null;
+      });
+    pendingCaseSaveRef.current = savePromise;
+    return savePromise;
   }
 
   async function save() {
+    if (pendingCase || pendingCaseSaveRef.current) {
+      await savePendingCase();
+      return;
+    }
     setSaving(true);
     try {
-      const payload = await request(`/api/test-sets/${draft.id}`, { method: "PUT", body: JSON.stringify({ name: draft.name, description: draft.description, columns: draft.columns, cases: draft.cases.map((item) => ({ id: item.id, values: item.values })) }) });
+      const payload = await request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(draft.cases) });
       setTestSet(payload.test_set); setDraft(payload.test_set); toast("测试集修改已保存");
     } catch (error) { toast(`保存失败：${error.message}`, "error"); }
     finally { setSaving(false); }
@@ -439,9 +650,25 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
     setPage(1);
   }
 
-  return <section className="ts-page"><div className="ts-detail-heading"><div className="ts-heading-left"><button className="ts-btn ghost" onClick={onBack}><ArrowLeft className="ui-icon" />返回列表</button><div className="ts-detail-title"><h1>{draft.name}</h1><label><span>说明</span>{editingDescription ? <input autoFocus maxLength="1000" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} onBlur={() => setEditingDescription(false)} onKeyDown={(event) => { if (event.key === "Enter") setEditingDescription(false); }} /> : <button title="点击编辑说明" onClick={() => setEditingDescription(true)}>{draft.description || "暂无说明"}</button>}</label></div></div><div className="ts-detail-actions"><button className="ts-btn secondary" onClick={() => onImport(draft)}><FileUp className="ui-icon" />从 .xlsx 添加</button><button className="ts-btn secondary" onClick={addCase}><Plus className="ui-icon" />手动添加</button><button className="ts-btn primary" disabled={saving} onClick={save}><Save className="ui-icon" />{saving ? "保存中…" : "保存修改"}</button></div></div>
+  return <section className="ts-page"><div className="ts-detail-heading"><div className="ts-heading-left ts-detail-metadata"><button className="ts-btn ghost" onClick={onBack}><ArrowLeft className="ui-icon" />返回列表</button><span className="ts-detail-divider" />{editingName ? <input className="ts-detail-name-input" autoFocus maxLength="120" value={draft.name} onChange={(event) => { metadataDraftRef.current.name = event.target.value; setDraft({ ...draft, name: event.target.value }); }} onBlur={(event) => void commitName(metadataDraftRef.current.name === draft.name ? event.currentTarget.value : metadataDraftRef.current.name)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { nameEditCancelledRef.current = true; event.currentTarget.blur(); } }} aria-label="测试集名称" /> : <button type="button" className="ts-detail-name" title="编辑测试集名称" aria-label={`编辑测试集名称：${draft.name}`} onClick={() => { metadataDraftRef.current.name = draft.name; setEditingName(true); }}><span>{draft.name}</span><Pencil className="ui-icon" /></button>}<div className={`ts-detail-description ${editingDescription ? "is-editing" : ""}`}><FileText className="ui-icon" />{editingDescription ? <div className="ts-detail-description-editor"><textarea autoFocus maxLength="1000" rows="4" value={draft.description} onChange={(event) => { metadataDraftRef.current.description = event.target.value; setDraft({ ...draft, description: event.target.value }); }} onBlur={(event) => void commitDescription(metadataDraftRef.current.description === draft.description ? event.currentTarget.value : metadataDraftRef.current.description)} onKeyDown={(event) => { if (event.key === "Escape") { descriptionEditCancelledRef.current = true; event.currentTarget.blur(); } }} aria-label="测试集说明" /></div> : <button type="button" title="编辑测试集说明" aria-label="编辑测试集说明" onClick={() => { metadataDraftRef.current.description = draft.description; setEditingDescription(true); }}><span>{draft.description || "添加测试集说明"}</span><Pencil className="ui-icon" /></button>}</div></div><div className="ts-detail-actions"><button className="ts-btn secondary" onClick={() => onImport(draft)}><FileUp className="ui-icon" />从 .xlsx 添加</button><button className="ts-btn secondary" onClick={addCase}><Plus className="ui-icon" />手动添加</button><button className="ts-btn primary" disabled={saving} onClick={save}><Save className="ui-icon" />{saving ? "保存中…" : "保存修改"}</button></div></div>
     <Metrics items={[["用例数", draft.cases.length], ["字段数", draft.columns.length]]} />
-    <div className="ts-card"><div className="ts-toolbar"><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="搜索当前测试集用例" /></label></div><div className="ts-table-wrap ts-detail-table"><table className="ts-table"><thead><tr>{draft.columns.map((column) => <th className="ts-case-header" key={column}><span>{column}</span></th>)}<th className="ts-field-settings-header"><button type="button" title="字段设置" onClick={() => setShowColumnSettings(true)}><Settings2 className="ui-icon" />字段设置</button></th></tr></thead><tbody>{pageCases.map((item) => <tr key={item.id}>{draft.columns.map((column) => <td key={column}><input className="ts-cell-input" value={item.values[column] || ""} onChange={(event) => setDraft({ ...draft, cases: draft.cases.map((testCase) => testCase.id === item.id ? { ...testCase, values: { ...testCase.values, [column]: event.target.value } } : testCase) })} /></td>)}<td><button className="ts-delete-case ts-icon-button" title="删除用例" aria-label="删除用例" onClick={() => setDraft({ ...draft, cases: draft.cases.filter((testCase) => testCase.id !== item.id) })}><Trash2 className="ui-icon" /></button></td></tr>)}</tbody></table></div><PageControls total={filtered.length} unit="条用例" page={page} pages={pages} pageSize={casePageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPage(1); setCasePageSize(size); }} /></div>
+    <div className="ts-card">
+      <div className="ts-toolbar"><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="搜索当前测试集用例" /></label></div>
+      <div className="ts-table-wrap ts-detail-table"><table className="ts-table">
+        <thead><tr>{draft.columns.map((column) => <th className="ts-case-header" key={column}><span>{column}</span></th>)}<th className="ts-field-settings-header"><button type="button" title="字段设置" onClick={() => setShowColumnSettings(true)}><Settings2 className="ui-icon" />字段设置</button></th></tr></thead>
+        <tbody>
+          {pendingCase && <>
+            <tr ref={pendingCaseRowRef} className={`ts-new-case-row${pendingCaseError ? " error" : ""}`}>
+              {draft.columns.map((column, index) => <td key={column}><input ref={index === 0 ? pendingCaseInputRef : null} className="ts-cell-input" aria-label={`新用例 ${column}`} disabled={savingPendingCase} value={pendingCase.values[column] || ""} onChange={(event) => { setPendingCase({ ...pendingCase, values: { ...pendingCase.values, [column]: event.target.value } }); setPendingCaseError(""); }} onBlur={(event) => { if (!pendingCaseRowRef.current?.contains(event.relatedTarget)) void savePendingCase(); }} /></td>)}
+              <td><div className="ts-new-case-status" aria-live="polite"><span>{savingPendingCase ? "正在保存…" : pendingCaseError ? "保存失败" : "新用例"}</span>{pendingCaseError && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void savePendingCase()}>重试</button>}</div></td>
+            </tr>
+            {pendingCaseError && <tr className="ts-new-case-error"><td colSpan={draft.columns.length + 1}>{pendingCaseError}</td></tr>}
+          </>}
+          {pageCases.map((item, rowIndex) => <tr key={item.id}>{draft.columns.map((column) => <td key={column}><input className="ts-cell-input" aria-label={`用例 ${(page - 1) * casePageSize + rowIndex + 1} ${column}`} value={item.values[column] || ""} onChange={(event) => setDraft({ ...draft, cases: draft.cases.map((testCase) => testCase.id === item.id ? { ...testCase, values: { ...testCase.values, [column]: event.target.value } } : testCase) })} /></td>)}<td><button className="ts-delete-case ts-icon-button" title="删除用例" aria-label="删除用例" onClick={() => setDraft({ ...draft, cases: draft.cases.filter((testCase) => testCase.id !== item.id) })}><Trash2 className="ui-icon" /></button></td></tr>)}
+        </tbody>
+      </table></div>
+      <PageControls total={filtered.length} unit="条用例" page={page} pages={pages} pageSize={casePageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPage(1); setCasePageSize(size); }} />
+    </div>
     {showColumnSettings && <ColumnSettingsModal testSet={testSet} draft={draft} onClose={() => setShowColumnSettings(false)} onSaved={applyColumnSettings} />}
   </section>;
 }
@@ -472,4 +699,3 @@ function mount() {
 
 window.TestSetManagement = { mount, unmount };
 window.viewSets = mount;
-if (window.currentView === "sets" || document.querySelector('.sidebar-item.active[data-view="sets"]')) mount();

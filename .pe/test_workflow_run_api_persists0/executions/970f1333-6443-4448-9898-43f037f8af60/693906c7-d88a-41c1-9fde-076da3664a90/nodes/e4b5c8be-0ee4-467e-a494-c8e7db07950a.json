@@ -1,0 +1,42 @@
+{
+  "workflow_execution_id": "693906c7-d88a-41c1-9fde-076da3664a90",
+  "workflow_id": "970f1333-6443-4448-9898-43f037f8af60",
+  "node_execution_id": "e4b5c8be-0ee4-467e-a494-c8e7db07950a",
+  "node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+  "type": "END",
+  "structural_snapshot": {
+    "id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+    "type": "END",
+    "name": "结束",
+    "description": "",
+    "outputs": []
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 05:17:02",
+  "finished_at": "2026-08-01 05:17:02",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "请审核",
+    "result": "请审核"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:17:02.769Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:17:02.771Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T21:17:02.773Z",
+      "reason": null
+    }
+  ],
+  "error": null
+}

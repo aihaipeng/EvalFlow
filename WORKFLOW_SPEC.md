@@ -237,7 +237,7 @@ Node Execution 本体不混入可编辑的 Structural Model 字段。Workflow Ex
 | `LlmNodeStructuralModel.context` | `LlmContextDefinition` | `{messages:[SYSTEM,USER]}` | 有序消息模板；允许空内容和末尾 ASSISTANT 草稿保存。 |
 | `LlmNodeStructuralModel.generation` | `GenerationDefinition` | `{parameters:{},parameters_text:""}` | 节点级供应商原生高级参数与可保存草稿文本。 |
 | `LlmNodeStructuralModel.execution` | `RetryExecution` | 平台默认执行策略 | LLM 调用超时与重试配置；允许整体省略或部分覆盖。 |
-| `LlmNodeStructuralModel.outputs` | `NodeOutput[]` | `[]` | 从供应商完整 response 提取值；name 不得重复。 |
+| `LlmNodeStructuralModel.outputs` | `NodeOutput[]` | `[]` | 从协议统一 result 或供应商原始 response 提取值；name 不得重复。 |
 | `HttpNodeStructuralModel.request` | `HttpRequest` | POST + 空 URL + none Body | HTTP 业务请求模板；允许空 URL 保存。 |
 | `HttpNodeStructuralModel.network` | `HttpNetwork` | SYSTEM + verify_ssl=true | Proxy 与 SSL 验证配置；CUSTOM 允许暂缺 URL 保存。 |
 | `HttpNodeStructuralModel.response` | `HttpResponseDefinition` | AUTO + 200-299 | 响应表示和成功判定配置。 |
@@ -533,30 +533,39 @@ Workflow JSON 不保存完整调度事件。每个已创建的 Node Execution �
 
 ### 2.6 Batch Execution Model
 
-Batch Run 把一个 Excel Sheet 的每条有效数据行调度为一次独立 Workflow Execution，持久化路径固定为：
+运行调度中的“任务”保存可复用配置；每次启动任务生成一个独立 Batch Execution 轮次，并把数据库测试集中的每条用例调度为一次独立 Workflow Execution。持久化路径固定为：
 
 ```text
 run_storage/batch_executions/{batch_execution_id}/
-├── batch.json
+├── batch.json                       # 任务配置 + 当前最新轮次
 ├── input/
-│   ├── source.xlsx 或 source.xlsm
 │   └── snapshot.json
-└── cases/
-    └── {case_run_id}.json
+├── cases/
+│   └── {case_run_id}.json
+└── rounds/
+    └── {execution_round_id}/        # 已结束的历史轮次
+        ├── batch.json
+        ├── input/snapshot.json
+        └── cases/{case_run_id}.json
 ```
 
-- 创建时冻结源 Excel 字节、SHA-256、Sheet 表头和数据行、Workflow Structural Snapshot、变量注入配置及并发数；后续修改源文件或 Workflow 不影响既有 Batch。
-- 首行模式支持 `AUTO / HEADER / DATA`。AUTO 在首两列命中既有 Case ID/Question 表头别名时按表头读取，否则按数据读取；HEADER 要求有效表头区间非空且不重复，并裁掉末尾空表头列；DATA 从第一行开始读取并生成 `case_id / question / column_3...`。完全空白数据行忽略；每条有效数据行以其原始 Excel 行号作为当前 Batch 内的 Case 追溯标识。
-- 变量注入配置为 `source / key / value / type`。`source=EXCEL` 时 value 必须是手填的 `col_x` 列路径，`col_1` 固定表示当前 Sheet 第一列；可追加 `.field` 与 `[index]` 从 JSON object/array 单元格中读取局部值，例如 `col_4.checks.intent.status`。`source=CUSTOM` 时 value 是用户填写的文本。type 支持 `string / number / integer / boolean / object / array / null`，object 与 array 使用严格 JSON 文本。key 必须是 Context 根变量名且在一个 Run 内唯一。
-- 每个 Case 在创建阶段从其 Excel 行解析 Excel 来源变量，并将自定义值与 Excel 值转换为配置的 type；转换失败时不创建部分 Batch 目录。注入变量写入该 Case 的 START 快照，允许覆盖同名 START 默认值，节点可直接使用 `context["key"]` 读取。
-- 结果校验由可选的多个校验点组成。每个校验点只保存 `result_path / operator / expected_value / type`：result_path 必须以 `context.` 开头，并从该 Case 最终 Context 读取，例如 `context.final_answer.status`；expected_value 为用户填写的文本，按 type 严格转换。所有校验点使用 AND 语义，任一校验点为 FAIL 或 ERROR 时，该 Case 状态为 FAILED，同时保留原始 Workflow execution_status 用于追溯。
-- `case_id` 由 Excel 原始行号生成，只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context。业务字段是否注入由变量注入配置决定。
+- `configuration` 是任务下一轮使用的可编辑配置，保存名称、测试集 ID、工作流 ID、变量注入、结果校验、展示列、顺序、并发和失败重试。运行中允许保存 configuration，但当前轮次继续使用启动时冻结的 `execution_configuration`，不得被编辑反向修改。
+- 每次启动（包括用户中断后重新启动、全部完成后再次启动）都从 SQLite 读取当时最新的测试集、字段、用例和 Workflow Structural Model，创建全新的完整执行轮次；不续跑或覆盖上一轮。启动校验失败时不创建部分轮次。
+- 当前轮次再次启动前必须归档到 `rounds/{execution_round_id}`；归档保留该轮 batch、输入快照、Case 事实和 Workflow Execution ID 引用。详情默认展示最新轮次，并允许用户切换历史轮次继续查看用例详情和节点日志；历史轮次不可启动、删除或修改 Case。
+- “编辑任务”保存原任务并立即更新 configuration；“拷贝任务”复用同一表单，名称默认 `{旧任务名}_copy`，保存后创建新的任务 ID，不共享后续配置或执行轮次。创建、编辑和拷贝按钮统一显示“保存”。
+- 变量注入配置为 `source / key / value / type`。`source=TEST_SET` 时 value 必须是当前数据库测试集字段；`source=CUSTOM` 时 value 是用户填写的文本。type 支持 `string / number / integer / boolean / object / array / null`，object 与 array 使用严格 JSON 文本。key 必须是 Context 根变量名且在一个任务内唯一。
+- 每个 Case 在轮次创建阶段从数据库用例解析测试集来源变量，并将自定义值与测试集值转换为配置的 type。注入变量写入该 Case 的 START 快照，节点可直接使用 `context["key"]` 读取。
+- 结果校验由可选的多个校验点组成。每个校验点保存 `name / result_path / operator / expected_value / type`：name 是最大 200 字符的可选展示名称，空值不阻断保存；用户只填写最终 Context 内的相对路径，例如 `action_match`，后端统一规范化并冻结为 `context.action_match`，历史客户端提交的完整 `context.` 路径继续兼容；expected_value 为用户填写的文本，按 type 严格转换。所有校验点使用 AND 语义，任一校验点为 FAIL 或 ERROR 时，该 Case 状态为 FAILED，同时保留原始 Workflow execution_status 用于追溯。用例详情的“结果校验”只向用户展示 `Pass / Failed`；校验项优先显示非空 name，未填写时显示不含 `context.` 前缀的相对路径，内部非 PASS 事实统一展示为 Failed。
+- `NOT_EMPTY（不为空）` 不使用 expected_value 和 type：路径必须存在，且实际值不能是 null、空白字符串、空数组或空对象；数字 0 和布尔 false 均视为非空。Run 配置选择该运算符时必须禁用“预期值”和“类型”，避免展示无效配置。
+- `case_id` 使用数据库测试用例 ID，只进入 Case 与 BATCH trigger 追踪字段，不自动写入 Context。业务字段是否注入由变量注入配置决定。
 - Batch 状态为 `QUEUED / RUNNING / SUCCESS / COMPLETED_WITH_ERRORS / INTERRUPTED`；Case 状态为 `QUEUED / RUNNING / SUCCESS / FAILED / INTERRUPTED`。
 - Case 失败不阻断同 Batch 的其他 Case。Batch 全部成功时为 SUCCESS；存在失败且未被取消时为 COMPLETED_WITH_ERRORS。
-- 取消后停止新派发、全局中断活动 Workflow，未启动 Case 转为 INTERRUPTED。恢复默认只继续 QUEUED/INTERRUPTED Case；启用 `retry_failed` 后额外重跑 FAILED，SUCCESS 永不重复执行。
+- Run 保存 `failure_retry_count`，范围为 0..10，表示首次执行失败后的额外重试次数。单条 Case 的 Workflow 执行错误或结果校验失败后必须在当前并发槽内立即重试，成功即停止；用户主动中断不重试。Case 的 `workflow_execution_ids` 按实际启动顺序保留首次和全部重试，用于详情页“执行次数”和历史追溯。
+- 中断后停止新派发、全局中断活动 Workflow，未启动 Case 转为 INTERRUPTED。用户再次启动任务时创建使用最新配置和最新结构的完整新轮次，不在原轮次内续跑。
 - 服务重启不自动续跑：RUNNING Batch 和 Case 收敛为 `INTERRUPTED + PROCESS_RESTARTED`，等待用户手工恢复。
 - Workflow 被任一 Batch 引用时禁止删除，避免清理其 Workflow Execution 事实；用户删除相关终态 Batch 后才能删除 Workflow。RUNNING Batch 必须先取消并等待终态。
 - 单 Batch 的 Case 并发数范围为 1 到 32；进程级共享并发槽限制多个 Batch 的总活动 Case，当前默认上限为 16。
+- 运行调度列表和 Run 新建/编辑配置不展示“说明”；历史 Batch JSON 中已有 description 仅作为兼容字段读取，不再参与页面展示或新建表单提交。
 - Batch、Case 和输入快照全部使用严格 JSON、同目录临时文件、flush、fsync 和原子替换；Windows 深层目录删除使用长路径语义。
 
 <a id="chapter-3"></a>
@@ -1446,7 +1455,7 @@ Structural Model 描述 LLM 节点使用的模型引用、有序上下文消息�
     {
       "name": "llm_text",
       "type": "string",
-      "source": "response.choices[0].message.content"
+      "source": "result.output"
     },
     {
       "name": "llm_reasoning",
@@ -1482,7 +1491,7 @@ Structural Model 描述 LLM 节点使用的模型引用、有序上下文消息�
 | context     | object | 必填               | {"messages":[{"role":"SYSTEM","content":"..."}]}                 | 有序上下文消息定义           |
 | generation  | object | 必填               | {"parameters":{"temperature":0}}                                   | 模型生成参数                 |
 | execution   | object | 可省略，默认平台策略 | {"timeout_seconds":600,"max_attempts":2,"retry_interval_seconds":1,"delay_seconds":0} | 执行约束；显式字段覆盖同名默认值 |
-| outputs     | array  | 可为空，默认 []    | [{"name":"llm_text","type":"string","source":"response.choices[0].message.content"}] | 多个输出变量名称、类型与提取源声明 |
+| outputs     | array  | 可为空，默认 []    | [{"name":"llm_text","type":"string","source":"result.output"}] | 多个输出变量名称、类型与提取源声明 |
 
 #### model 参数
 
@@ -1553,9 +1562,9 @@ LLM attempts 历史内容预算按单个 Node Execution 计算，首次调用和
 | ----- | ------ | ---------------------------------------------------------- | ------------------------------------------- | ----------------------------- |
 | name  | string | 合法变量名，按大小写精确唯一                               | llm_text                                    | 写入 Context 的变量名         |
 | type  | string | string、number、integer、boolean、object、array、null       | string                                      | 用户选择的目标输出类型        |
-| source| string | 以 `response` 为根的 Python 风格提取表达式                 | response.choices[0].message.content         | 从完整供应商 response 提取值  |
+| source| string | 以 `result` 或 `response` 为根的 Python 风格提取表达式     | result.output                               | 优先从协议统一结果提取值      |
 
-LLM output 不设置 JSON Schema。每项 source 必须以 `response` 为根，支持对象字段访问、数组下标和数组过滤；提取结果再按顶层输出类型约束转换为该项声明的 type。outputs.name 按大小写精确唯一，多个 outputs 可以读取相同 source，source 不要求唯一。
+LLM output 不设置 JSON Schema。执行器先按供应商协议选择 OpenAI-compatible、Responses API 或 Anthropic 解析器，统一生成 `result.output`、`result.usage` 和 `result.finish_reason`。每项 source 推荐以 `result` 为根；为兼容高级原始字段提取，也允许以 `response` 读取未改写的供应商完整响应。两种根都支持对象字段访问、数组下标和数组过滤；提取结果再按顶层输出类型约束转换为该项声明的 type。outputs.name 按大小写精确唯一，多个 outputs 可以读取相同 source，source 不要求唯一。
 
 <a id="chapter-7-2"></a>
 
@@ -1838,7 +1847,8 @@ attempts 与标准 JSON 规则：
 - 供应商返回了完整 Body，但 finish_reason、stop_reason 或等价结束原因无法映射为平台已支持的正常结束、长度限制、内容过滤或非文本响应类型时，节点按 `LLM_UNSUPPORTED_FINISH_REASON` 失败。error.details.finish_reason 保存供应商原始结束原因，完整 Body 仍保存在 response，并按通用 LLM 重试与 usage 聚合规则处理。
 - 模型调用失败、超时或中断时，outputs 必须为 `{}`，但顶层 response 仍保存最终尝试实际收到的完整 Body；只有完全未收到响应 Body 时 response_received=false 且 response=null。
 - 未声明 outputs 时，模型可以成功执行，但 outputs 为 `{}`，不执行 source 提取，也不写入 Context。
-- 声明一个或多个 outputs 时，平台按 Structural Model 数组顺序对最终尝试的同一完整 response 分别执行每项 source。source 零匹配时提取结果为 null；精确一个匹配时结果为该 JSON value；多个匹配时按供应商 response 中的原始顺序组成 array，不自动取第一项。
+- 收到 2xx 响应后，平台按 NodeRun 启动时固定的供应商协议选择对应解析器并生成统一 `result`；协议结构不匹配时使用 `LLM_RESPONSE_PARSE_ERROR`，原始 response 仍完整保留。
+- 声明一个或多个 outputs 时，平台按 Structural Model 数组顺序对最终尝试的统一 `result` 或同一完整 `response` 分别执行每项 source。source 零匹配时提取结果为 null；精确一个匹配时结果为该 JSON value；多个匹配时按原始顺序组成 array，不自动取第一项。
 - source 直接读取到一个 array 是“一个 array 值”，与过滤器产生多个独立匹配不同；前者保持原 array，后者由平台把多个匹配组成新的 array。
 - source 提取结果再按顶层输出类型约束尝试隐式转换为 outputs.type。成功后以 outputs.name 写入待提交 outputs；转换失败、精度丢失或产生非有限数时，本次 Node Execution 以 `LLM_OUTPUT_TYPE_MISMATCH` 进入 FAILED，outputs 为 `{}`，Context 不变。
 - 所有 outputs 的 source 提取、隐式转换、严格 JSON 深拷贝和 Context key 冲突检查必须全部成功后，才能一次性形成并提交 Execution Model.outputs 与 Context 更新；任一项失败时已经完成的其他项也全部丢弃，不允许部分 outputs。
@@ -1875,17 +1885,23 @@ context.messages[].content
 
 #### 输出协议
 
-LLM 通过 Structural Model.outputs.source 从完整供应商 response 中提取输出：
+LLM 先按供应商协议解析响应，再通过 Structural Model.outputs.source 提取输出。常规文本输出使用统一路径：
+
+```text
+result.output
+```
+
+需要读取供应商特有原始字段时仍可使用：
 
 ```text
 response.choices[0].message.content
 response.content[0].text
-response.data[id==3]
+response.output[type=="message"].content[type=="output_text"].text
 ```
 
 source 语法：
 
-- 根标识符固定为 `response`，严格区分大小写；不允许使用 request、inputs、Context 变量或任意 Python 表达式作为根。
+- 根标识符允许 `result` 或 `response`，严格区分大小写；`result` 是协议解析后的统一结果，`response` 是未改写的供应商响应；不允许使用 request、inputs、Context 变量或任意 Python 表达式作为根。
 - `.field` 读取对象字段；`[0]` 读取数组下标；`["field"]` 与 `[field]` 等价，均读取对象字段。字段名和响应 key 严格区分大小写。
 - 数组下标使用受限的 Python 整数下标语义：`[0]` 表示第一项，`[-1]` 表示最后一项，`[-2]` 表示倒数第二项。空数组、正下标大于等于数组长度或负下标小于数组长度的相反数时，使用 `LLM_OUTPUT_SOURCE_EVALUATION_ERROR`，不得静默返回 null。
 - 下标只接受无空白的十进制 integer，不接受小数、指数、前导 `+`、算术表达式或任意代码；当前不支持 `[1:]`、`[:-1]`、`[::2]` 等 Python 切片。
@@ -2661,7 +2677,8 @@ INTERRUPTED NodeRun 的 error 结构沿用各节点 Execution Model 的通用 er
 | LLM_CONFIGURATION_INCOMPLETE  | 未选择供应商/模型、非 SYSTEM 消息为空或上下文未以 USER 结束；PENDING 直接转 FAILED，attempt_count=0 |
 | LLM_TIMEOUT                   | 最后一次模型调用超时                                                    |
 | LLM_REQUEST_ERROR             | 已发送的供应商请求失败                                                  |
-| LLM_RESPONSE_ERROR            | 供应商响应协议解析失败                                                  |
+| LLM_RESPONSE_ERROR            | 供应商返回非 2xx HTTP 状态                                              |
+| LLM_RESPONSE_PARSE_ERROR      | 2xx 响应与供应商所选协议结构不匹配                                      |
 | LLM_MESSAGE_EMPTY             | 非空消息模板经 Context 解析后只含空白，未发起模型请求                  |
 | LLM_UNSUPPORTED_RESPONSE      | 响应包含 Tool Call 或其他不支持的非文本内容                             |
 | LLM_OUTPUT_TRUNCATED          | 供应商因长度或 Token 上限结束生成                                       |

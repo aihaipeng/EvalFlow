@@ -1,0 +1,125 @@
+{
+  "id": "7950d6d4-94d8-4a7c-8bba-0f50db96717b",
+  "workflow_id": "825a87ef-f77b-485f-8aa1-0c2eb1d36af6",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "FAILED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "825a87ef-f77b-485f-8aa1-0c2eb1d36af6",
+      "name": "执行测试",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "77b17959-556e-4a2d-8ab5-62e6ff1926c3",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": []
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "f05286b3-3a1b-4d7c-93d8-3a6da749b515",
+          "type": "LLM",
+          "name": "空白 LLM",
+          "description": "",
+          "model": {
+            "provider_id": "",
+            "model_name": ""
+          },
+          "context": {
+            "messages": [
+              {
+                "role": "SYSTEM",
+                "content": ""
+              },
+              {
+                "role": "USER",
+                "content": ""
+              }
+            ]
+          },
+          "generation": {
+            "parameters": {},
+            "parameters_text": ""
+          },
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": []
+        },
+        "position_x": 250.0,
+        "position_y": 80.0
+      },
+      {
+        "node": {
+          "id": "d830ed1e-166d-40cc-b643-461560bcafbe",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 500.0,
+        "position_y": 160.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "57247e6e-98b4-4a54-92d5-7227782be594",
+        "source_node_id": "77b17959-556e-4a2d-8ab5-62e6ff1926c3",
+        "target_node_id": "f05286b3-3a1b-4d7c-93d8-3a6da749b515"
+      },
+      {
+        "id": "9de72fb6-9f92-4b89-ae6d-4a3cfc3fc30b",
+        "source_node_id": "f05286b3-3a1b-4d7c-93d8-3a6da749b515",
+        "target_node_id": "d830ed1e-166d-40cc-b643-461560bcafbe"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T20:58:13.054Z",
+  "started_at": "2026-07-31T20:58:13.056Z",
+  "finished_at": "2026-07-31T20:58:13.072Z",
+  "duration_ms": 17,
+  "context": {
+    "commits": [],
+    "final": {}
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "77b17959-556e-4a2d-8ab5-62e6ff1926c3",
+      "node_execution_id": "0c8ca863-980f-4f48-bc0d-0d9136dca9a8",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "f05286b3-3a1b-4d7c-93d8-3a6da749b515",
+      "node_execution_id": "9d61eb6c-8628-4aa7-8422-94c76d92b835",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "d830ed1e-166d-40cc-b643-461560bcafbe",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "WORKFLOW_FAILED"
+    }
+  ],
+  "error": {
+    "code": "NODE_FAILED",
+    "message": "节点执行失败: 空白 LLM",
+    "details": {
+      "node_id": "f05286b3-3a1b-4d7c-93d8-3a6da749b515",
+      "node_execution_id": "9d61eb6c-8628-4aa7-8422-94c76d92b835"
+    }
+  }
+}

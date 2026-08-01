@@ -121,6 +121,25 @@ def test_workflow_api_crud_round_trip_and_list_shape(client):
     assert client.get("/api/workflows").json() == {"workflows": []}
 
 
+def test_workflow_copy_api_uses_recursive_copy_name(client):
+    original = client.post("/api/workflows", json=workflow_body("诊断流程"))
+    workflow_id = original.json()["workflow"]["workflow"]["id"]
+
+    first = client.post(f"/api/workflows/{workflow_id}/copy")
+    second = client.post(f"/api/workflows/{workflow_id}/copy")
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["workflow"]["workflow"]["name"] == "诊断流程_copy"
+    assert second.json()["workflow"]["workflow"]["name"] == "诊断流程_copy_copy"
+    listed = client.get("/api/workflows").json()["workflows"]
+    assert {item["name"] for item in listed} == {
+        "诊断流程",
+        "诊断流程_copy",
+        "诊断流程_copy_copy",
+    }
+
+
 def test_workflow_delete_restores_execution_directory_when_database_delete_fails(
     client, monkeypatch
 ):
@@ -157,6 +176,46 @@ def test_workflow_delete_finalizes_staged_execution_directory_after_database_com
     assert response.status_code == 200
     assert not execution_root.exists()
     assert list(manager.store.root.glob(f".deleting-{workflow_id}-*")) == []
+
+
+def test_workflow_delete_succeeds_when_execution_directory_cannot_be_staged(
+    client, monkeypatch
+):
+    created = client.post("/api/workflows", json=workflow_body("目录占用"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    store = client.app.state.workflow_services.manager.store
+    execution_root = store.workflow_root(workflow_id, create=True)
+
+    def fail_stage(_workflow_id):
+        raise PermissionError("目录被占用")
+
+    monkeypatch.setattr(store, "stage_workflow_root_deletion", fail_stage)
+
+    response = client.delete(f"/api/workflows/{workflow_id}")
+
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/workflows/{workflow_id}").status_code == 404
+    assert execution_root.exists()
+
+
+def test_workflow_delete_does_not_return_500_when_final_cleanup_is_locked(
+    client, monkeypatch
+):
+    created = client.post("/api/workflows", json=workflow_body("最终清理占用"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    store = client.app.state.workflow_services.manager.store
+    store.workflow_root(workflow_id, create=True)
+
+    def fail_finalize(_staged):
+        raise PermissionError("文件句柄未释放")
+
+    monkeypatch.setattr(store, "finalize_workflow_root_deletion", fail_finalize)
+
+    response = client.delete(f"/api/workflows/{workflow_id}")
+
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/workflows/{workflow_id}").status_code == 404
+    assert list(store.root.glob(f".deleting-{workflow_id}-*"))
 
 
 def test_workflow_api_trims_http_url_before_saving(client):

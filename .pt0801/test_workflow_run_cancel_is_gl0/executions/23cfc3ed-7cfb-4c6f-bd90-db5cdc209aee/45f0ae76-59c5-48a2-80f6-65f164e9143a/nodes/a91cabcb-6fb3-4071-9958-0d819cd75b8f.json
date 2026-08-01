@@ -1,0 +1,75 @@
+{
+  "workflow_execution_id": "45f0ae76-59c5-48a2-80f6-65f164e9143a",
+  "workflow_id": "23cfc3ed-7cfb-4c6f-bd90-db5cdc209aee",
+  "node_execution_id": "a91cabcb-6fb3-4071-9958-0d819cd75b8f",
+  "node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "SCRIPT",
+  "structural_snapshot": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "SCRIPT",
+    "name": "规则校验",
+    "description": "",
+    "script": "import time\ntime.sleep(30)",
+    "execution": {
+      "timeout_seconds": 60.0,
+      "max_attempts": 0,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0
+    },
+    "outputs": [
+      {
+        "name": "result",
+        "type": "string",
+        "source": "result"
+      }
+    ]
+  },
+  "status": "INTERRUPTED",
+  "started_at": "2026-08-01 04:58:09",
+  "finished_at": "2026-08-01 04:58:09",
+  "duration_ms": 280,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "请审核"
+  },
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:09.595Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:09.600Z",
+      "reason": null
+    },
+    {
+      "status": "INTERRUPTED",
+      "at": "2026-07-31T20:58:09.875Z",
+      "reason": "WORKFLOW_ABORTED"
+    }
+  ],
+  "error": {
+    "code": "WORKFLOW_ABORTED",
+    "message": "Workflow 已停止",
+    "details": null
+  },
+  "logs": {
+    "truncated": false,
+    "captured_bytes": 0,
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "INTERRUPTED",
+        "console": [],
+        "traceback": null,
+        "error": {
+          "code": "WORKFLOW_ABORTED",
+          "message": "Workflow 已停止",
+          "details": null
+        }
+      }
+    ]
+  }
+}

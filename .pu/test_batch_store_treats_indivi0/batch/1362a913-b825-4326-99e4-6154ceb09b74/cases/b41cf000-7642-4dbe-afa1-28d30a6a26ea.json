@@ -1,0 +1,12 @@
+{
+  "id": "b41cf000-7642-4dbe-afa1-28d30a6a26ea",
+  "batch_execution_id": "1362a913-b825-4326-99e4-6154ceb09b74",
+  "case_id": "C-1",
+  "row_number": 1,
+  "status": "SUCCESS",
+  "finished_at": null,
+  "error": null,
+  "workflow_execution_ids": [
+    "4a45012a-ca3c-4988-89b1-7694f8bbc98a"
+  ]
+}

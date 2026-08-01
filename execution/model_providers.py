@@ -28,6 +28,7 @@ def _utc_now_iso() -> str:
 
 class ModelProviderProtocol(str, Enum):
     OPENAI_COMPATIBLE = "OPENAI_COMPATIBLE"
+    OPENAI_RESPONSES = "OPENAI_RESPONSES"
     ANTHROPIC = "ANTHROPIC"
     MANUAL = "MANUAL"
 
@@ -69,7 +70,7 @@ class ModelProviderConfiguration(_ModelProviderModel):
     proxy_password: str | None = Field(default=None, max_length=4096)
     verify_ssl: bool = True
     model_endpoint: str | None = Field(default=None, max_length=2048)
-    models: list[str] = Field(min_length=1, max_length=500)
+    models: list[str] = Field(max_length=500)
     model_configs: dict[str, ModelRuntimeConfiguration] = Field(default_factory=dict)
 
     @field_validator("name", mode="before")
@@ -153,14 +154,14 @@ class ModelProviderConfiguration(_ModelProviderModel):
             if model not in seen:
                 seen.add(model)
                 models.append(model)
-        if not models:
-            raise ValueError("至少添加一个模型")
         return models
 
     @model_validator(mode="after")
     def validate_connection_and_model_configs(self) -> "ModelProviderConfiguration":
         if self.protocol == ModelProviderProtocol.MANUAL:
-            raise ValueError("模型协议只支持 OPENAI_COMPATIBLE 或 ANTHROPIC")
+            raise ValueError(
+                "模型协议只支持 OPENAI_COMPATIBLE、OPENAI_RESPONSES 或 ANTHROPIC"
+            )
         if self.proxy_mode == ModelProviderProxyMode.CUSTOM:
             if not self.proxy_url:
                 raise ValueError("自定义代理模式必须填写代理 URL")

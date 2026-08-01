@@ -7,7 +7,7 @@ import math
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from execution.workflow_values import (
     WorkflowOutputTypeError,
@@ -25,26 +25,36 @@ class _EvaluationModel(BaseModel):
 class EvaluationRule(_EvaluationModel):
     """One typed assertion over the final Workflow Context."""
 
-    result_path: str = Field(min_length=9, max_length=4000)
+    name: str = Field(default="", max_length=200)
+    result_path: str = Field(min_length=1, max_length=4000)
     operator: Literal[
-        "EQ", "NE", "CONTAINS", "REGEX", "EXISTS", "GT", "GTE", "LT", "LTE", "JSON_EQUAL"
+        "EQ", "NE", "CONTAINS", "REGEX", "EXISTS", "NOT_EMPTY", "GT", "GTE", "LT", "LTE", "JSON_EQUAL"
     ]
     expected_value: str = Field(default="", max_length=20000)
     type: Literal["string", "number", "integer", "boolean", "object", "array", "null"]
 
+    @field_validator("result_path", mode="before")
+    @classmethod
+    def normalize_result_path(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        path = value.strip()
+        return path if path.startswith("context.") or not path else f"context.{path}"
+
     @model_validator(mode="after")
     def validate_rule(self) -> "EvaluationRule":
-        if not self.result_path.startswith("context."):
-            raise ValueError("结果路径必须以 context. 开头")
         try:
             resolve_path({}, self.result_path[len("context.") :])
         except WorkflowValueError as exc:
             if "对象字段不存在" not in str(exc):
                 raise ValueError(f"结果路径无效: {self.result_path}") from exc
-        try:
-            expected = convert_output(self.expected_value, self.type)
-        except WorkflowOutputTypeError as exc:
-            raise ValueError(f"预期值与 {self.type} 不匹配: {exc}") from exc
+        if self.operator != "NOT_EMPTY":
+            try:
+                expected = convert_output(self.expected_value, self.type)
+            except WorkflowOutputTypeError as exc:
+                raise ValueError(f"预期值与 {self.type} 不匹配: {exc}") from exc
+        else:
+            expected = None
         if self.operator == "REGEX":
             if not isinstance(expected, str):
                 raise ValueError("正则预期值必须是 string")
@@ -71,6 +81,16 @@ def _finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and (
         not isinstance(value, float) or math.isfinite(value)
     )
+
+
+def _not_empty(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)):
+        return bool(value)
+    return True
 
 
 def _compare(operator: str, actual: Any, expected: Any) -> bool:
@@ -114,14 +134,18 @@ def evaluate_case(context: dict[str, Any], rules: list[EvaluationRule]) -> dict[
             actual_exists = False
             actual = None
         try:
-            expected = convert_output(rule.expected_value, rule.type)
-            passed = (
-                actual_exists is expected
-                if rule.operator == "EXISTS"
-                else _compare(rule.operator, actual, expected)
-                if actual_exists
-                else False
-            )
+            if rule.operator == "NOT_EMPTY":
+                expected = None
+                passed = actual_exists and _not_empty(actual)
+            else:
+                expected = convert_output(rule.expected_value, rule.type)
+                passed = (
+                    actual_exists is expected
+                    if rule.operator == "EXISTS"
+                    else _compare(rule.operator, actual, expected)
+                    if actual_exists
+                    else False
+                )
             status = "PASS" if passed else "FAIL"
             message = None if passed else (
                 f"结果路径不存在: {rule.result_path}"
@@ -133,6 +157,7 @@ def evaluate_case(context: dict[str, Any], rules: list[EvaluationRule]) -> dict[
             message = str(exc)
         facts.append(
             {
+                "name": rule.name,
                 "result_path": rule.result_path,
                 "operator": rule.operator,
                 "expected_value": rule.expected_value,

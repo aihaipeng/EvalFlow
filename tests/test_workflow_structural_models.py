@@ -246,3 +246,39 @@ def test_delete_cascades_workflow_nodes_bindings_and_edges(tmp_path):
             )
         }
     assert counts == {table: 0 for table in counts}
+
+
+def test_copy_duplicates_structure_with_independent_ids_and_recursive_name(tmp_path):
+    repository = WorkflowStructuralRepository(tmp_path / "workflow.sqlite3")
+    nodes = node_models()
+    original = repository.create(workflow_payload(nodes=nodes), nodes)
+
+    first = repository.copy(original.workflow.id)
+    second = repository.copy(original.workflow.id)
+
+    assert first.workflow.name == original.workflow.name + "_copy"
+    assert second.workflow.name == original.workflow.name + "_copy_copy"
+    assert first.workflow.description == original.workflow.description
+    assert [
+        (binding.position_x, binding.position_y)
+        for binding in first.workflow.nodes
+    ] == [
+        (binding.position_x, binding.position_y)
+        for binding in original.workflow.nodes
+    ]
+    assert {node.id for node in first.node_models}.isdisjoint(
+        {node.id for node in original.node_models}
+    )
+    assert {edge.id for edge in first.workflow.edges}.isdisjoint(
+        {edge.id for edge in original.workflow.edges}
+    )
+    assert {
+        (edge.source_node_id, edge.target_node_id)
+        for edge in first.workflow.edges
+    } == {
+        (
+            first.workflow.nodes[index].node_id,
+            first.workflow.nodes[index + 1].node_id,
+        )
+        for index in range(len(first.workflow.nodes) - 1)
+    }

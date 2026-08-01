@@ -1,0 +1,65 @@
+{
+  "workflow_execution_id": "c666472f-4b54-4d2c-891c-b6dfd7884c1b",
+  "workflow_id": "11db4d7d-5b94-43c1-b22f-650c1aed7e54",
+  "node_execution_id": "e22e5fb6-5230-4ca0-a8d6-728a46ecb88c",
+  "node_id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+  "type": "START",
+  "structural_snapshot": {
+    "id": "893277b0-7c72-4dcb-911f-7b848ce34e77",
+    "type": "START",
+    "name": "START",
+    "description": "",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "value": "真实请求"
+      }
+    ]
+  },
+  "status": "SUCCESS",
+  "started_at": "2026-08-01 04:58:20",
+  "finished_at": "2026-08-01 04:58:20",
+  "duration_ms": 0,
+  "attempt_count": 1,
+  "inputs": {
+    "question": "真实请求"
+  },
+  "outputs": {
+    "question": "真实请求"
+  },
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T20:58:20.618Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T20:58:20.620Z",
+      "reason": null
+    },
+    {
+      "status": "SUCCESS",
+      "at": "2026-07-31T20:58:20.622Z",
+      "reason": null
+    }
+  ],
+  "error": null,
+  "logs": {
+    "input_validation": {
+      "status": "SUCCESS",
+      "inputs": {
+        "question": "真实请求"
+      },
+      "error": null
+    },
+    "context_commit": {
+      "status": "SUCCESS",
+      "outputs": {
+        "question": "真实请求"
+      },
+      "error": null
+    }
+  }
+}

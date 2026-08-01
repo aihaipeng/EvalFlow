@@ -1,0 +1,14 @@
+{
+  "id": "19f29536-4748-49da-aefb-78a74b65c54b",
+  "batch_execution_id": "ec89e18b-778b-4c97-836c-a681d7a0535b",
+  "case_id": "C-1",
+  "row_number": 1,
+  "status": "INTERRUPTED",
+  "finished_at": "2026-07-31T20:57:50.022Z",
+  "error": {
+    "code": "PROCESS_RESTARTED",
+    "message": "服务重启，活动 Case 未自动续跑",
+    "details": null
+  },
+  "execution_status": "INTERRUPTED"
+}

@@ -1,0 +1,127 @@
+{
+  "id": "19d74c2e-75d0-40d3-a0ba-9b02273fa078",
+  "workflow_id": "e3d24856-7e23-43ce-bbb2-88ea96f14b30",
+  "trigger": {
+    "type": "MANUAL"
+  },
+  "status": "INTERRUPTED",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "e3d24856-7e23-43ce-bbb2-88ea96f14b30",
+      "name": " 质量检测 ",
+      "description": "本机开发验证"
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+          "type": "START",
+          "name": "开始",
+          "description": "",
+          "inputs": [
+            {
+              "name": "question",
+              "type": "string",
+              "value": "请审核"
+            }
+          ]
+        },
+        "position_x": 10.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "type": "SCRIPT",
+          "name": "规则校验",
+          "description": "",
+          "script": "import time\ntime.sleep(30)",
+          "execution": {
+            "timeout_seconds": 60.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "result",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 260.0,
+        "position_y": 20.0
+      },
+      {
+        "node": {
+          "id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+          "type": "END",
+          "name": "结束",
+          "description": "",
+          "outputs": []
+        },
+        "position_x": 510.0,
+        "position_y": 20.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "9d9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "target_node_id": "550e8400-e29b-41d4-a716-446655440000"
+      },
+      {
+        "id": "ad9e6679-7425-40de-944b-e07fc1f90ae7",
+        "source_node_id": "550e8400-e29b-41d4-a716-446655440000",
+        "target_node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:21:22.661Z",
+  "started_at": "2026-07-31T21:21:22.663Z",
+  "finished_at": "2026-07-31T21:21:22.925Z",
+  "duration_ms": 263,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+        "node_execution_id": "6ac33c37-bc7c-4a7e-8807-dab472c7104c",
+        "committed_at": "2026-07-31T21:21:22.669Z",
+        "values": {
+          "question": "请审核"
+        }
+      }
+    ],
+    "final": {
+      "question": "请审核"
+    }
+  },
+  "result": {},
+  "nodes": [
+    {
+      "node_id": "2f1a8c40-6b7d-4e92-a135-9c0d7b5e2f44",
+      "node_execution_id": "6ac33c37-bc7c-4a7e-8807-dab472c7104c",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "node_execution_id": "f9c997cd-3c14-45e0-b5fb-5ac425e4b1a6",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "8d9e6679-7425-40de-944b-e07fc1f90ae7",
+      "node_execution_id": null,
+      "state": "NOT_STARTED",
+      "reason": "GLOBAL_INTERRUPTED"
+    }
+  ],
+  "error": {
+    "code": "USER_INTERRUPTED",
+    "message": "用户中断 Workflow",
+    "details": null
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "e4436e8f-7442-462e-8993-82625e8c0e17",
+  "name": "测试集-d27ae8ce",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "RANDOM",
+    "random_seed": 4837214166375229737
+  },
+  "cases": [
+    {
+      "id": "C-4",
+      "position": 3,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-4",
+        "question": "d"
+      }
+    },
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 2,
+      "values": {
+        "case_name": "C-1",
+        "question": "a"
+      }
+    },
+    {
+      "id": "C-3",
+      "position": 2,
+      "call_number": 3,
+      "values": {
+        "case_name": "C-3",
+        "question": "c"
+      }
+    },
+    {
+      "id": "C-2",
+      "position": 1,
+      "call_number": 4,
+      "values": {
+        "case_name": "C-2",
+        "question": "b"
+      }
+    }
+  ],
+  "created_at": "2026-07-31T21:02:56.053+00:00",
+  "updated_at": "2026-07-31T21:02:56.053+00:00"
+}

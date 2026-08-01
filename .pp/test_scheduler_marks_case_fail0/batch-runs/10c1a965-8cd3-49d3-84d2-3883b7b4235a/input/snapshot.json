@@ -1,0 +1,26 @@
+{
+  "id": "386ecf07-6515-428e-85c9-7cb44a41670a",
+  "name": "测试集-ade15a2d",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "good"
+      }
+    }
+  ],
+  "created_at": "2026-08-01T00:15:27.082+00:00",
+  "updated_at": "2026-08-01T00:15:27.082+00:00"
+}

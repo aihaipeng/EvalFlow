@@ -1,0 +1,109 @@
+{
+  "workflow_execution_id": "e65975e2-4a55-4c4e-a1f1-52d5367f1ae1",
+  "workflow_id": "7447e262-9a5f-4044-a618-fef7f20987df",
+  "node_execution_id": "d7bee201-e762-4df7-95a7-17b36fc68a76",
+  "node_id": "fdd15c5f-d91e-4193-aee3-d3d30c5cc7f7",
+  "type": "HTTP",
+  "structural_snapshot": {
+    "id": "fdd15c5f-d91e-4193-aee3-d3d30c5cc7f7",
+    "type": "HTTP",
+    "name": "Request Options",
+    "description": "",
+    "request": {
+      "method": "GET",
+      "url": "https://example.test",
+      "follow_redirects": false,
+      "headers": [],
+      "params": [],
+      "body": {
+        "type": "none",
+        "content": null,
+        "template_text": null
+      }
+    },
+    "network": {
+      "proxy": {
+        "mode": "DIRECT",
+        "url": null,
+        "username": null,
+        "password": null
+      },
+      "verify_ssl": false
+    },
+    "response": {
+      "mode": "TEXT",
+      "success_statuses": [
+        200
+      ]
+    },
+    "execution": {
+      "timeout_seconds": 5.0,
+      "max_attempts": 2,
+      "retry_interval_seconds": 0.0,
+      "delay_seconds": 0.0,
+      "retry_non_idempotent": false,
+      "retry_statuses": [
+        500
+      ]
+    },
+    "outputs": []
+  },
+  "status": "FAILED",
+  "started_at": "2026-08-01 05:08:43",
+  "finished_at": "2026-08-01 05:08:43",
+  "duration_ms": 6,
+  "attempt_count": 1,
+  "inputs": {},
+  "outputs": {},
+  "transitions": [
+    {
+      "status": "PENDING",
+      "at": "2026-07-31T21:08:43.102Z",
+      "reason": null
+    },
+    {
+      "status": "RUNNING",
+      "at": "2026-07-31T21:08:43.105Z",
+      "reason": null
+    },
+    {
+      "status": "FAILED",
+      "at": "2026-07-31T21:08:43.108Z",
+      "reason": "HTTP_RESPONSE_PARSE_ERROR"
+    }
+  ],
+  "error": {
+    "code": "HTTP_RESPONSE_PARSE_ERROR",
+    "message": "响应 Body 不是合法 JSON",
+    "details": null
+  },
+  "network": {
+    "proxy": {
+      "mode": "DIRECT",
+      "url": null,
+      "username": null,
+      "password": null
+    },
+    "verify_ssl": false
+  },
+  "request": null,
+  "redirects": [],
+  "response": null,
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "FAILED",
+      "started_at": "2026-08-01 05:08:43",
+      "finished_at": "2026-08-01 05:08:43",
+      "duration_ms": 1,
+      "request": null,
+      "redirects": [],
+      "response": null,
+      "error": {
+        "code": "HTTP_RESPONSE_PARSE_ERROR",
+        "message": "响应 Body 不是合法 JSON",
+        "details": null
+      }
+    }
+  ]
+}

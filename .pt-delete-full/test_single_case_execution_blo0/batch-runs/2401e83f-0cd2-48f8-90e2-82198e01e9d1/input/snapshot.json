@@ -1,0 +1,35 @@
+{
+  "id": "7598bd92-5a13-4436-8883-3c8cd5f3be79",
+  "name": "测试集-99a02220",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "one"
+      }
+    },
+    {
+      "id": "C-2",
+      "position": 1,
+      "call_number": 2,
+      "values": {
+        "case_name": "C-2",
+        "question": "two"
+      }
+    }
+  ],
+  "created_at": "2026-07-31T21:02:54.947+00:00",
+  "updated_at": "2026-07-31T21:02:54.947+00:00"
+}

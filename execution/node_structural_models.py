@@ -396,7 +396,8 @@ class LlmNodeStructuralModel(NodeCommon):
         description="模型调用超时与重试配置；省略时使用平台默认执行策略。",
     )
     outputs: list[NodeOutput] = Field(
-        default_factory=list, description="从供应商完整 response 提取的输出绑定。"
+        default_factory=list,
+        description="从协议解析结果 result 或供应商原始 response 提取的输出绑定。",
     )
 
     @field_validator("outputs")

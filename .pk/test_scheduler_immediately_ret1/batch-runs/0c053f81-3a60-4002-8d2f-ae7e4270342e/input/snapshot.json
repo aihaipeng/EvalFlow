@@ -1,0 +1,26 @@
+{
+  "id": "5c2771cf-d751-4df1-bb9c-c2636bfde875",
+  "name": "测试集-a30028c4",
+  "description": "",
+  "columns": [
+    "case_name",
+    "question"
+  ],
+  "call_order": {
+    "mode": "SEQUENTIAL",
+    "random_seed": null
+  },
+  "cases": [
+    {
+      "id": "C-1",
+      "position": 0,
+      "call_number": 1,
+      "values": {
+        "case_name": "C-1",
+        "question": "bad"
+      }
+    }
+  ],
+  "created_at": "2026-07-31T22:14:57.936+00:00",
+  "updated_at": "2026-07-31T22:14:57.936+00:00"
+}

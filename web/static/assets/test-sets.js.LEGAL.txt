@@ -61,10 +61,11 @@ lucide-react/dist/esm/icons/chevron-left.js:
 lucide-react/dist/esm/icons/chevron-right.js:
 lucide-react/dist/esm/icons/circle-check.js:
 lucide-react/dist/esm/icons/eraser.js:
-lucide-react/dist/esm/icons/eye.js:
+lucide-react/dist/esm/icons/file-text.js:
 lucide-react/dist/esm/icons/file-up.js:
 lucide-react/dist/esm/icons/info.js:
 lucide-react/dist/esm/icons/layout-grid.js:
+lucide-react/dist/esm/icons/pencil.js:
 lucide-react/dist/esm/icons/plus.js:
 lucide-react/dist/esm/icons/refresh-cw.js:
 lucide-react/dist/esm/icons/save.js:

@@ -10,8 +10,17 @@ from urllib.parse import quote
 
 import httpx
 
+from execution.model_protocols import (
+    ANTHROPIC_CLAUDE_MESSAGES,
+    ANTHROPIC_VERSION,
+    OPENAI_CHAT_COMPLETIONS,
+    OPENAI_RESPONSES,
+    model_inference_url,
+    model_protocol_headers,
+    validate_protocol_parameters,
+)
 
-ANTHROPIC_VERSION = "2023-06-01"
+
 DEFAULT_ANTHROPIC_MAX_TOKENS = 8192
 
 
@@ -52,6 +61,9 @@ def build_chat_completion_request(
 ) -> dict[str, Any]:
     """Build a chat request where model defaults and node parameters may override all fields."""
 
+    validate_protocol_parameters(
+        OPENAI_CHAT_COMPLETIONS, model_defaults, model_parameters
+    )
     base_request = {
         "model": model_name,
         "messages": [deepcopy(dict(message)) for message in messages],
@@ -64,6 +76,30 @@ def build_chat_completion_request(
     )
 
 
+def build_responses_request(
+    *,
+    model_name: str,
+    messages: Sequence[Mapping[str, Any]],
+    model_defaults: Mapping[str, Any] | None = None,
+    model_parameters: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an OpenAI Responses API request using the native input field."""
+
+    validate_protocol_parameters(OPENAI_RESPONSES, model_defaults, model_parameters)
+    base_request = {
+        "model": model_name,
+        "input": [deepcopy(dict(message)) for message in messages],
+        "stream": False,
+    }
+    request = deep_merge_model_request(
+        base_request,
+        model_defaults,
+        model_parameters,
+    )
+    request.pop("messages", None)
+    return request
+
+
 def build_anthropic_request(
     *,
     model_name: str,
@@ -74,6 +110,9 @@ def build_anthropic_request(
 ) -> dict[str, Any]:
     """Build an Anthropic Messages request with fully overridable body fields."""
 
+    validate_protocol_parameters(
+        ANTHROPIC_CLAUDE_MESSAGES, model_defaults, model_parameters
+    )
     base_request: dict[str, Any] = {
         "model": model_name,
         "messages": [deepcopy(dict(message)) for message in messages],
@@ -89,26 +128,60 @@ def build_anthropic_request(
     )
 
 
+def build_model_request(
+    protocol: str,
+    *,
+    model_name: str,
+    messages: Sequence[Mapping[str, Any]],
+    model_defaults: Mapping[str, Any] | None = None,
+    model_parameters: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if protocol == ANTHROPIC_CLAUDE_MESSAGES:
+        system_parts = [
+            str(message.get("content", ""))
+            for message in messages
+            if str(message.get("role", "")).lower() == "system"
+            and str(message.get("content", "")).strip()
+        ]
+        anthropic_messages = [
+            message
+            for message in messages
+            if str(message.get("role", "")).lower() != "system"
+        ]
+        return build_anthropic_request(
+            model_name=model_name,
+            messages=anthropic_messages,
+            system_prompt="\n\n".join(system_parts),
+            model_defaults=model_defaults,
+            model_parameters=model_parameters,
+        )
+    if protocol == OPENAI_RESPONSES:
+        return build_responses_request(
+            model_name=model_name,
+            messages=messages,
+            model_defaults=model_defaults,
+            model_parameters=model_parameters,
+        )
+    if protocol == OPENAI_CHAT_COMPLETIONS:
+        return build_chat_completion_request(
+            model_name=model_name,
+            messages=messages,
+            model_defaults=model_defaults,
+            model_parameters=model_parameters,
+        )
+    raise ValueError(f"不支持的模型协议: {protocol}")
+
+
 def chat_completions_url(base_url: str) -> str:
-    parsed = urlsplit(base_url.strip().rstrip("/"))
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("BASE_URL 必须是有效的 HTTP 或 HTTPS 地址")
-    path = parsed.path.rstrip("/")
-    if not path.endswith("/chat/completions"):
-        path = f"{path}/chat/completions"
-    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+    return model_inference_url(OPENAI_CHAT_COMPLETIONS, base_url)
+
+
+def responses_url(base_url: str) -> str:
+    return model_inference_url(OPENAI_RESPONSES, base_url)
 
 
 def anthropic_messages_url(base_url: str) -> str:
-    parsed = urlsplit(base_url.strip().rstrip("/"))
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("BASE_URL 必须是有效的 HTTP 或 HTTPS 地址")
-    path = parsed.path.rstrip("/")
-    if not path.endswith("/messages"):
-        if not path.rsplit("/", 1)[-1].lower() in {"v1", "v2"}:
-            path = f"{path}/v1"
-        path = f"{path}/messages"
-    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+    return model_inference_url(ANTHROPIC_CLAUDE_MESSAGES, base_url)
 
 
 def model_http_client_options(
@@ -168,12 +241,7 @@ def _proxy_url_with_auth(
 
 
 def anthropic_headers(api_key: str) -> dict[str, str]:
-    return {
-        "accept": "application/json",
-        "anthropic-version": ANTHROPIC_VERSION,
-        "content-type": "application/json",
-        "x-api-key": api_key,
-    }
+    return model_protocol_headers(ANTHROPIC_CLAUDE_MESSAGES, api_key)
 
 
 async def invoke_openai_compatible(
@@ -206,11 +274,45 @@ async def invoke_openai_compatible(
     try:
         return await active_client.post(
             chat_completions_url(base_url),
-            headers={
-                "accept": "application/json",
-                "authorization": f"Bearer {api_key}",
-                "content-type": "application/json",
-            },
+            headers=model_protocol_headers(OPENAI_CHAT_COMPLETIONS, api_key),
+            json=deepcopy(dict(request_body)),
+        )
+    finally:
+        if owns_client:
+            await active_client.aclose()
+
+
+async def invoke_openai_responses(
+    *,
+    base_url: str,
+    api_key: str,
+    request_body: Mapping[str, Any],
+    timeout_seconds: float = 120,
+    proxy_mode: str = "SYSTEM",
+    proxy_url: str | None = None,
+    proxy_username: str | None = None,
+    proxy_password: str | None = None,
+    verify_ssl: bool = True,
+    client: httpx.AsyncClient | None = None,
+) -> httpx.Response:
+    """Send a prepared native OpenAI Responses API request."""
+
+    owns_client = client is None
+    active_client = client or httpx.AsyncClient(
+        **model_http_client_options(
+            base_url,
+            timeout_seconds=timeout_seconds,
+            proxy_mode=proxy_mode,
+            proxy_url=proxy_url,
+            proxy_username=proxy_username,
+            proxy_password=proxy_password,
+            verify_ssl=verify_ssl,
+        ),
+    )
+    try:
+        return await active_client.post(
+            responses_url(base_url),
+            headers=model_protocol_headers(OPENAI_RESPONSES, api_key),
             json=deepcopy(dict(request_body)),
         )
     finally:
@@ -256,6 +358,41 @@ async def invoke_anthropic(
             await active_client.aclose()
 
 
+async def invoke_model_protocol(
+    protocol: str,
+    *,
+    base_url: str,
+    api_key: str,
+    request_body: Mapping[str, Any],
+    timeout_seconds: float = 120,
+    proxy_mode: str = "SYSTEM",
+    proxy_url: str | None = None,
+    proxy_username: str | None = None,
+    proxy_password: str | None = None,
+    verify_ssl: bool = True,
+    client: httpx.AsyncClient | None = None,
+) -> httpx.Response:
+    invoke = {
+        OPENAI_CHAT_COMPLETIONS: invoke_openai_compatible,
+        OPENAI_RESPONSES: invoke_openai_responses,
+        ANTHROPIC_CLAUDE_MESSAGES: invoke_anthropic,
+    }.get(protocol)
+    if invoke is None:
+        raise ValueError(f"不支持的模型协议: {protocol}")
+    return await invoke(
+        base_url=base_url,
+        api_key=api_key,
+        request_body=request_body,
+        timeout_seconds=timeout_seconds,
+        proxy_mode=proxy_mode,
+        proxy_url=proxy_url,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
+        verify_ssl=verify_ssl,
+        client=client,
+    )
+
+
 def parse_openai_compatible_response(
     response: httpx.Response,
     *,
@@ -269,6 +406,12 @@ def parse_openai_compatible_response(
         payload = response.json()
     except ValueError as exc:
         raise ValueError("模型响应不是合法 JSON") from exc
+    return parse_openai_compatible_payload(payload)
+
+
+def parse_openai_compatible_payload(payload: Any) -> dict[str, Any]:
+    """Normalize a buffered OpenAI-compatible response payload."""
+
     if not isinstance(payload, dict):
         raise ValueError("模型响应必须是 JSON 对象")
     choices = payload.get("choices")
@@ -291,6 +434,55 @@ def parse_openai_compatible_response(
     }
 
 
+def parse_openai_responses_response(response: httpx.Response) -> dict[str, Any]:
+    """Extract text, usage, and completion state from a Responses API result."""
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError("模型响应不是合法 JSON") from exc
+    return parse_openai_responses_payload(payload)
+
+
+def parse_openai_responses_payload(payload: Any) -> dict[str, Any]:
+    """Normalize a Responses payload without exposing reasoning as output."""
+
+    if not isinstance(payload, dict):
+        raise ValueError("模型响应必须是 JSON 对象")
+
+    output: Any = payload.get("output_text")
+    output_items = payload.get("output")
+    if not isinstance(output, str) or not output:
+        if not isinstance(output_items, list):
+            raise ValueError("Responses API 模型响应缺少 output")
+        text_parts = []
+        for item in output_items:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, dict) or part.get("type") != "output_text":
+                    continue
+                text = part.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+        output = "".join(text_parts) or deepcopy(output_items)
+
+    status = payload.get("status")
+    incomplete_details = payload.get("incomplete_details")
+    finish_reason = status
+    if status == "incomplete" and isinstance(incomplete_details, dict):
+        finish_reason = incomplete_details.get("reason") or status
+    usage = payload.get("usage")
+    return {
+        "output": deepcopy(output),
+        "usage": deepcopy(usage) if isinstance(usage, dict) else None,
+        "finish_reason": finish_reason,
+    }
+
+
 def parse_anthropic_response(response: httpx.Response) -> dict[str, Any]:
     """Extract final output and usage from a native Anthropic message response."""
 
@@ -298,6 +490,12 @@ def parse_anthropic_response(response: httpx.Response) -> dict[str, Any]:
         payload = response.json()
     except ValueError as exc:
         raise ValueError("模型响应不是合法 JSON") from exc
+    return parse_anthropic_payload(payload)
+
+
+def parse_anthropic_payload(payload: Any) -> dict[str, Any]:
+    """Normalize a buffered Anthropic Messages response payload."""
+
     if not isinstance(payload, dict):
         raise ValueError("模型响应必须是 JSON 对象")
     content = payload.get("content")
@@ -317,6 +515,25 @@ def parse_anthropic_response(response: httpx.Response) -> dict[str, Any]:
         "usage": deepcopy(usage) if isinstance(usage, dict) else None,
         "finish_reason": payload.get("stop_reason"),
     }
+
+
+def parse_model_payload(protocol: str, payload: Any) -> dict[str, Any]:
+    parser = {
+        OPENAI_CHAT_COMPLETIONS: parse_openai_compatible_payload,
+        OPENAI_RESPONSES: parse_openai_responses_payload,
+        ANTHROPIC_CLAUDE_MESSAGES: parse_anthropic_payload,
+    }.get(protocol)
+    if parser is None:
+        raise ValueError(f"不支持的模型协议: {protocol}")
+    return parser(payload)
+
+
+def parse_model_response(protocol: str, response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError("模型响应不是合法 JSON") from exc
+    return parse_model_payload(protocol, payload)
 
 
 def extract_streaming_usage(body: str) -> dict[str, Any] | None:

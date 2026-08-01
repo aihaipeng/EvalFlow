@@ -14,14 +14,17 @@ from execution import (
     NodeTestManager,
     WorkflowExecutionError,
     WorkflowExecutionManager,
+    WorkflowExecutionRetentionScheduler,
     WorkflowExecutionStore,
     WorkflowStructuralRepository,
     TestSetRepository,
 )
 from execution.workflow_application import WorkflowApplicationService
+from execution.batch_execution_history import BatchExecutionHistoryRepository
 from execution.batch_execution_store import BatchExecutionStore
 from execution.batch_inputs import BatchInputService
 from execution.batch_scheduler import BatchScheduler
+from execution.batch_schedule import BatchScheduleManager, BatchScheduleRepository
 
 
 class WorkflowServices:
@@ -46,11 +49,26 @@ class WorkflowServices:
             self.model_repository,
             self.store,
         )
+        self.retention_scheduler = WorkflowExecutionRetentionScheduler(self.store)
+        self.retention_scheduler.start()
         self.batch_store = BatchExecutionStore(
             self.execution_root.parent / "batch_executions"
         )
+        self.batch_history = BatchExecutionHistoryRepository(self.database_path)
+        self.batch_history.initialize()
         self.batch_inputs = BatchInputService(self.repository, self.test_sets, self.batch_store)
-        self.batch_scheduler = BatchScheduler(self.batch_store, self.manager)
+        self.batch_scheduler = BatchScheduler(
+            self.batch_store, self.manager, self.batch_history
+        )
+        self.batch_schedules = BatchScheduleRepository(self.database_path)
+        self.batch_schedules.initialize()
+        self.batch_schedule_manager = BatchScheduleManager(
+            self.batch_schedules,
+            self.batch_store,
+            self.batch_inputs,
+            self.batch_scheduler,
+        )
+        self.batch_schedule_manager.start()
         self.node_test_manager = NodeTestManager(
             self.model_repository,
         )
@@ -64,7 +82,13 @@ class WorkflowServices:
         """Stop transient tests and persisted executions before releasing the app."""
 
         errors: list[str] = []
-        for manager in (self.batch_scheduler, self.node_test_manager, self.manager):
+        for manager in (
+            self.batch_schedule_manager,
+            self.batch_scheduler,
+            self.node_test_manager,
+            self.manager,
+            self.retention_scheduler,
+        ):
             try:
                 manager.shutdown(wait_seconds=wait_seconds)
             except Exception as exc:  # noqa: BLE001 - both managers must be attempted

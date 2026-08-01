@@ -1,0 +1,152 @@
+{
+  "id": "d0684635-e8c9-4963-ba21-b159db377181",
+  "workflow_id": "9239b77b-5416-4e3e-8e33-6a413091158b",
+  "trigger": {
+    "type": "BATCH",
+    "batch_execution_id": "09aa3cba-16cc-48d7-b12b-f82cb26c327b",
+    "case_run_id": "76277c1f-9116-4848-867a-f650d6df55ba",
+    "case_id": "case-1",
+    "row_number": 1
+  },
+  "status": "SUCCESS",
+  "structural_snapshot": {
+    "workflow": {
+      "id": "9239b77b-5416-4e3e-8e33-6a413091158b",
+      "name": "Reusable Workflow v2",
+      "description": ""
+    },
+    "nodes": [
+      {
+        "node": {
+          "id": "8742b30d-5796-44b7-8881-594cf3bd6e78",
+          "type": "START",
+          "name": "START",
+          "description": "",
+          "inputs": [
+            {
+              "name": "input",
+              "type": "object",
+              "value": {}
+            },
+            {
+              "name": "question",
+              "type": "string",
+              "value": "changed"
+            }
+          ]
+        },
+        "position_x": 0.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "06ae86b8-1658-41e8-a72e-46432cc88430",
+          "type": "SCRIPT",
+          "name": "SCRIPT",
+          "description": "",
+          "script": "result = \"v2:\" + context[\"question\"]",
+          "execution": {
+            "timeout_seconds": 600.0,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0.0,
+            "delay_seconds": 0.0
+          },
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "result"
+            }
+          ]
+        },
+        "position_x": 200.0,
+        "position_y": 0.0
+      },
+      {
+        "node": {
+          "id": "da0e3a23-bd5b-4e19-938d-3e09a07dadb5",
+          "type": "END",
+          "name": "END",
+          "description": "",
+          "outputs": [
+            {
+              "name": "answer",
+              "type": "string",
+              "source": "answer"
+            }
+          ]
+        },
+        "position_x": 400.0,
+        "position_y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "fdbf0e54-db80-4c9a-b21b-f98be891719b",
+        "source_node_id": "8742b30d-5796-44b7-8881-594cf3bd6e78",
+        "target_node_id": "06ae86b8-1658-41e8-a72e-46432cc88430"
+      },
+      {
+        "id": "5cbe7d1b-7a2e-4c34-aada-1efc69555bed",
+        "source_node_id": "06ae86b8-1658-41e8-a72e-46432cc88430",
+        "target_node_id": "da0e3a23-bd5b-4e19-938d-3e09a07dadb5"
+      }
+    ]
+  },
+  "created_at": "2026-07-31T21:02:46.489Z",
+  "started_at": "2026-07-31T21:02:46.491Z",
+  "finished_at": "2026-07-31T21:02:46.795Z",
+  "duration_ms": 304,
+  "context": {
+    "commits": [
+      {
+        "sequence": 1,
+        "node_id": "8742b30d-5796-44b7-8881-594cf3bd6e78",
+        "node_execution_id": "d3edc0c6-3f19-4766-97da-afce86eb9366",
+        "committed_at": "2026-07-31T21:02:46.499Z",
+        "values": {
+          "input": {},
+          "question": "changed"
+        }
+      },
+      {
+        "sequence": 2,
+        "node_id": "06ae86b8-1658-41e8-a72e-46432cc88430",
+        "node_execution_id": "c6ca156e-184a-4a32-82d7-9f749e10f610",
+        "committed_at": "2026-07-31T21:02:46.778Z",
+        "values": {
+          "answer": "v2:changed"
+        }
+      }
+    ],
+    "final": {
+      "input": {},
+      "question": "changed",
+      "answer": "v2:changed"
+    }
+  },
+  "result": {
+    "answer": "v2:changed"
+  },
+  "nodes": [
+    {
+      "node_id": "8742b30d-5796-44b7-8881-594cf3bd6e78",
+      "node_execution_id": "d3edc0c6-3f19-4766-97da-afce86eb9366",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "06ae86b8-1658-41e8-a72e-46432cc88430",
+      "node_execution_id": "c6ca156e-184a-4a32-82d7-9f749e10f610",
+      "state": "FINISHED",
+      "reason": null
+    },
+    {
+      "node_id": "da0e3a23-bd5b-4e19-938d-3e09a07dadb5",
+      "node_execution_id": "ccd4ce50-af19-416a-ac82-764952f12f8f",
+      "state": "FINISHED",
+      "reason": null
+    }
+  ],
+  "error": null
+}
