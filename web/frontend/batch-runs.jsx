@@ -847,7 +847,7 @@ function ScheduleModal({ batch, onClose, onSaved }) {
             取消
           </button>
           <button className="btn btn-primary" onClick={() => save.mutate()}>
-            保存设置
+            保存
           </button>
         </>
       }
@@ -985,6 +985,46 @@ function ScheduleModal({ batch, onClose, onSaved }) {
   );
 }
 
+const BATCH_TERMINAL = new Set([
+  "SUCCESS",
+  "COMPLETED_WITH_ERRORS",
+  "STOPPED",
+  "INTERRUPTED",
+]);
+
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") Notification.requestPermission();
+}
+
+function notifyBatch(batch) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const s = batch.summary || {},
+    total = +batch.total_cases || 0,
+    pass = +s.success || 0,
+    fail = +s.failed || 0;
+  let body;
+  if (batch.status === "SUCCESS") {
+    body = `任务 ${batch.name} 完成：${pass}/${total} PASS`;
+  } else if (batch.status === "COMPLETED_WITH_ERRORS") {
+    body = `任务 ${batch.name} 完成：${pass}/${total} PASS，${fail} FAIL`;
+  } else if (batch.status === "STOPPED") {
+    body = `任务 ${batch.name} 已停止`;
+  } else {
+    body = `任务 ${batch.name} 异常中断`;
+  }
+  try {
+    const n = new Notification("EvalFlow", { body, tag: batch.id });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+    };
+  } catch (_) {
+    /* 静默跳过 */
+  }
+}
+
 function App() {
   const qc = useQueryClient(),
     [page, setPage] = useState(1),
@@ -998,6 +1038,20 @@ function App() {
   useEffect(() => {
     if (batches.error) toast(`加载任务失败：${batches.error.message}`, "error");
   }, [batches.error]);
+  const prevStatuses = React.useRef(new Map());
+  useEffect(() => {
+    const list = batches.data;
+    if (!list || !list.length) return;
+    const next = new Map();
+    for (const b of list) {
+      next.set(b.id, b.status);
+      const prev = prevStatuses.current.get(b.id);
+      if (prev && active({ status: prev }) && BATCH_TERMINAL.has(b.status)) {
+        notifyBatch(b);
+      }
+    }
+    prevStatuses.current = next;
+  }, [batches.data]);
   const data = batches.data || [],
     rows = data.slice((page - 1) * size, page * size);
   const refresh = () => qc.invalidateQueries({ queryKey: ["batch-runs"] });
@@ -1007,6 +1061,9 @@ function App() {
       if (action === "cancel") return cancelBatch(id);
       if (action === "start") return startBatch(id, body || { mode: "FULL" });
       throw new Error(`不支持的任务操作: ${action}`);
+    },
+    onMutate: ({ action }) => {
+      if (action === "start") requestNotificationPermission();
     },
     onSuccess: refresh,
     onError: (e) => toast(e.message, "error"),

@@ -217,6 +217,32 @@ def test_scheduler_immediately_retries_execution_errors_up_to_configured_limit(t
     assert len(case["workflow_execution_ids"]) == 3
 
 
+def test_scheduler_retry_count_zero_executes_once(tmp_path: Path):
+    """failure_retry_count=0 时恰好执行 1 次，不做复试。"""
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path, 'raise RuntimeError("always fails")'
+    )
+    test_set = _test_set(test_sets, [("C-1", "bad")])
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="zero retry",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {"source": "TEST_SET", "key": "question", "value": "question", "type": "string"}
+        ],
+        case_concurrency=1,
+        failure_retry_count=0,
+    )
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
+
+    scheduler.start(batch["id"])
+    _wait_batch(store, batch["id"])
+    case = store.list_cases(batch["id"])[0]
+
+    assert case["status"] == "FAILED"
+    assert len(case["workflow_execution_ids"]) == 1
+
+
 def test_scheduler_stop_waits_for_running_case_and_leaves_queued_case_unexecuted(tmp_path: Path):
     workflow_id, repository, test_sets, manager, store = _services(tmp_path, 'import time\ntime.sleep(0.3)\nresult = "done"')
     test_set = _test_set(test_sets, [("C-1", "one"), ("C-2", "two")])
