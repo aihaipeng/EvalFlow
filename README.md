@@ -17,17 +17,33 @@ Workflow 和节点测试调度器保存进程内活动状态，因此当前部�
 ## 环境要求
 
 - Windows 10 或 Windows 11
-- [uv](https://docs.astral.sh/uv/)
+- [uv](https://docs.astral.sh/uv/)（Python 包管理器，安装方法见下方）
 - Git，仅在通过 Git 获取项目时需要
 - Node.js 不是运行依赖；只有修改前端源码并重新构建静态资源时才需要
+
+### 安装 uv
+
+Windows 下打开 PowerShell，执行：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+安装完成后**重新打开 PowerShell**，验证安装：
+
+```powershell
+uv --version
+```
+
+> 其他系统或更多安装方式见 [uv 官方文档](https://docs.astral.sh/uv/getting-started/installation/)。
 
 ## 安装与启动
 
 从 GitHub 克隆项目并进入项目目录：
 
 ```powershell
-git clone https://github.com/aihaipeng/agent-bench-v2.git
-cd agent-bench-v2
+git clone https://github.com/aihaipeng/EvalFlow.git
+cd EvalFlow
 ```
 
 首次安装 Python 与项目依赖：
@@ -87,6 +103,9 @@ npm run test:e2e
 # 启动开发服务
 uv run python run.py
 
+# 前端开发热更新（仍需单独启动 run.py）
+npm run dev
+
 # 修改前端源码后重新构建 Vite 多入口生产资源
 npm ci
 npm run build
@@ -101,7 +120,7 @@ npm run build
 ```powershell
 $env:DEEPSEEK_API_KEY = "<your-key>"
 $env:DASHSCOPE_API_KEY = "<your-key>"
-uv run pytest tests/test_agent_live_integration.py -m live -q
+uv run pytest tests/test_model_gateway_live.py -m live -q
 ```
 
 `DEEPSEEK_BASE_URL` 和 `DASHSCOPE_BASE_URL` 为可选覆盖项。测试只把密钥注入单次运行请求，并断言临时工具 manifest 未保存密钥。
