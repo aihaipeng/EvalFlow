@@ -63,13 +63,67 @@ def test_batch_store_keeps_case_cache_isolated_and_current(tmp_path: Path, monke
     assert store.list_cases(batch["id"])[0]["status"] == "SUCCESS"
 
 
+def test_batch_store_keeps_configuration_and_execution_writes_isolated(
+    tmp_path: Path,
+) -> None:
+    batch, case = _documents()
+    batch.update(
+        {
+            "name": "Old task",
+            "description": "old",
+            "configuration": {"name": "Old task", "description": "old"},
+            "updated_at": "2026-08-04T00:00:00.000Z",
+        }
+    )
+    store = BatchExecutionStore(tmp_path / "batch")
+    store.create(batch, [case], {"columns": ["question"]})
+    stale_execution = store.get(batch["id"])
+    assert stale_execution is not None
+
+    updated = store.write_configuration(
+        batch["id"],
+        {"name": "New task", "description": "new"},
+        updated_at="2026-08-04T00:01:00.000Z",
+    )
+    stale_execution["status"] = "SUCCESS"
+    stale_execution["finished_at"] = "2026-08-04T00:02:00.000Z"
+    store.write_batch(stale_execution)
+
+    latest = store.get(batch["id"])
+    assert latest is not None
+    assert latest["status"] == "SUCCESS"
+    assert latest["name"] == "New task"
+    assert latest["configuration"] == {"name": "New task", "description": "new"}
+    assert latest["updated_at"] == "2026-08-04T00:01:00.000Z"
+    assert updated["status"] == "QUEUED"
+
+    stale_configuration = {"name": "Latest task", "description": "latest"}
+    latest["status"] = "INTERRUPTED"
+    store.write_batch(latest)
+    merged = store.write_configuration(
+        batch["id"],
+        stale_configuration,
+        updated_at="2026-08-04T00:03:00.000Z",
+    )
+    assert merged["status"] == "INTERRUPTED"
+    assert merged["finished_at"] == "2026-08-04T00:02:00.000Z"
+    assert merged["configuration"] == stale_configuration
+
+
 def test_batch_store_recovers_running_batch_without_starting_queued_cases(tmp_path: Path) -> None:
     batch, running = _documents()
     queued = {**running, "id": str(uuid4()), "case_id": "C-2", "row_number": 2}
+    manual_queued = {
+        **running,
+        "id": str(uuid4()),
+        "case_id": "C-3",
+        "row_number": 3,
+        "execution_status": "QUEUED",
+    }
     batch["status"] = "RUNNING"
     running["status"] = "RUNNING"
     store = BatchExecutionStore(tmp_path / "batch")
-    store.create(batch, [running, queued], {"columns": ["question"]})
+    store.create(batch, [running, queued, manual_queued], {"columns": ["question"]})
 
     assert store.recover_incomplete() == 1
 
@@ -79,6 +133,8 @@ def test_batch_store_recovers_running_batch_without_starting_queued_cases(tmp_pa
     assert recovered["error"]["code"] == "PROCESS_RESTARTED"
     assert cases["C-1"]["status"] == "INTERRUPTED"
     assert cases["C-2"]["status"] == "QUEUED"
+    assert cases["C-3"]["status"] == "INTERRUPTED"
+    assert cases["C-3"]["error"]["code"] == "PROCESS_RESTARTED"
 
 
 def test_batch_store_deletes_terminal_batch_but_rejects_running_batch(tmp_path: Path) -> None:

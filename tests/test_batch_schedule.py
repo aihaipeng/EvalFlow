@@ -1,5 +1,8 @@
+import threading
 import time
 from datetime import UTC, datetime, timedelta
+
+from apscheduler.triggers.date import DateTrigger
 
 from execution.batch_schedule import (
     BatchScheduleManager,
@@ -161,6 +164,51 @@ def test_overlap_policy_skips_or_queues_while_task_is_active(tmp_path):
     assert scheduler.started == []
 
 
+def test_occurrence_completion_does_not_overwrite_concurrent_schedule_edit(tmp_path):
+    repository = BatchScheduleRepository(tmp_path / "concurrent-edit.sqlite3")
+    repository.save(
+        "batch-1",
+        _schedule(cadence="ONCE", run_at="2026-01-01T09:00:01", timezone="UTC"),
+        now=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingScheduler:
+        def start(self, batch_id):
+            entered.set()
+            assert release.wait(3)
+
+    manager = BatchScheduleManager(
+        repository,
+        _Store(),
+        _Inputs(),
+        BlockingScheduler(),
+    )
+    thread = threading.Thread(
+        target=lambda: manager.run_due(
+            now=datetime(2026, 1, 1, 9, 0, 2, tzinfo=UTC)
+        )
+    )
+    thread.start()
+    assert entered.wait(2)
+
+    saved = repository.save(
+        "batch-1",
+        _schedule(cadence="ONCE", run_at="2026-01-02T09:00:00", timezone="UTC"),
+        now=datetime(2026, 1, 1, 9, 0, 3, tzinfo=UTC),
+    )
+    release.set()
+    thread.join(timeout=3)
+
+    current = repository.get("batch-1")
+    assert not thread.is_alive()
+    assert saved["next_run_at"] == "2026-01-02T09:00:00.000Z"
+    assert current and current["enabled"] is True
+    assert current["next_run_at"] == saved["next_run_at"]
+    assert current["last_error"] is None
+
+
 def test_apscheduler_triggers_persisted_date_job_without_custom_poll_thread(tmp_path):
     repository = BatchScheduleRepository(tmp_path / "apscheduler.sqlite3")
     run_at = datetime.now(UTC) + timedelta(milliseconds=350)
@@ -181,3 +229,48 @@ def test_apscheduler_triggers_persisted_date_job_without_custom_poll_thread(tmp_
 
     assert scheduler.started == ["batch-1"]
     assert repository.get("batch-1")["enabled"] is False
+
+
+def test_apscheduler_requeues_persisted_job_after_executor_misfire(tmp_path):
+    repository = BatchScheduleRepository(tmp_path / "misfire.sqlite3")
+    run_at = datetime.now(UTC) + timedelta(milliseconds=700)
+    repository.save(
+        "batch-1",
+        _schedule(cadence="ONCE", run_at=run_at.isoformat(), timezone="UTC"),
+    )
+    store, inputs, scheduler = _Store(), _Inputs(), _Scheduler()
+    manager = BatchScheduleManager(
+        repository,
+        store,
+        inputs,
+        scheduler,
+        poll_interval_seconds=0.05,
+        misfire_grace_time_seconds=1,
+    )
+    release = threading.Event()
+
+    def block_executor():
+        assert release.wait(5)
+
+    manager.start()
+    try:
+        block_at = datetime.now(UTC) + timedelta(milliseconds=100)
+        for index in range(10):
+            manager._scheduler.add_job(
+                block_executor,
+                DateTrigger(run_date=block_at, timezone=UTC),
+                id=f"block-{index}",
+            )
+        time.sleep(2.2)
+        release.set()
+        deadline = time.monotonic() + 3
+        while not scheduler.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+    finally:
+        release.set()
+        manager.shutdown()
+
+    current = repository.get("batch-1")
+    assert scheduler.started == ["batch-1"]
+    assert current and current["enabled"] is False
+    assert current["next_run_at"] is None

@@ -1533,6 +1533,7 @@ messages 项：
 parameters 规则：
 
 - 保存 LLM 草稿不要求模型有效、上下文完整或 parameters_text 是合法 JSON；只有运行到节点或单节点临时测试时才要求模型有效、除 SYSTEM 外消息非空、最终消息为 USER 且高级参数草稿可解析为 JSON object。
+- 浏览器通过节点保存、离开节点时选择保存或保存整个 Workflow 时，会从末尾开始清除内容为空或仅含空白字符的新增 ASSISTANT/USER，直至遇到非空消息或只剩最初固定的 SYSTEM、USER；空消息之后存在非空消息时不清除，避免丢失后续内容。Structural Model 仍允许 API 保存空内容和末尾 ASSISTANT 草稿。
 - parameters 可以包含供应商特有字段，以保持模型兼容性。parameters_text 非空时执行前以 parameters_text 为准解析；为空时使用 parameters。
 - generation.parameters 及模型默认 Body 均不解析 Context 引用，也不参与静态 Context 引用扫描；其中形如 `${variable_name}` 的字符串按普通字符串原样参与参数合并。LLM 节点只有 context.messages[].content 支持 Context 引用。
 - parameters 顶层不允许包含平台核心字段 `model`、`messages`、`input`、`prompt`、`system`、`stream`；发现顶层保留字段时属于运行前配置错误，不创建真实尝试，也不执行自动重试。

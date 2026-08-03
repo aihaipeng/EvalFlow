@@ -7,7 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def read(path):
-    return (ROOT / path).read_text(encoding="utf-8")
+    source = (ROOT / path).read_text(encoding="utf-8")
+    if path == "web/frontend/workflow-canvas.jsx":
+        implementation = (ROOT / "web/frontend/workflow-canvas-implementation.jsx").read_text(encoding="utf-8")
+        return source + "\n" + implementation
+    return source
 
 
 def test_workflow_list_calls_only_new_structural_api():
@@ -16,7 +20,7 @@ def test_workflow_list_calls_only_new_structural_api():
     assert "function viewWorkflows()" in javascript
     assert "function workflowCanvasSaveBody(draft)" in javascript
     assert "API.get('/api/workflows')" in javascript
-    assert "API.post('/api/workflows', body)" in javascript
+    assert "API.post('/api/workflows' + validationQuery, body)" in javascript
     assert "'/metadata'" in javascript
     assert "/api/workflow-drafts" not in javascript
     assert "global_variables" not in javascript
@@ -51,6 +55,15 @@ def test_canvas_matches_current_structural_contract():
     assert "AGENT:" not in source
 
 
+def test_pane_node_picker_hides_existing_start_and_end_nodes():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "excludeTypes={unavailableSystemTypes}" in source
+    assert "unavailableSystemTypes={nodes" in source
+    assert ".filter((node) => ['START', 'END'].includes(node.data.nodeType))" in source
+    assert "nodes.some((node) => node.data.nodeType === type)" in source
+
+
 def test_workflow_canvas_follows_application_theme():
     source = read("web/frontend/workflow-canvas.jsx")
     styles = read("web/frontend/workflow-canvas.css")
@@ -79,6 +92,8 @@ def test_workflow_canvas_follows_application_theme():
     assert "color: var(--wf-variable-name);" in styles
     assert "color: var(--wf-variable-value);" in styles
     assert "width: min(560px, calc(100% - 32px));" in styles
+    assert "@font-face" not in styles
+    assert "/assets/fonts/" not in styles
     assert "grid-template-columns: minmax(160px, 0.85fr) minmax(0, 1.6fr) 32px;" in styles
     assert ".wf-header-actions button,\n.wf-http-import-button," in styles
     assert ".wf-icon-button,\n.wf-header-popover > header button," in styles
@@ -117,9 +132,35 @@ def test_llm_inspector_supports_few_shot_drafts_and_run_only_validation():
     assert "parameters_text: data.modelParametersText || ''" in javascript
     assert 'className="wf-llm-message"' in source
     assert "wf-llm-message is-" not in source
+    assert "LLM_MESSAGE_HINTS" not in source
+    assert "CircleHelp" not in source
+    assert "为对话提供高层指导(通过${变量名}引用上下文)" in source
+    assert "向模型提供指令、查询或任何基于文本的输入(通过${变量名}引用上下文)" in source
+    assert "基于用户消息的模型回复(通过${变量名}引用上下文)" in source
+    assert "min-height: 140px;" in styles
+    assert "font-size: 14px;" in styles
+    assert "const [expandedLlmMessageId, setExpandedLlmMessageId] = useState(null);" in source
+    assert 'className="wf-llm-message-expand"' in source
+    assert "<Maximize2 size={16} />" in source
+    assert 'className="wf-llm-editor-overlay"' in source
+    assert 'className="wf-llm-editor-dialog"' in source
+    assert "function MarkdownPromptEditor({" in source
+    assert "import {markdown} from '@codemirror/lang-markdown';" in source
+    assert "templateVariableHighlighter" in source
+    assert "createTemplateVariablePattern()" in source
+    assert source.count("<MarkdownPromptEditor") == 2
+    assert "updateLlmMessage(expandedLlmMessage.id, content)" in source
+    assert "updateLlmMessage(expandedLlmMessage.id, event.target.value)" not in source
+    assert "expandedLlmTriggerRef.current = event.currentTarget;" in source
+    assert "expandedLlmTriggerRef.current?.focus();" in source
+    assert "width: min(80vw, 1120px);" in styles
+    assert "height: 75vh;" in styles
     assert "has-error" not in source
-    assert 'aria-invalid={Boolean(error)}' in source
+    assert "'aria-invalid': error ? 'true' : 'false'" in source
     assert 'title={error || undefined}' in source
+    assert ".wf-markdown-editor .cm-template-variable" in styles
+    assert ".wf-markdown-editor.is-expanded .cm-content" in styles
+    assert ':root[data-theme="dark"] .wf-markdown-editor .cm-template-variable' in styles
     assert "border-left: 3px solid #7b55c7;" in styles
     assert ".wf-llm-message.is-system" not in styles
     assert ".wf-llm-message.is-user" not in styles
@@ -213,15 +254,73 @@ def test_canvas_node_tests_are_ephemeral_and_independent_from_workflow_runs():
     assert "friendlyNodeError(failedNode?.error || run.error, 'Workflow 执行失败')" in source
 
 
+def test_node_save_is_scoped_and_dirty_inspector_exit_requires_a_choice():
+    source = read("web/frontend/workflow-canvas.jsx")
+    javascript = read("web/static/execution.js")
+
+    save_node = source[
+        source.index("const saveNode = useCallback"):
+        source.index("const applyWorkflowNodeRuns")
+    ]
+    inspector_exit = source[
+        source.index("const finishInspectorExit = useCallback"):
+        source.index("const canUndo")
+    ]
+    assert "options.onPersistNode" in save_node
+    assert "const nodeForSave = trimTrailingEmptyLlmNodeMessages(node);" in save_node
+    assert "node: serializableNode(nodeForSave)" in save_node
+    assert "const cleanedItem = trimTrailingEmptyLlmNodeMessages(item);" in save_node
+    assert "persistDraft" not in save_node
+    assert "const nodesForSave = nodes.map(trimTrailingEmptyLlmNodeMessages);" in source
+    assert "nodes: nodesForSave.map(serializableNode)" in source
+    assert "const cleanedNode = trimTrailingEmptyLlmNodeMessages(node);" in source
+    assert "activeNode?.data.isDirty" in inspector_exit
+    assert "setNodeLeaveRequest(request);" in inspector_exit
+    assert "editorNodeBaselineRef.current" in inspector_exit
+    assert "cloneValue(baseline.data)" in inspector_exit
+    assert "const saved = await saveNode(request.nodeId);" in inspector_exit
+    assert "if (!saved) return false;" in inspector_exit
+    assert "const openInspector = useCallback" in source
+    assert "editorNodeId !== nodeId" in source
+    assert 'title="保存节点修改？"' in source
+    assert 'secondaryLabel="不保存"' in source
+    assert "options.onPersistNode = async function (draft)" in javascript
+    assert "'/nodes/' + encodeURIComponent(draft.node.id)" in javascript
+    assert "nodes: [nodeWrite]" in javascript
+    assert "edges: []" in javascript
+
+
+def test_explicit_workflow_save_requests_structure_validation_only():
+    source = read("web/frontend/workflow-canvas.jsx")
+    javascript = read("web/static/execution.js")
+
+    save = source[source.index("const save = useCallback"):source.index("useEffect", source.index("const save = useCallback"))]
+    assert "persistDraft({validateStructure: true})" in save
+    assert "var validationQuery = draft.validateStructure ? '?validate_structure=true' : '';" in javascript
+    assert "persistDraft({forNodeRun: true})" in source
+
+
 def test_running_workflow_nodes_increment_elapsed_time_from_started_at():
     source = read("web/frontend/workflow-canvas.jsx")
     timing = read("web/frontend/workflow-execution-timing.mjs")
 
-    assert "import {workflowNodeExecutionDuration} from './workflow-execution-timing.mjs';" in source
+    assert "resetWorkflowNodeForRun, workflowNodeExecutionDuration, workflowNodeLiveDuration" in source
     assert "if (run?.status !== 'RUNNING') return reportedDurationMs;" in timing
     assert "const startedAtMs = new Date(run.started_at).getTime();" in timing
     assert "Math.max(reportedDurationMs, previousDurationMs, nowMs - startedAtMs)" in timing
     assert "executionDurationMs: workflowNodeExecutionDuration(run, node.data.executionDurationMs)" in source
+    assert "executionStartedAt: run.status === 'RUNNING' ? run.started_at : null" in source
+    assert "const nowMs = workflowRunRef.current.startedAtMs + workflowElapsedMs;" in source
+    assert "const liveDurationMs = workflowNodeLiveDuration(node.data, nowMs);" in source
+    assert "executionDurationMs: liveDurationMs" in source
+
+
+def test_starting_a_workflow_resets_every_node_to_pending():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "import {resetWorkflowNodeForRun, workflowNodeExecutionDuration, workflowNodeLiveDuration}" in source
+    run_all = source[source.index("const runAll = useCallback"):source.index("const deleteElements")]
+    assert "setNodes((current) => current.map(resetWorkflowNodeForRun));" in run_all
 
 
 def test_closing_canvas_keeps_workflow_running_in_background():
@@ -277,6 +376,19 @@ def test_available_variables_use_latest_node_execution_outputs():
     assert "const persistedOutputs = isPlainObject(latestExecution?.outputs)" in source
     assert "Object.prototype.hasOwnProperty.call(executionOutputs, row.name)" in source
     assert "value: available ? executionOutputs[row.name] : null" in source
+
+
+def test_node_history_loads_only_in_logs_tab_without_overwriting_canvas_status():
+    source = read("web/frontend/workflow-canvas.jsx")
+
+    assert "onLoadRunsRef.current = onLoadRuns;" in source
+    assert "if (tab !== 'logs' || !node) return;" in source
+    assert "void onLoadRunsRef.current();" in source
+    assert "loadNodeRuns(targetNode.id);" not in source
+    assert "/nodes/${encodeURIComponent(id)}/runs" in source
+    assert "/runs/${encodeURIComponent(execution.id)}/nodes" not in source
+    assert "status: runs[0]?.status || 'PENDING'" not in source
+    assert "executionDurationMs: runs[0]?.duration_ms || 0" not in source
 
 
 def test_business_nodes_use_seconds_for_timeout_retry_interval_and_initial_delay():
@@ -384,6 +496,35 @@ def test_node_inspector_enforces_shared_control_and_section_rules():
     assert "grid-template-columns: minmax(150px, 0.8fr) var(--wf-compact-select-width)" in styles
 
 
+def test_executable_nodes_share_compact_output_variable_field_order():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert "const showOutputVariables = meta.executable;" in source
+    assert 'className="wf-inspector" aria-label="节点配置" data-node-type={node.data.nodeType}' in source
+    assert 'data-node-type={node.data.nodeType}' in source
+    name_field = source.index('data-output-field="name"')
+    source_field = source.index('data-output-field="source"')
+    type_field = source.index('data-output-field="type"')
+    action = source.index('className="wf-inline-icon-button"', type_field)
+    assert name_field < source_field < type_field < action
+    assert ".wf-output-variable-row label {" in styles
+    assert "grid-template-columns: max-content minmax(0, 1fr);" in styles[styles.index(".wf-output-variable-row label {"):]
+    assert "gap: var(--wf-control-gap);" in styles[styles.index(".wf-output-variable-row label {"):]
+
+
+def test_all_node_fields_follow_visible_text_width_and_start_type_is_last():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    assert ".wf-inspector-body label {" in styles
+    assert "grid-template-columns: max-content minmax(0, 1fr);" in styles[styles.index(".wf-inspector-body label {"):]
+    start_name = source.index('data-start-field="name"')
+    start_value = source.index('data-start-field="value"')
+    start_type = source.index('data-start-field="type"')
+    assert start_name < start_value < start_type
+
+
 def test_variable_type_changes_preserve_existing_user_input():
     source = read("web/frontend/workflow-canvas.jsx")
 
@@ -424,11 +565,24 @@ def test_built_workflow_assets_exist_and_are_nonempty():
     output = ROOT / "web" / "static" / "assets" / "vite"
     manifest = json.loads((output / ".vite" / "manifest.json").read_text(encoding="utf-8"))
     entry = manifest["web/frontend/workflow-canvas.jsx"]
+    implementation = manifest["web/frontend/workflow-canvas-implementation.jsx"]
     script = output / entry["file"]
-    styles = output / entry["css"][0]
+    implementation_script = output / implementation["file"]
+    styles = output / implementation["css"][0]
 
-    assert script.stat().st_size > 500_000
+    assert script.stat().st_size < 500_000
+    assert implementation_script.stat().st_size > 500_000
+    assert entry["dynamicImports"] == ["web/frontend/workflow-canvas-implementation.jsx"]
     assert styles.stat().st_size > 20_000
+
+
+def test_workflow_list_entry_defers_heavy_canvas_dependencies():
+    entry = (ROOT / "web/frontend/workflow-canvas.jsx").read_text(encoding="utf-8")
+
+    assert "import('./workflow-canvas-implementation.jsx')" in entry
+    assert "@xyflow/react" not in entry
+    assert "@codemirror/" not in entry
+    assert "window.AgentBenchWorkflowCanvas = {mount, unmount};" in entry
 
 
 def test_workflow_bundle_uses_cache_busting_version():
@@ -487,3 +641,17 @@ def test_workflow_editing_has_explicit_keyboard_reachable_entries():
     assert "<Dialog.Root open onOpenChange={(open) => !open && onCancel()}>" in source
     assert "<Dialog.Content" in source
     assert "function useDialogAccessibility" not in source
+
+
+def test_node_save_button_does_not_keep_a_persistent_saved_background():
+    source = read("web/frontend/workflow-canvas.jsx")
+    styles = read("web/frontend/workflow-canvas.css")
+
+    inspector = source[source.index('<aside className="wf-inspector"'):source.index("{variablesOpen &&", source.index('<aside className="wf-inspector"'))]
+    assert 'aria-label="保存"' in inspector
+    assert "`已保存 ${node.data.savedAt}`" in inspector
+    assert "className={node.data.savedAt && !node.data.isDirty ? 'is-saved' : ''}" not in inspector
+    assert ".wf-inspector-actions button.is-saved" not in styles
+    assert "setNodeSaveNotice" in source
+    assert "wf-node-saved-state" not in source
+    assert ".wf-node-saved-state" not in styles

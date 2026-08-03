@@ -26,6 +26,15 @@ import {
 } from "./batch-api";
 import { ConfirmDialog, ModalDialog } from "./components/dialog";
 import { Pagination } from "./components/pagination";
+import {
+  emptyBatchFieldErrors,
+  firstBatchErrorTarget,
+  hasBatchFieldErrors,
+  mapBatchSaveError,
+  mergeBatchFieldErrors,
+  validateBatchRows,
+  validateBatchSelections,
+} from "./batch-validation.mjs";
 
 const toast = window.showToast;
 const client = new QueryClient({
@@ -67,23 +76,25 @@ const batchConfigSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, "请输入任务名称")
-    .max(200, "任务名称不能超过 200 个字符"),
-  test_set_id: z.string().min(1, "请选择测试集"),
-  workflow_id: z.string().min(1, "请选择工作流"),
+    .min(1, "任务名称：请输入任务名称")
+    .max(200, "任务名称：不能超过 200 个字符"),
+  test_set_id: z.string().min(1, "测试集：请选择测试集"),
+  workflow_id: z.string().min(1, "工作流：请选择工作流"),
   case_concurrency: z
-    .number("并发数必须是数字")
-    .int("并发数必须是整数")
-    .min(1, "并发数不能小于 1")
-    .max(32, "并发数不能大于 32"),
+    .number("并发数：必须是数字")
+    .int("并发数：必须是整数")
+    .min(1, "并发数：不能小于 1")
+    .max(32, "并发数：不能大于 32"),
   failure_retry_count: z
-    .number("失败重试必须是数字")
-    .int("失败重试必须是整数")
-    .min(0, "失败重试不能小于 0")
-    .max(10, "失败重试不能大于 10"),
-  call_order: z.enum(["SEQUENTIAL", "REVERSE", "RANDOM"]),
-  case_display_column: z.string(),
-  rule_display_column: z.string(),
+    .number("失败重试：必须是数字")
+    .int("失败重试：必须是整数")
+    .min(0, "失败重试：不能小于 0")
+    .max(10, "失败重试：不能大于 10"),
+  call_order: z.enum(["SEQUENTIAL", "REVERSE", "RANDOM"], {
+    error: "执行顺序：请选择有效选项",
+  }),
+  case_display_column: z.string().max(200, "用例显示列：不能超过 200 个字符"),
+  rule_display_column: z.string().max(200, "规则显示列：不能超过 200 个字符"),
 });
 function Icon({ name }) {
   return (
@@ -252,7 +263,15 @@ function HistoryModal({ batch, onClose }) {
     </Modal>
   );
 }
-function VariableRows({ rows, setRows, headers }) {
+function RowFieldError({ id, message }) {
+  return message ? (
+    <small className="batch-row-field-error" id={id} role="alert">
+      {message}
+    </small>
+  ) : null;
+}
+
+function VariableRows({ rows, setRows, headers, errors, onFieldChange }) {
   function change(i, key, value) {
     setRows(
       rows.map((r, n) =>
@@ -261,170 +280,348 @@ function VariableRows({ rows, setRows, headers }) {
           : r,
       ),
     );
+    onFieldChange(i, key);
   }
   return (
-    <div className="batch-variable-table" id="batch-variables">
-      {!rows.length ? (
-        <div className="batch-variable-empty">尚未配置变量</div>
-      ) : (
-        <>
-          <div className="batch-variable-head">
-            <span>#</span>
-            <span>来源</span>
-            <span>Key</span>
-            <span>Value</span>
-            <span>类型</span>
-            <span />
-          </div>
-          {rows.map((r, i) => (
-            <div className="batch-variable-row" key={i}>
-              <span>{i + 1}</span>
-              <select
-                className="input"
-                data-variable-source
-                aria-label={`变量 ${i + 1} 来源`}
-                value={r.source}
-                onChange={(e) => change(i, "source", e.target.value)}
-              >
-                <option value="TEST_SET">测试集字段</option>
-                <option value="CUSTOM">自定义</option>
-              </select>
-              <input
-                className="input"
-                data-variable-key
-                aria-label={`变量 ${i + 1} Key`}
-                value={r.key}
-                onChange={(e) => change(i, "key", e.target.value)}
-                placeholder="例如 question"
-              />
-              {r.source === "TEST_SET" ? (
-                <select
-                  className="input"
-                  data-variable-value
-                  aria-label={`变量 ${i + 1} 测试集字段`}
-                  value={r.value}
-                  onChange={(e) => change(i, "value", e.target.value)}
-                >
-                  {headers.map((h) => (
-                    <option key={h}>{h}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  className="input"
-                  data-variable-value
-                  aria-label={`变量 ${i + 1} 自定义值`}
-                  value={r.value}
-                  disabled={r.type === "null"}
-                  onChange={(e) => change(i, "value", e.target.value)}
-                />
-              )}
-              <select
-                className="input"
-                data-variable-type
-                aria-label={`变量 ${i + 1} 类型`}
-                value={r.type}
-                onChange={(e) => change(i, "type", e.target.value)}
-              >
-                {types.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-              <button
-                className="btn-icon"
-                type="button"
-                aria-label="删除变量"
-                onClick={() => setRows(rows.filter((_, n) => n !== i))}
-              >
-                <Icon name="trash" />
-              </button>
+    <>
+      <div className="batch-variable-table" id="batch-variables">
+        {!rows.length ? (
+          <div className="batch-variable-empty">尚未配置变量</div>
+        ) : (
+          <>
+            <div className="batch-variable-head">
+              <span>#</span>
+              <span>来源</span>
+              <span>Key</span>
+              <span>Value</span>
+              <span>类型</span>
+              <span />
             </div>
+            {rows.map((r, i) => {
+              const rowErrors = errors.variables[i] || {};
+              return (
+                <div className="batch-variable-row" key={i}>
+                  <span className="batch-variable-index">{i + 1}</span>
+                  <label>
+                    <span className="batch-mobile-label">来源</span>
+                    <select
+                      className="input"
+                      id={`batch-variable-${i}-source`}
+                      data-variable-source
+                      aria-label={`变量 ${i + 1} 来源`}
+                      aria-invalid={Boolean(rowErrors.source)}
+                      aria-describedby={
+                        rowErrors.source
+                          ? `batch-variable-${i}-source-error`
+                          : undefined
+                      }
+                      value={r.source ?? ""}
+                      onChange={(e) => change(i, "source", e.target.value)}
+                    >
+                      <option value="TEST_SET">测试集字段</option>
+                      <option value="CUSTOM">自定义</option>
+                    </select>
+                    <RowFieldError
+                      id={`batch-variable-${i}-source-error`}
+                      message={rowErrors.source}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">Key</span>
+                    <input
+                      className="input"
+                      id={`batch-variable-${i}-key`}
+                      data-variable-key
+                      aria-label={`变量 ${i + 1} Key`}
+                      aria-invalid={Boolean(rowErrors.key)}
+                      aria-describedby={
+                        rowErrors.key
+                          ? `batch-variable-${i}-key-error`
+                          : undefined
+                      }
+                      value={r.key ?? ""}
+                      onChange={(e) => change(i, "key", e.target.value)}
+                      placeholder="例如 question"
+                    />
+                    <RowFieldError
+                      id={`batch-variable-${i}-key-error`}
+                      message={rowErrors.key}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">Value</span>
+                    <input
+                      className="input"
+                      id={`batch-variable-${i}-value`}
+                      data-variable-value
+                      aria-label={
+                        r.source === "TEST_SET"
+                          ? `变量 ${i + 1} 测试集字段`
+                          : `变量 ${i + 1} 自定义值`
+                      }
+                      aria-invalid={Boolean(rowErrors.value)}
+                      aria-describedby={
+                        rowErrors.value
+                          ? `batch-variable-${i}-value-error`
+                          : undefined
+                      }
+                      list={
+                        r.source === "TEST_SET"
+                          ? "batch-variable-value-options"
+                          : undefined
+                      }
+                      autoComplete={r.source === "TEST_SET" ? "off" : undefined}
+                      value={r.value ?? ""}
+                      disabled={r.source === "CUSTOM" && r.type === "null"}
+                      onChange={(e) => change(i, "value", e.target.value)}
+                      placeholder={
+                        r.source === "TEST_SET"
+                          ? "输入表头，如 col_1"
+                          : undefined
+                      }
+                    />
+                    <RowFieldError
+                      id={`batch-variable-${i}-value-error`}
+                      message={rowErrors.value}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">类型</span>
+                    <select
+                      className="input"
+                      id={`batch-variable-${i}-type`}
+                      data-variable-type
+                      aria-label={`变量 ${i + 1} 类型`}
+                      aria-invalid={Boolean(rowErrors.type)}
+                      aria-describedby={
+                        rowErrors.type
+                          ? `batch-variable-${i}-type-error`
+                          : undefined
+                      }
+                      value={r.type ?? ""}
+                      onChange={(e) => change(i, "type", e.target.value)}
+                    >
+                      {types.map((t) => (
+                        <option key={t}>{t}</option>
+                      ))}
+                    </select>
+                    <RowFieldError
+                      id={`batch-variable-${i}-type-error`}
+                      message={rowErrors.type}
+                    />
+                  </label>
+                  <button
+                    className="btn-icon"
+                    type="button"
+                    aria-label={`删除变量 ${i + 1}`}
+                    onClick={() => {
+                      setRows(rows.filter((_, n) => n !== i));
+                      onFieldChange(i, "remove");
+                    }}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+        <datalist id="batch-variable-value-options">
+          {headers.map((header) => (
+            <option value={header} key={header} />
           ))}
-        </>
-      )}
-    </div>
+        </datalist>
+      </div>
+      {errors.sections.variables ? (
+        <small
+          className="batch-section-error"
+          id="batch-variables-error"
+          role="alert"
+        >
+          变量注入：{errors.sections.variables}
+        </small>
+      ) : null}
+    </>
   );
 }
-function RuleRows({ rows, setRows }) {
+
+function RuleRows({ rows, setRows, errors, onFieldChange }) {
   function change(i, key, value) {
     setRows(rows.map((r, n) => (n === i ? { ...r, [key]: value } : r)));
+    onFieldChange(i, key);
   }
   return (
-    <div className="batch-evaluation-table" id="batch-evaluation-rules">
-      {!rows.length ? (
-        <div className="batch-evaluation-empty">暂无校验规则</div>
-      ) : (
-        <>
-          <div className="batch-evaluation-head">
-            <span>#</span>
-            <span>校验项</span>
-            <span>路径</span>
-            <span>运算符</span>
-            <span>预期值</span>
-            <span>类型</span>
-            <span />
-          </div>
-          {rows.map((r, i) => (
-            <div className="batch-evaluation-rule" key={i}>
-              <span>{i + 1}</span>
-              <input
-                className="input"
-                aria-label={`校验规则 ${i + 1} 名称`}
-                value={r.name || ""}
-                onChange={(e) => change(i, "name", e.target.value)}
-                placeholder="选填"
-              />
-              <input
-                className="input"
-                data-rule-result-path
-                aria-label={`校验规则 ${i + 1} 结果路径`}
-                value={String(r.result_path || "").replace(/^context\./, "")}
-                onChange={(e) => change(i, "result_path", e.target.value)}
-                placeholder="例如 action_match"
-              />
-              <select
-                className="input"
-                aria-label={`校验规则 ${i + 1} 运算符`}
-                value={r.operator}
-                onChange={(e) => change(i, "operator", e.target.value)}
-              >
-                {operators.map(([v, l]) => (
-                  <option value={v} key={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="input"
-                aria-label={`校验规则 ${i + 1} 预期值`}
-                value={r.operator === "NOT_EMPTY" ? "" : r.expected_value || ""}
-                disabled={r.operator === "NOT_EMPTY"}
-                onChange={(e) => change(i, "expected_value", e.target.value)}
-              />
-              <select
-                className="input"
-                aria-label={`校验规则 ${i + 1} 类型`}
-                value={r.type || "string"}
-                disabled={r.operator === "NOT_EMPTY"}
-                onChange={(e) => change(i, "type", e.target.value)}
-              >
-                {types.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-              <button
-                className="btn-icon"
-                type="button"
-                aria-label={`删除校验规则 ${i + 1}`}
-                onClick={() => setRows(rows.filter((_, n) => n !== i))}
-              >
-                <Icon name="trash" />
-              </button>
+    <>
+      <div className="batch-evaluation-table" id="batch-evaluation-rules">
+        {!rows.length ? (
+          <div className="batch-evaluation-empty">暂无校验规则</div>
+        ) : (
+          <>
+            <div className="batch-evaluation-head">
+              <span>#</span>
+              <span>校验项</span>
+              <span>路径</span>
+              <span>运算符</span>
+              <span>预期值</span>
+              <span>类型</span>
+              <span />
             </div>
-          ))}
-        </>
-      )}
-    </div>
+            {rows.map((r, i) => {
+              const rowErrors = errors.rules[i] || {};
+              return (
+                <div className="batch-evaluation-rule" key={i}>
+                  <span className="batch-evaluation-index">{i + 1}</span>
+                  <label>
+                    <span className="batch-mobile-label">校验项</span>
+                    <input
+                      className="input"
+                      id={`batch-rule-${i}-name`}
+                      aria-label={`校验规则 ${i + 1} 名称`}
+                      aria-invalid={Boolean(rowErrors.name)}
+                      aria-describedby={
+                        rowErrors.name
+                          ? `batch-rule-${i}-name-error`
+                          : undefined
+                      }
+                      value={r.name ?? ""}
+                      onChange={(e) => change(i, "name", e.target.value)}
+                      placeholder="选填"
+                    />
+                    <RowFieldError
+                      id={`batch-rule-${i}-name-error`}
+                      message={rowErrors.name}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">路径</span>
+                    <input
+                      className="input"
+                      id={`batch-rule-${i}-result_path`}
+                      data-rule-result-path
+                      aria-label={`校验规则 ${i + 1} 结果路径`}
+                      aria-invalid={Boolean(rowErrors.result_path)}
+                      aria-describedby={
+                        rowErrors.result_path
+                          ? `batch-rule-${i}-result_path-error`
+                          : undefined
+                      }
+                      value={String(r.result_path ?? "").replace(
+                        /^context\./,
+                        "",
+                      )}
+                      onChange={(e) => change(i, "result_path", e.target.value)}
+                      placeholder="例如 action_match"
+                    />
+                    <RowFieldError
+                      id={`batch-rule-${i}-result_path-error`}
+                      message={rowErrors.result_path}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">运算符</span>
+                    <select
+                      className="input"
+                      id={`batch-rule-${i}-operator`}
+                      aria-label={`校验规则 ${i + 1} 运算符`}
+                      aria-invalid={Boolean(rowErrors.operator)}
+                      aria-describedby={
+                        rowErrors.operator
+                          ? `batch-rule-${i}-operator-error`
+                          : undefined
+                      }
+                      value={r.operator ?? ""}
+                      onChange={(e) => change(i, "operator", e.target.value)}
+                    >
+                      {operators.map(([v, l]) => (
+                        <option value={v} key={v}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                    <RowFieldError
+                      id={`batch-rule-${i}-operator-error`}
+                      message={rowErrors.operator}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">预期值</span>
+                    <input
+                      className="input"
+                      id={`batch-rule-${i}-expected_value`}
+                      aria-label={`校验规则 ${i + 1} 预期值`}
+                      aria-invalid={Boolean(rowErrors.expected_value)}
+                      aria-describedby={
+                        rowErrors.expected_value
+                          ? `batch-rule-${i}-expected_value-error`
+                          : undefined
+                      }
+                      value={
+                        r.operator === "NOT_EMPTY"
+                          ? ""
+                          : (r.expected_value ?? "")
+                      }
+                      disabled={r.operator === "NOT_EMPTY"}
+                      onChange={(e) =>
+                        change(i, "expected_value", e.target.value)
+                      }
+                    />
+                    <RowFieldError
+                      id={`batch-rule-${i}-expected_value-error`}
+                      message={rowErrors.expected_value}
+                    />
+                  </label>
+                  <label>
+                    <span className="batch-mobile-label">类型</span>
+                    <select
+                      className="input"
+                      id={`batch-rule-${i}-type`}
+                      aria-label={`校验规则 ${i + 1} 类型`}
+                      aria-invalid={Boolean(rowErrors.type)}
+                      aria-describedby={
+                        rowErrors.type
+                          ? `batch-rule-${i}-type-error`
+                          : undefined
+                      }
+                      value={r.type ?? "string"}
+                      disabled={r.operator === "NOT_EMPTY"}
+                      onChange={(e) => change(i, "type", e.target.value)}
+                    >
+                      {types.map((t) => (
+                        <option key={t}>{t}</option>
+                      ))}
+                    </select>
+                    <RowFieldError
+                      id={`batch-rule-${i}-type-error`}
+                      message={rowErrors.type}
+                    />
+                  </label>
+                  <button
+                    className="btn-icon"
+                    type="button"
+                    aria-label={`删除校验规则 ${i + 1}`}
+                    onClick={() => {
+                      setRows(rows.filter((_, n) => n !== i));
+                      onFieldChange(i, "remove");
+                    }}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+      {errors.sections.rules ? (
+        <small
+          className="batch-section-error"
+          id="batch-rules-error"
+          role="alert"
+        >
+          结果校验：{errors.sections.rules}
+        </small>
+      ) : null}
+    </>
   );
 }
 
@@ -434,6 +631,8 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
     register,
     watch,
     setValue,
+    setError,
+    clearErrors,
     handleSubmit,
     formState: { errors },
   } = useForm({
@@ -451,7 +650,8 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
   });
   const form = watch();
   const [variables, setVariables] = useState(original?.variables || []),
-    [rules, setRules] = useState(original?.evaluation_rules || []);
+    [rules, setRules] = useState(original?.evaluation_rules || []),
+    [fieldErrors, setFieldErrors] = useState(emptyBatchFieldErrors);
   const resources = useQuery({
     queryKey: ["batch-resources"],
     queryFn: loadBatchResources,
@@ -485,6 +685,61 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
     setValue,
     variables.length,
   ]);
+  const headers = preview.data?.headers || [];
+
+  function revealFirstError(nextErrors) {
+    const target = firstBatchErrorTarget(nextErrors);
+    if (!target) return;
+    const formIds = {
+      name: "batch-name",
+      failure_retry_count: "batch-failure-retry-count",
+      test_set_id: "batch-test-set",
+      workflow_id: "batch-workflow",
+      case_display_column: "batch-case-display-column",
+      rule_display_column: "batch-rule-display-column",
+      call_order: "batch-call-order",
+      case_concurrency: "batch-concurrency",
+    };
+    const id =
+      target.kind === "form"
+        ? formIds[target.field]
+        : target.kind === "variables"
+          ? `batch-variable-${target.index}-${target.field}`
+          : target.kind === "rules"
+            ? `batch-rule-${target.index}-${target.field}`
+            : target.field === "variables"
+              ? "batch-variable-add"
+              : "batch-rule-add";
+    requestAnimationFrame(() => {
+      const control = document.getElementById(id);
+      control?.scrollIntoView({ behavior: "smooth", block: "center" });
+      control?.focus({ preventScroll: true });
+    });
+  }
+
+  function clearRowError(kind, index, field) {
+    setFieldErrors((current) => {
+      const next = mergeBatchFieldErrors(emptyBatchFieldErrors(), current);
+      next.summary = "";
+      delete next.sections[kind === "variables" ? "variables" : "rules"];
+      if (field === "add") {
+        next[kind] = [];
+      } else if (field === "remove") {
+        next[kind].splice(index, 1);
+      } else if (next[kind][index]) {
+        delete next[kind][index][field];
+        if (field === "source" || field === "type") {
+          delete next[kind][index].value;
+        }
+        if (kind === "rules" && field === "operator") {
+          delete next[kind][index].expected_value;
+          delete next[kind][index].type;
+        }
+      }
+      return next;
+    });
+  }
+
   const save = useMutation({
     mutationFn: (body) => saveBatch(mode === "edit" ? batch.id : null, body),
     onSuccess: () => {
@@ -494,53 +749,52 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
       );
       onSaved();
     },
-    onError: (e) => toast(e.message, "error"),
+    onError: (error) => {
+      const mapped = mapBatchSaveError(error, { variables, rules });
+      Object.entries(mapped.form).forEach(([field, message]) =>
+        setError(field, { type: "server", message }),
+      );
+      setFieldErrors(mapped);
+      toast(mapped.summary, "error");
+      revealFirstError(mapped);
+    },
   });
   const submit = handleSubmit(
     (validatedForm) => {
-      try {
-        if (!variables.length) throw new Error("请至少配置一个变量注入");
-        const vars = variables.map((r, i) => {
-          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(r.key.trim()))
-            throw new Error(`变量 ${i + 1} 的 Key 格式无效`);
-          if (!r.value && r.type !== "null")
-            throw new Error(`变量 ${i + 1} 的 Value 不能为空`);
-          return {
-            source: r.source,
-            key: r.key.trim(),
-            value: r.type === "null" ? "null" : r.value,
-            type: r.type,
-          };
-        });
-        const evaluation_rules = rules.map((r, i) => {
-          if (!String(r.result_path || "").trim())
-            throw new Error(`校验规则 ${i + 1} 的路径不能为空`);
-          return {
-            name: String(r.name || "").trim(),
-            result_path: r.result_path.trim(),
-            operator: r.operator,
-            expected_value:
-              r.operator === "NOT_EMPTY"
-                ? ""
-                : r.type === "null"
-                  ? "null"
-                  : r.expected_value,
-            type: r.operator === "NOT_EMPTY" ? "string" : r.type,
-          };
-        });
-        save.mutate({
-          ...validatedForm,
-          description: "",
-          variables: vars,
-          evaluation_rules,
-        });
-      } catch (e) {
-        toast(e.message, "error");
+      const selectionErrors = validateBatchSelections(validatedForm, headers);
+      Object.entries(selectionErrors).forEach(([field, message]) =>
+        setError(field, { type: "validate", message }),
+      );
+      const rowValidation = validateBatchRows({ variables, rules, headers });
+      const nextErrors = mergeBatchFieldErrors(rowValidation.errors, {
+        ...emptyBatchFieldErrors(),
+        form: selectionErrors,
+      });
+      if (hasBatchFieldErrors(nextErrors)) {
+        setFieldErrors(rowValidation.errors);
+        toast("任务中有字段需要修改，请检查标红位置", "error");
+        revealFirstError(nextErrors);
+        return;
       }
+      setFieldErrors(emptyBatchFieldErrors());
+      save.mutate({
+        ...validatedForm,
+        description: "",
+        variables: rowValidation.variables,
+        evaluation_rules: rowValidation.rules,
+      });
     },
-    () => {},
+    (invalidFields) => {
+      const formErrors = Object.fromEntries(
+        Object.entries(invalidFields).map(([field, error]) => [
+          field,
+          error?.message || "请检查该字段",
+        ]),
+      );
+      toast("任务中有字段需要修改，请检查标红位置", "error");
+      revealFirstError({ ...emptyBatchFieldErrors(), form: formErrors });
+    },
   );
-  const headers = preview.data?.headers || [];
   return (
     <Modal
       title={
@@ -574,7 +828,7 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
               id="batch-name"
               aria-invalid={Boolean(errors.name)}
               aria-describedby={errors.name ? "batch-name-error" : undefined}
-              {...register("name")}
+              {...register("name", { onChange: () => clearErrors("name") })}
             />
             {errors.name ? (
               <small
@@ -600,7 +854,10 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
                   ? "batch-failure-retry-count-error"
                   : undefined
               }
-              {...register("failure_retry_count", { valueAsNumber: true })}
+              {...register("failure_retry_count", {
+                valueAsNumber: true,
+                onChange: () => clearErrors("failure_retry_count"),
+              })}
             />
             {errors.failure_retry_count ? (
               <small
@@ -623,6 +880,7 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
               }
               {...register("test_set_id", {
                 onChange: () => {
+                  clearErrors("test_set_id");
                   setValue("case_display_column", "");
                   setValue("rule_display_column", "");
                   setVariables([]);
@@ -654,7 +912,9 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
               aria-describedby={
                 errors.workflow_id ? "batch-workflow-error" : undefined
               }
-              {...register("workflow_id")}
+              {...register("workflow_id", {
+                onChange: () => clearErrors("workflow_id"),
+              })}
             >
               {(resources.data?.flows || []).map((w) => {
                 const x = w.workflow || w;
@@ -680,37 +940,86 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
             <select
               className="input"
               id="batch-case-display-column"
-              {...register("case_display_column")}
+              aria-invalid={Boolean(errors.case_display_column)}
+              aria-describedby={
+                errors.case_display_column
+                  ? "batch-case-display-column-error"
+                  : undefined
+              }
+              {...register("case_display_column", {
+                onChange: () => clearErrors("case_display_column"),
+              })}
             >
               {headers.map((h) => (
                 <option key={h}>{h}</option>
               ))}
             </select>
+            {errors.case_display_column ? (
+              <small
+                className="batch-field-error"
+                id="batch-case-display-column-error"
+                role="alert"
+              >
+                {errors.case_display_column.message}
+              </small>
+            ) : null}
           </label>
           <label>
             <span>规则显示列</span>
             <select
               className="input"
               id="batch-rule-display-column"
-              {...register("rule_display_column")}
+              aria-invalid={Boolean(errors.rule_display_column)}
+              aria-describedby={
+                errors.rule_display_column
+                  ? "batch-rule-display-column-error"
+                  : undefined
+              }
+              {...register("rule_display_column", {
+                onChange: () => clearErrors("rule_display_column"),
+              })}
             >
               <option value="">不选择</option>
               {headers.map((h) => (
                 <option key={h}>{h}</option>
               ))}
             </select>
+            {errors.rule_display_column ? (
+              <small
+                className="batch-field-error"
+                id="batch-rule-display-column-error"
+                role="alert"
+              >
+                {errors.rule_display_column.message}
+              </small>
+            ) : null}
           </label>
           <label>
             <span>执行顺序</span>
             <select
               className="input"
               id="batch-call-order"
-              {...register("call_order")}
+              aria-invalid={Boolean(errors.call_order)}
+              aria-describedby={
+                errors.call_order ? "batch-call-order-error" : undefined
+              }
+              {...register("call_order", {
+                onChange: () => clearErrors("call_order"),
+              })}
             >
               <option value="SEQUENTIAL">顺序</option>
               <option value="REVERSE">逆序</option>
               <option value="RANDOM">随机</option>
             </select>
+            {errors.call_order ? (
+              <small
+                className="batch-field-error"
+                id="batch-call-order-error"
+                role="alert"
+              >
+                {errors.call_order.message}
+              </small>
+            ) : null}
           </label>
           <label>
             <span>并发数</span>
@@ -724,7 +1033,10 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
               aria-describedby={
                 errors.case_concurrency ? "batch-concurrency-error" : undefined
               }
-              {...register("case_concurrency", { valueAsNumber: true })}
+              {...register("case_concurrency", {
+                valueAsNumber: true,
+                onChange: () => clearErrors("case_concurrency"),
+              })}
             />
             {errors.case_concurrency ? (
               <small
@@ -747,7 +1059,8 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
           <button
             className="btn btn-sm"
             id="batch-variable-add"
-            onClick={() =>
+            type="button"
+            onClick={() => (
               setVariables([
                 {
                   source: "TEST_SET",
@@ -756,8 +1069,9 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
                   type: "string",
                 },
                 ...variables,
-              ])
-            }
+              ]),
+              clearRowError("variables", 0, "add")
+            )}
           >
             <Icon name="add" />
             添加变量
@@ -767,6 +1081,10 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
           rows={variables}
           setRows={setVariables}
           headers={headers}
+          errors={fieldErrors}
+          onFieldChange={(index, field) =>
+            clearRowError("variables", index, field)
+          }
         />
       </section>
       <section className="batch-evaluation">
@@ -778,7 +1096,8 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
           <button
             className="btn btn-sm"
             id="batch-rule-add"
-            onClick={() =>
+            type="button"
+            onClick={() => (
               setRules([
                 {
                   name: "",
@@ -788,14 +1107,20 @@ function ConfigModal({ mode, batch, onClose, onSaved }) {
                   type: "string",
                 },
                 ...rules,
-              ])
-            }
+              ]),
+              clearRowError("rules", 0, "add")
+            )}
           >
             <Icon name="add" />
             添加规则
           </button>
         </header>
-        <RuleRows rows={rules} setRows={setRules} />
+        <RuleRows
+          rows={rules}
+          setRows={setRules}
+          errors={fieldErrors}
+          onFieldChange={(index, field) => clearRowError("rules", index, field)}
+        />
       </section>
     </Modal>
   );
@@ -969,7 +1294,9 @@ function ScheduleModal({ batch, onClose, onSaved }) {
             <select
               className="input"
               disabled={value.cadence === "ONCE"}
-              title={value.cadence === "ONCE" ? "仅执行一次时无重叠概念" : undefined}
+              title={
+                value.cadence === "ONCE" ? "仅执行一次时无重叠概念" : undefined
+              }
               value={value.overlap_policy}
               onChange={(e) =>
                 setValue({ ...value, overlap_policy: e.target.value })

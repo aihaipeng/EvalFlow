@@ -1,17 +1,34 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, Eraser, FileText, FileUp, Info, LayoutGrid, Pencil, Plus, RefreshCw, Save, Search, Settings2, Trash2, X } from "lucide-react";
-import { Workbook } from "@fortune-sheet/react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
-import * as XLSX from "xlsx";
-import "@fortune-sheet/react/dist/index.css";
 import "./test-sets.css";
+import { buildSheetSelections, normalizeSelectionRange } from "./test-set-import.mjs";
 
 const PAGE_SIZE = 20;
 const CASE_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 let testSetListCache = null;
+let excelRuntimePromise = null;
+
+function loadExcelRuntime() {
+  if (!excelRuntimePromise) {
+    excelRuntimePromise = Promise.all([
+      import("@fortune-sheet/react"),
+      import("xlsx"),
+      import("@fortune-sheet/react/dist/index.css"),
+    ]).then(([fortuneSheet, xlsxModule]) => ({
+      Workbook: fortuneSheet.Workbook,
+      XLSX: xlsxModule.default || xlsxModule,
+    }))
+      .catch((error) => {
+        excelRuntimePromise = null;
+        throw error;
+      });
+  }
+  return excelRuntimePromise;
+}
 
 async function request(url, options = {}) {
   const response = await fetch(url, {
@@ -46,7 +63,7 @@ function displayValue(cell) {
   return String(value);
 }
 
-function readSheet(sheet, sheetName, index) {
+function readSheet(sheet, sheetName, index, XLSX) {
   const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
   const rows = Math.max(1, range.e.r + 1);
   const columns = Math.max(1, range.e.c + 1);
@@ -71,7 +88,7 @@ function readSheet(sheet, sheetName, index) {
   };
 }
 
-async function readWorkbook(file) {
+async function readWorkbook(file, XLSX) {
   if (!/\.xlsx$/i.test(file.name)) throw new Error("仅支持 .xlsx 文件");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   if (!workbook.SheetNames.length) throw new Error("Excel 中没有可读取的 Sheet");
@@ -79,7 +96,7 @@ async function readWorkbook(file) {
     id: makeId("source"),
     name: file.name,
     size: file.size,
-    sheets: workbook.SheetNames.map((name, index) => readSheet(workbook.Sheets[name], name, index)),
+    sheets: workbook.SheetNames.map((name, index) => readSheet(workbook.Sheets[name], name, index, XLSX)),
   };
 }
 
@@ -116,19 +133,22 @@ function truncate(value, limit) {
   return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1))}…`;
 }
 
-function normalizedRange(range) {
-  return {
-    row: [Math.min(...range.row), Math.max(...range.row)],
-    column: [Math.min(...range.column), Math.max(...range.column)],
-  };
-}
-
 function isBlankCaseValues(values, columns) {
   return columns.every((column) => !String(values?.[column] ?? "").trim());
 }
 
 function filterBlankCases(cases, columns) {
   return cases.filter((item) => !isBlankCaseValues(item.values, columns));
+}
+
+function testSetDraftSignature(record) {
+  if (!record) return "";
+  return JSON.stringify({
+    name: record.name,
+    description: record.description,
+    columns: record.columns,
+    cases: record.cases.map((item) => ({ id: item.id, values: item.values })),
+  });
 }
 
 function buildDataset(selections, mode) {
@@ -156,7 +176,7 @@ function buildDataset(selections, mode) {
   return { columns, cases: filterBlankCases(cases, columns) };
 }
 
-const Spreadsheet = forwardRef(function Spreadsheet({ source, onSheetChange, onSelectionChange }, forwardedRef) {
+const Spreadsheet = forwardRef(function Spreadsheet({ Workbook, source, onSheetChange, onSelectionChange }, forwardedRef) {
   const workbookRef = useRef(null);
   const data = useMemo(() => source?.sheets.map(({ sourceMatrix, ...sheet }) => sheet) || [], [source]);
   useImperativeHandle(forwardedRef, () => ({
@@ -170,14 +190,22 @@ const Spreadsheet = forwardRef(function Spreadsheet({ source, onSheetChange, onS
       ref={workbookRef}
       data={data}
       lang="zh"
-      allowEdit={false}
+      allowEdit
       showToolbar={false}
       showFormulaBar={false}
       showSheetTabs
       rowHeaderWidth={46}
       defaultRowHeight={31}
       defaultColWidth={190}
-      hooks={{ afterActivateSheet: onSheetChange, afterSelectionChange: (_sheetId, selection) => onSelectionChange?.(selection) }}
+      hooks={{
+        beforeUpdateCell: () => false,
+        beforePaste: () => false,
+        beforeAddSheet: () => false,
+        beforeDeleteSheet: () => false,
+        beforeUpdateSheetName: () => false,
+        afterActivateSheet: onSheetChange,
+        afterSelectionChange: (sheetId, selection) => onSelectionChange?.(sheetId, selection),
+      }}
     />
   );
 });
@@ -205,9 +233,17 @@ function ConfirmModal({ title, message, detail, confirmLabel = "确认", danger 
   }
 
   return <AlertDialog.Root open onOpenChange={(open) => !open && !submitting && onClose()}><AlertDialog.Portal><div className="ts-modal-layer ts-confirm-modal-layer"><AlertDialog.Overlay className="ts-modal-backdrop" /><AlertDialog.Content className="ts-modal ts-confirm-modal">
-    <header><AlertDialog.Title asChild><h2 id="ts-confirm-modal-title">{title}</h2></AlertDialog.Title><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭" disabled={submitting} onClick={onClose}><X className="ui-icon" /></button></header>
+    <header><AlertDialog.Title asChild><h2 id="ts-confirm-modal-title">{title}</h2></AlertDialog.Title><button className="btn-icon ts-modal-close" title="关闭" aria-label="关闭" disabled={submitting} onClick={onClose}><X className="ui-icon" /></button></header>
     <AlertDialog.Description asChild><div className="ts-modal-body"><p>{message}</p>{detail && <p className="ts-confirm-detail">{detail}</p>}</div></AlertDialog.Description>
-    <footer><AlertDialog.Cancel asChild><button className="ts-btn secondary" disabled={submitting}>取消</button></AlertDialog.Cancel><AlertDialog.Action asChild><button className={`ts-btn ${danger ? "danger" : "primary"}`} disabled={submitting} onClick={confirm}>{danger && <Trash2 className="ui-icon" />}{submitting ? "处理中…" : confirmLabel}</button></AlertDialog.Action></footer>
+    <footer><AlertDialog.Cancel asChild><button className="btn btn-secondary" disabled={submitting}>取消</button></AlertDialog.Cancel><AlertDialog.Action asChild><button className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={submitting} onClick={confirm}>{danger && <Trash2 className="ui-icon" />}{submitting ? "处理中…" : confirmLabel}</button></AlertDialog.Action></footer>
+  </AlertDialog.Content></div></AlertDialog.Portal></AlertDialog.Root>;
+}
+
+function UnsavedChangesModal({ onSave, onDiscard, onCancel }) {
+  return <AlertDialog.Root open><AlertDialog.Portal><div className="ts-modal-layer ts-confirm-modal-layer"><AlertDialog.Overlay className="ts-modal-backdrop" /><AlertDialog.Content className="ts-modal ts-confirm-modal ts-unsaved-modal">
+    <header><AlertDialog.Title asChild><h2>保存测试集修改？</h2></AlertDialog.Title><button className="btn-icon ts-modal-close" title="取消离开" aria-label="取消离开" onClick={onCancel}><X className="ui-icon" /></button></header>
+    <AlertDialog.Description asChild><div className="ts-modal-body"><p>当前测试集还有未保存的修改。</p><p className="ts-confirm-detail">保存后再离开，或放弃本次修改。选择取消可继续留在当前页面编辑。</p></div></AlertDialog.Description>
+    <footer><AlertDialog.Cancel asChild><button className="btn" onClick={onCancel}>取消</button></AlertDialog.Cancel><button className="btn btn-secondary" onClick={onDiscard}>不保存并离开</button><AlertDialog.Action asChild><button className="btn btn-primary" onClick={onSave}><Save className="ui-icon" />保存并离开</button></AlertDialog.Action></footer>
   </AlertDialog.Content></div></AlertDialog.Portal></AlertDialog.Root>;
 }
 
@@ -263,7 +299,7 @@ function ListView({ onCreate, onOpen }) {
 
   const pages = Math.max(1, Math.ceil(state.total / pageSize));
   return <section className="ts-page execution-page">
-    <div className="ts-heading execution-page-header management-page-header"><div className="management-page-title"><h1>测试集管理</h1><span className="management-page-description">维护测试字段与用例</span></div></div>
+    <div className="ts-heading execution-page-header management-page-header"><div className="management-page-title"><h1>测试集管理</h1><span className="management-page-description">维护测试字段与用例</span></div><span className="execution-count">{state.total} 个测试集</span></div>
     <div className="toolbar execution-toolbar management-list-toolbar"><button className="btn btn-primary" type="button" onClick={onCreate}><Plus className="ui-icon" />新建测试集</button><button className="btn" type="button" disabled={loading} onClick={() => load(page, query)}><RefreshCw className="ui-icon" />刷新</button><span className="toolbar-sep" /><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索测试集名称或说明" /></label></div>
     <div className="table-wrap execution-table-wrap management-list-wrap ts-table-wrap ts-list-table-wrap" aria-busy={loading}><table className="table execution-table management-list-table ts-table ts-list-table"><thead><tr><th>测试集名称</th><th>用例数</th><th>字段数</th><th>说明</th><th>最近更新</th><th className="management-list-actions-head">操作</th></tr></thead><tbody>
       {loading && !state.items.length && <tr><td colSpan="6"><div className="execution-empty"><strong>正在加载测试集...</strong></div></td></tr>}
@@ -297,16 +333,16 @@ function SaveModal({ mode, dataset, sourceCount, sheetCount, target, onClose, on
     finally { setSaving(false); }
   }
 
-  return <Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal" aria-describedby={undefined}>
-    <header><div>{!appending && <span>步骤 3 / 3</span>}<Dialog.Title asChild><h2 id="ts-save-modal-title">{appending ? "添加 Excel 用例" : "保存测试集"}</h2></Dialog.Title></div><Dialog.Close asChild><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
+  return <Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal" aria-labelledby="ts-save-modal-title" aria-describedby={undefined}>
+    <header><div>{!appending && <span>步骤 3 / 3</span>}<Dialog.Title asChild><h2 id="ts-save-modal-title">{appending ? "添加 Excel 用例" : "保存测试集"}</h2></Dialog.Title></div><Dialog.Close asChild><button className="btn-icon ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
     <div className="ts-modal-body"><div className="ts-preview"><b><CircleCheck className="ui-icon" /></b><div><strong>选区已转换为数据库用例</strong><span>{dataset.cases.length} 条用例 · {dataset.columns.length} 个字段 · {sourceCount} 个 Excel · {sheetCount} 个 Sheet</span></div></div>
       {!appending && <><label className="ts-field"><span>测试集名称 <b>*</b></span><input maxLength="120" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="ts-field"><span>测试集说明</span><textarea maxLength="1000" rows="4" value={description} onChange={(event) => setDescription(event.target.value)} /><small>{description.length}/1000</small></label></>}
       <div className="ts-schema"><div><strong>字段映射预览</strong><span>字段默认按选中位置生成</span></div>{dataset.columns.map((column, index) => <p key={column}><code>{appending ? target.columns[index] : column}</code><span>第 {index + 1} 个选中列</span></p>)}</div>
-    </div><footer><button className="ts-btn secondary" onClick={onClose}>返回调整</button><button className="ts-btn primary" disabled={saving} onClick={save}>{saving ? "处理中…" : appending ? "添加到测试集" : "保存并查看详情"}</button></footer>
+    </div><footer><button className="btn btn-secondary" onClick={onClose}>返回</button><button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? "处理中…" : appending ? "添加到测试集" : "保存"}</button></footer>
   </Dialog.Content></div></Dialog.Portal></Dialog.Root>;
 }
 
-function ImportView({ mode, target, onBack, onComplete }) {
+const ImportView = forwardRef(function ImportView({ mode, target, onBack, onComplete }, forwardedRef) {
   const fileInput = useRef(null);
   const workbookRef = useRef(null);
   const [sources, setSources] = useState([]);
@@ -316,19 +352,89 @@ function ImportView({ mode, target, onBack, onComplete }) {
   const [interpretation, setInterpretation] = useState("rows");
   const [reading, setReading] = useState(false);
   const [showSave, setShowSave] = useState(false);
-  const currentSelectionsRef = useRef([]);
+  const [excelRuntime, setExcelRuntime] = useState(null);
+  const [excelRuntimeError, setExcelRuntimeError] = useState("");
+  const [excelRuntimeAttempt, setExcelRuntimeAttempt] = useState(0);
+  const currentSelectionsRef = useRef({ sourceId: "", sheetId: "", ranges: [] });
+  const leaveSaveResolverRef = useRef(null);
   const source = sources.find((item) => item.id === activeSourceId) || null;
   const activeSheet = source?.sheets.find((sheet) => sheet.id === activeSheetId) || source?.sheets[0] || null;
   const dataset = useMemo(() => buildDataset(selections, interpretation), [selections, interpretation]);
+
+  useEffect(() => {
+    let active = true;
+    setExcelRuntimeError("");
+    loadExcelRuntime().then((runtime) => {
+      if (active) setExcelRuntime(runtime);
+    }).catch((error) => {
+      if (active) setExcelRuntimeError(error?.message || "资源加载失败");
+    });
+    return () => { active = false; };
+  }, [excelRuntimeAttempt]);
+
+  useImperativeHandle(forwardedRef, () => ({
+    isDirty() { return sources.length > 0; },
+    async saveForLeave() {
+      if (!dataset.cases.length) {
+        toast("请至少添加一个非空用例选区后再保存", "error");
+        return false;
+      }
+      if (mode === "create") {
+        return new Promise((resolve) => {
+          leaveSaveResolverRef.current = resolve;
+          setShowSave(true);
+        });
+      }
+      if (dataset.columns.length !== target.columns.length) {
+        toast(`保存失败：当前测试集为 ${target.columns.length} 个字段，本次选择为 ${dataset.columns.length} 个字段`, "error");
+        return false;
+      }
+      const appended = dataset.cases.map((item) => ({
+        id: makeId("case"),
+        values: Object.fromEntries(target.columns.map((column, index) => [column, item.values[`col_${index + 1}`] || ""])),
+      }));
+      try {
+        await request(`/api/test-sets/${target.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: target.name,
+            description: target.description,
+            columns: target.columns,
+            cases: filterBlankCases([...target.cases, ...appended], target.columns).map((item) => ({
+              id: item.id,
+              values: item.values,
+            })),
+          }),
+        });
+        toast("新增用例已保存");
+        return true;
+      } catch (error) {
+        toast(`保存失败：${error.message}`, "error");
+        return false;
+      }
+    },
+  }), [sources.length, dataset, mode, target]);
 
   async function addFiles(event) {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length) return;
+    let runtime = excelRuntime;
+    if (!runtime) {
+      try {
+        runtime = await loadExcelRuntime();
+        setExcelRuntime(runtime);
+        setExcelRuntimeError("");
+      } catch (error) {
+        setExcelRuntimeError(error?.message || "资源加载失败");
+        toast("Excel 编辑器加载失败，请重新加载后重试", "error");
+        return;
+      }
+    }
     setReading(true);
     for (const file of files) {
       try {
-        const parsed = await readWorkbook(file);
+        const parsed = await readWorkbook(file, runtime.XLSX);
         setSources((current) => [...current.filter((item) => item.name !== parsed.name), parsed]);
         setActiveSourceId(parsed.id);
         setActiveSheetId(parsed.sheets[0].id);
@@ -348,27 +454,13 @@ function ImportView({ mode, target, onBack, onComplete }) {
   }
 
   function addCurrentSelections() {
-    if (!source || !activeSheet) return toast("请先添加 Excel 文件", "error");
-    const ranges = workbookRef.current?.getSelections() || [];
+    const snapshot = currentSelectionsRef.current;
+    const selectionSource = sources.find((item) => item.id === snapshot.sourceId);
+    const selectionSheet = selectionSource?.sheets.find((item) => item.id === snapshot.sheetId);
+    if (!selectionSource || !selectionSheet) return toast("请先添加 Excel 文件并选择 Sheet", "error");
+    const ranges = snapshot.ranges;
     if (!ranges.length) return toast("请先选择单元格区域", "error");
-    const additions = ranges.map(normalizedRange).map((range) => {
-      const rows = [];
-      for (let row = range.row[0]; row <= range.row[1]; row += 1) {
-        const values = [];
-        for (let column = range.column[0]; column <= range.column[1]; column += 1) values.push(activeSheet.sourceMatrix[row]?.[column] || "");
-        rows.push({ rowIndex: row, values });
-      }
-      return {
-        id: `${source.id}:${activeSheet.id}:${range.row.join("-")}:${range.column.join("-")}`,
-        sourceId: source.id,
-        sourceFile: source.name,
-        sheetId: activeSheet.id,
-        sheetName: activeSheet.name,
-        range,
-        rows,
-        columnCount: range.column[1] - range.column[0] + 1,
-      };
-    });
+    const additions = buildSheetSelections(selectionSource, selectionSheet.id, ranges);
     setSelections((current) => [...current.filter((item) => !additions.some((next) => next.id === item.id)), ...additions]);
     toast(`已添加 ${additions.length} 个选区`);
   }
@@ -376,27 +468,43 @@ function ImportView({ mode, target, onBack, onComplete }) {
   const sourceCount = new Set(selections.map((item) => item.sourceId)).size;
   const sheetCount = new Set(selections.map((item) => `${item.sourceId}|${item.sheetId}`)).size;
   const defaultName = sources.length === 1 ? `${sources[0].name.replace(/\.xlsx$/i, "")}测试集` : `${sources[0]?.name.replace(/\.xlsx$/i, "") || "新建"}等 ${sources.length} 个文件测试集`;
-  function updateCurrentSelection(selection) {
+  function updateCurrentSelection(sheetId, selection) {
+    if (sheetId) setActiveSheetId((current) => current === sheetId ? current : sheetId);
     const candidates = Array.isArray(selection) ? selection : selection ? [selection] : [];
-    currentSelectionsRef.current = candidates.filter((item) =>
+    const ranges = candidates.filter((item) =>
       item && Array.isArray(item.row) && Array.isArray(item.column) &&
       item.row.every(Number.isFinite) && item.column.every(Number.isFinite)
     );
+    currentSelectionsRef.current = { sourceId: source?.id || "", sheetId: sheetId || "", ranges };
     const label = document.getElementById("ts-current-selection");
-    if (label) label.textContent = currentSelectionsRef.current.length
-      ? currentSelectionsRef.current.map((item) => rangeLabel(normalizedRange(item))).join("、")
+    if (label) label.textContent = ranges.length
+      ? ranges.map((item) => rangeLabel(normalizeSelectionRange(item))).join("、")
       : "-";
   }
 
   return <section className="ts-page ts-import-page">
-    <div className="ts-heading"><div className="ts-heading-left"><button className="ts-btn ghost" onClick={onBack}><ArrowLeft className="ui-icon" />返回</button><div><h1>{mode === "append" ? "从 Excel 添加用例" : "从 Excel 创建测试集"}</h1><p>{mode === "append" ? "从一个或多个 Excel 选择用例，按字段顺序追加到当前测试集。" : "文件仅在浏览器中解析，可从多个 Excel 累计选择用例。"}</p></div></div><div className="ts-stepper"><span>1 选择文件</span><i /><b>2 选择用例</b><i /><span>3 保存测试集</span></div></div>
-    <div className="ts-card ts-import-toolbar"><div className="ts-file-summary"><button className="ts-btn secondary" onClick={() => fileInput.current.click()}><FileUp className="ui-icon" />添加 .xlsx 文件</button><input ref={fileInput} hidden multiple type="file" accept=".xlsx" onChange={addFiles} /><div><strong>{source?.name || "尚未选择文件"}</strong><span>{source ? `${source.sheets.length} 个 Sheet · ${formatBytes(source.size)} · 浏览器内加载` : "文件不会上传到服务器"}</span></div></div><div className="ts-import-options"><span>选区首行作为用例保留</span><label>生成方式<select value={interpretation} onChange={(event) => setInterpretation(event.target.value)}><option value="rows">按行生成用例</option><option value="cells">每个单元格生成用例</option></select></label></div><div className="ts-file-tabs">{sources.map((item) => <button className={item.id === activeSourceId ? "active" : ""} key={item.id} onClick={() => { setActiveSourceId(item.id); setActiveSheetId(item.sheets[0].id); }}><span>{item.name}</span><i className="ts-tab-remove" title="移除文件" aria-label="移除文件" onClick={(event) => { event.stopPropagation(); removeSource(item.id); }}><X className="ui-icon" /></i></button>)}</div></div>
-    <div className="ts-workspace"><div className="ts-card ts-grid-card"><div className="ts-grid-toolbar"><div><strong>选择 Excel 内容</strong><span>当前 Sheet：{activeSheet?.name || "-"} · 拖动选择单元格，按 Ctrl 可添加多个区域</span></div><div><span>当前选区：<b id="ts-current-selection">-</b></span><button className="ts-btn primary" onClick={addCurrentSelections}><Plus className="ui-icon" />添加当前选区</button></div></div><div className="ts-grid-host"><Spreadsheet ref={workbookRef} source={source} onSheetChange={(id) => { setActiveSheetId((current) => current === id ? current : id); updateCurrentSelection(null); }} onSelectionChange={updateCurrentSelection} />{reading && <div className="ts-loading">正在读取 Excel…</div>}</div></div>
-      <aside className="ts-card ts-selection-panel"><div className="ts-panel-title"><div><strong>已选用例区域</strong><span>{selections.length} 个区域</span></div><button className="ts-clear-button" onClick={() => setSelections([])}><Eraser className="ui-icon" />清空</button></div><div className="ts-summary"><div><span>预计用例</span><strong>{dataset.cases.length}</strong></div><div><span>字段数量</span><strong>{dataset.columns.length}</strong></div><div><span>Excel 文件</span><strong>{sourceCount}</strong></div><div><span>涉及 Sheet</span><strong>{sheetCount}</strong></div></div><div className="ts-selection-list">{selections.map((item) => <article key={item.id}><div><strong>{item.sourceFile}</strong><span>{item.sheetName}!{rangeLabel(item.range)}</span></div><button className="ts-icon-button" title="移除选区" aria-label="移除选区" onClick={() => setSelections((current) => current.filter((selection) => selection.id !== item.id))}><X className="ui-icon" /></button></article>)}</div>{!selections.length && <div className="ts-selection-empty"><b><LayoutGrid className="ui-icon" /></b><strong>尚未添加选区</strong><p>在左侧选择任意网格，再点击“添加当前选区”。不同 Excel、不同 Sheet 的选区均可累计保存。</p></div>}<div className="ts-tip"><b><Info className="ui-icon" /></b><p>选区中的首行也作为用例保留；字段默认从 <code>col_1</code> 顺序生成，可在详情页修改或删除。</p></div><button className="ts-btn primary large full" disabled={!dataset.cases.length} onClick={() => setShowSave(true)}><Save className="ui-icon" />{mode === "append" ? "预览并添加到测试集" : "预览并保存测试集"}</button></aside>
+    <div className="ts-heading"><div className="ts-heading-left"><button className="btn" onClick={onBack}><ArrowLeft className="ui-icon" />返回</button><div><h1>{mode === "append" ? "从 Excel 添加用例" : "从 Excel 创建测试集"}</h1><p>{mode === "append" ? "从一个或多个 Excel 选择用例，按字段顺序追加到当前测试集。" : "文件仅在浏览器中解析，可从多个 Excel 累计选择用例。"}</p></div></div><div className="ts-stepper"><span>1 选择文件</span><i /><b>2 选择用例</b><i /><span>3 保存测试集</span></div></div>
+    <div className="ts-card ts-import-toolbar"><div className="ts-file-summary"><button className="btn btn-secondary" disabled={!excelRuntime} onClick={() => fileInput.current.click()}><FileUp className="ui-icon" />添加 .xlsx 文件</button><input ref={fileInput} hidden multiple type="file" accept=".xlsx" onChange={addFiles} /><div><strong>{source?.name || "尚未选择文件"}</strong><span>{source ? `${source.sheets.length} 个 Sheet · ${formatBytes(source.size)} · 浏览器内加载` : "文件不会上传到服务器"}</span></div></div><div className="ts-import-options"><span>选区首行作为用例保留</span><label>生成方式<select value={interpretation} onChange={(event) => setInterpretation(event.target.value)}><option value="rows">按行生成用例</option><option value="cells">每个单元格生成用例</option></select></label></div><div className="ts-file-tabs">{sources.map((item) => <button className={item.id === activeSourceId ? "active" : ""} key={item.id} onClick={() => { setActiveSourceId(item.id); setActiveSheetId(item.sheets[0].id); }}><span>{item.name}</span><i className="ts-tab-remove" title="移除文件" aria-label="移除文件" onClick={(event) => { event.stopPropagation(); removeSource(item.id); }}><X className="ui-icon" /></i></button>)}</div></div>
+    <div className="ts-workspace"><div className="ts-card ts-grid-card"><div className="ts-grid-toolbar"><div><strong>选择 Excel 内容</strong><span>当前 Sheet：{activeSheet?.name || "-"} · 拖动选择单元格，按 Ctrl 可添加多个区域</span></div><div><span>当前选区：<b id="ts-current-selection">-</b></span><button className="btn btn-primary" disabled={!excelRuntime} onClick={addCurrentSelections}><Plus className="ui-icon" />添加当前选区</button></div></div><div className="ts-grid-host">{excelRuntime ? <Spreadsheet Workbook={excelRuntime.Workbook} ref={workbookRef} source={source} onSheetChange={(id) => { setActiveSheetId((current) => current === id ? current : id); updateCurrentSelection(id, null); }} onSelectionChange={updateCurrentSelection} /> : <div className="ts-empty-grid" role={excelRuntimeError ? "alert" : "status"}><strong>{excelRuntimeError ? "Excel 编辑器加载失败" : "正在加载 Excel 编辑器…"}</strong>{excelRuntimeError && <button className="btn btn-primary" type="button" onClick={() => setExcelRuntimeAttempt((value) => value + 1)}>重新加载</button>}</div>}{reading && <div className="ts-loading">正在读取 Excel…</div>}</div></div>
+      <aside className="ts-card ts-selection-panel"><div className="ts-panel-title"><div><strong>已选用例区域</strong><span>{selections.length} 个区域</span></div><button className="btn btn-sm" onClick={() => setSelections([])}><Eraser className="ui-icon" />清空</button></div><div className="ts-summary"><div><span>预计用例</span><strong>{dataset.cases.length}</strong></div><div><span>字段数量</span><strong>{dataset.columns.length}</strong></div><div><span>Excel 文件</span><strong>{sourceCount}</strong></div><div><span>涉及 Sheet</span><strong>{sheetCount}</strong></div></div><div className="ts-selection-list">{selections.map((item) => <article key={item.id}><div><strong>{item.sourceFile}</strong><span>{item.sheetName}!{rangeLabel(item.range)}</span></div><button className="btn-icon" title="移除选区" aria-label="移除选区" onClick={() => setSelections((current) => current.filter((selection) => selection.id !== item.id))}><X className="ui-icon" /></button></article>)}</div>{!selections.length && <div className="ts-selection-empty"><b><LayoutGrid className="ui-icon" /></b><strong>尚未添加选区</strong><p>在左侧选择任意网格，再点击“添加当前选区”。不同 Excel、不同 Sheet 的选区均可累计保存。</p></div>}<div className="ts-tip"><b><Info className="ui-icon" /></b><p>选区中的首行也作为用例保留；字段默认从 <code>col_1</code> 顺序生成，可在详情页修改或删除。</p></div><button className="btn btn-primary ts-btn-large-full" disabled={!dataset.cases.length} onClick={() => setShowSave(true)}><Save className="ui-icon" />{mode === "append" ? "预览并添加到测试集" : "保存"}</button></aside>
     </div>
-    {showSave && <SaveModal mode={mode} target={target} dataset={{ ...dataset, defaultName }} sourceCount={sourceCount} sheetCount={sheetCount} onClose={() => setShowSave(false)} onSaved={onComplete} />}
+    {showSave && <SaveModal mode={mode} target={target} dataset={{ ...dataset, defaultName }} sourceCount={sourceCount} sheetCount={sheetCount} onClose={() => {
+      setShowSave(false);
+      if (leaveSaveResolverRef.current) {
+        leaveSaveResolverRef.current(false);
+        leaveSaveResolverRef.current = null;
+      }
+    }} onSaved={(record, persisted) => {
+      setShowSave(false);
+      if (leaveSaveResolverRef.current) {
+        leaveSaveResolverRef.current(true);
+        leaveSaveResolverRef.current = null;
+        return;
+      }
+      onComplete(record, persisted);
+    }} />}
   </section>;
-}
+});
 
 function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
   const [entries, setEntries] = useState(() => draft.columns.map((column) => ({ original: column, name: column, deleted: false })));
@@ -449,17 +557,17 @@ function ColumnSettingsModal({ testSet, draft, onClose, onSaved }) {
     await saveColumns(kept, columns);
   }
 
-  return <><Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal ts-column-settings-modal" aria-describedby={undefined}>
-    <header><div><Dialog.Title asChild><h2 id="ts-column-settings-title">字段设置</h2></Dialog.Title><span>批量修改字段名称，或选择需要删除的字段</span></div><Dialog.Close asChild><button className="ts-icon-button ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
+  return <><Dialog.Root open onOpenChange={(open) => !open && onClose()}><Dialog.Portal><div className="ts-modal-layer"><Dialog.Overlay className="ts-modal-backdrop" /><Dialog.Content className="ts-modal ts-column-settings-modal" aria-labelledby="ts-column-settings-title" aria-describedby={undefined}>
+    <header><div><Dialog.Title asChild><h2 id="ts-column-settings-title">字段设置</h2></Dialog.Title><span>批量修改字段名称，或选择需要删除的字段</span></div><Dialog.Close asChild><button className="btn-icon ts-modal-close" title="关闭" aria-label="关闭"><X className="ui-icon" /></button></Dialog.Close></header>
     <div className="ts-modal-body"><div className="ts-column-settings-head"><span>字段名称</span><span>删除</span></div><div className="ts-column-settings-list">
       {entries.map((entry, index) => <div className={entry.deleted ? "deleted" : ""} key={entry.original}><b>{index + 1}</b><input maxLength="120" aria-label={`字段 ${index + 1} 名称`} disabled={entry.deleted} value={entry.name} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, name: event.target.value } : item))} /><label><input type="checkbox" aria-label={`删除字段 ${entry.name || `字段 ${index + 1}`}`} checked={entry.deleted} onChange={(event) => setEntries(entries.map((item, position) => position === index ? { ...item, deleted: event.target.checked } : item))} /><span>删除</span></label></div>)}
     </div><p className="ts-column-settings-tip">保存后立即写入数据库；删除默认字段时，剩余的 <code>col_x</code> 会按顺序重新编号。</p></div>
-    <footer><span className="ts-column-settings-count">保留 {remainingCount} 个字段</span><button className="ts-btn secondary" onClick={onClose}><X className="ui-icon" />取消</button><button className="ts-btn primary" disabled={saving || !remainingCount} onClick={persist}><Save className="ui-icon" />{saving ? "保存中…" : "保存并立即生效"}</button></footer>
+    <footer><span className="ts-column-settings-count">保留 {remainingCount} 个字段</span><button className="btn btn-secondary" onClick={onClose}><X className="ui-icon" />取消</button><button className="btn btn-primary" disabled={saving || !remainingCount} onClick={persist}><Save className="ui-icon" />{saving ? "保存中…" : "保存"}</button></footer>
   </Dialog.Content></div></Dialog.Portal></Dialog.Root>{pendingDeletion && <ConfirmModal title="删除字段" message={`确定删除选中的 ${pendingDeletion.deletedCount} 个字段吗？`} detail="对应字段数据将从全部用例中删除，此操作不可恢复。" confirmLabel="删除字段" danger onClose={() => setPendingDeletion(null)} onConfirm={() => saveColumns(pendingDeletion.kept, pendingDeletion.columns)} />}</>;
 }
 
-function DetailView({ testSetId, initial, onBack, onImport }) {
-  const [testSet, setTestSet] = useState(initial || null);
+const DetailView = forwardRef(function DetailView({ testSetId, initial, savedInitial, onBack, onImport }, forwardedRef) {
+  const [testSet, setTestSet] = useState(savedInitial || initial || null);
   const [draft, setDraft] = useState(initial || null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -469,25 +577,23 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
   const [saving, setSaving] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [pendingCase, setPendingCase] = useState(null);
-  const [pendingCaseError, setPendingCaseError] = useState("");
-  const [savingPendingCase, setSavingPendingCase] = useState(false);
   const pendingCaseRowRef = useRef(null);
   const pendingCaseInputRef = useRef(null);
-  const pendingCaseSaveRef = useRef(null);
-  const savedMetadataRef = useRef({ name: initial?.name || "", description: initial?.description || "" });
-  const metadataDraftRef = useRef({ name: initial?.name || "", description: initial?.description || "" });
-  const nameEditCancelledRef = useRef(false);
-  const descriptionEditCancelledRef = useRef(false);
 
   useEffect(() => {
     if (initial?.id === testSetId) return;
     request(`/api/test-sets/${testSetId}`).then((payload) => {
-      savedMetadataRef.current = { name: payload.test_set.name, description: payload.test_set.description };
-      metadataDraftRef.current = { ...savedMetadataRef.current };
       setTestSet(payload.test_set);
       setDraft(payload.test_set);
     }).catch((error) => toast(`加载详情失败：${error.message}`, "error"));
   }, [testSetId]);
+
+  const pendingCaseIsBlank = !pendingCase || !draft || isBlankCaseValues(pendingCase.values, draft.columns);
+  const dirty = !!draft && (testSetDraftSignature(testSet) !== testSetDraftSignature(draft) || !pendingCaseIsBlank);
+  useImperativeHandle(forwardedRef, () => ({
+    isDirty() { return dirty; },
+    saveForLeave() { return save(); },
+  }), [dirty, draft, pendingCase, testSet]);
 
   if (!draft) return <div className="ts-loading-page">正在加载测试集…</div>;
   const filtered = draft.cases.filter((item) => !query || draft.columns.some((column) => String(item.values[column] || "").toLowerCase().includes(query.toLowerCase())));
@@ -500,7 +606,6 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
       return;
     }
     setPendingCase({ id: makeId("case"), values: Object.fromEntries(draft.columns.map((column) => [column, ""])) });
-    setPendingCaseError("");
     setQuery("");
     setPage(1);
     requestAnimationFrame(() => pendingCaseInputRef.current?.focus());
@@ -511,111 +616,39 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
     return JSON.stringify({ name: draft.name, description: draft.description, columns: draft.columns, cases: nonBlankCases.map((item) => ({ id: item.id, values: item.values })) });
   }
 
-  function isBlankCase(testCase) {
-    return isBlankCaseValues(testCase.values, draft.columns);
-  }
-
-  async function persistMetadata(nextName, nextDescription) {
-    try {
-      const payload = await request(`/api/test-sets/${draft.id}/metadata`, {
-        method: "PUT",
-        body: JSON.stringify({ name: nextName, description: nextDescription }),
-      });
-      const metadata = {
-        name: payload.test_set.name,
-        description: payload.test_set.description,
-        updated_at: payload.test_set.updated_at,
-      };
-      savedMetadataRef.current = { name: metadata.name, description: metadata.description };
-      metadataDraftRef.current = { ...savedMetadataRef.current };
-      setTestSet((current) => current ? { ...current, ...metadata } : payload.test_set);
-      setDraft((current) => current ? { ...current, ...metadata } : payload.test_set);
-      return true;
-    } catch (error) {
-      toast(`测试集信息保存失败：${error.message}`, "error");
-      return false;
-    }
-  }
-
-  async function commitName(nextName = draft.name) {
-    if (nameEditCancelledRef.current) {
-      nameEditCancelledRef.current = false;
-      metadataDraftRef.current.name = savedMetadataRef.current.name;
-      setDraft((current) => ({ ...current, name: savedMetadataRef.current.name }));
-      setEditingName(false);
-      return;
-    }
-    if (!nextName.trim()) {
-      setDraft((current) => ({ ...current, name: savedMetadataRef.current.name }));
-      setEditingName(false);
-      toast("测试集名称不能为空", "error");
-      return;
-    }
-    if (nextName === savedMetadataRef.current.name && draft.description === savedMetadataRef.current.description) {
-      setEditingName(false);
-      return;
-    }
-    if (await persistMetadata(nextName, draft.description)) setEditingName(false);
-  }
-
-  async function commitDescription(nextDescription = draft.description) {
-    if (descriptionEditCancelledRef.current) {
-      descriptionEditCancelledRef.current = false;
-      metadataDraftRef.current.description = savedMetadataRef.current.description;
-      setDraft((current) => ({ ...current, description: savedMetadataRef.current.description }));
-      setEditingDescription(false);
-      return;
-    }
-    if (draft.name === savedMetadataRef.current.name && nextDescription === savedMetadataRef.current.description) {
-      setEditingDescription(false);
-      return;
-    }
-    if (await persistMetadata(draft.name, nextDescription)) setEditingDescription(false);
-  }
-
-  async function savePendingCase() {
-    if (pendingCaseSaveRef.current) return pendingCaseSaveRef.current;
-    if (!pendingCase) return null;
-    if (isBlankCase(pendingCase)) {
+  function commitPendingCaseDraft() {
+    if (!pendingCase) return draft.cases;
+    if (isBlankCaseValues(pendingCase.values, draft.columns)) {
       setPendingCase(null);
-      setPendingCaseError("");
-      return null;
+      return draft.cases;
     }
     const nextCases = [pendingCase, ...draft.cases];
-    setSavingPendingCase(true);
-    setPendingCaseError("");
-    const savePromise = request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(nextCases) })
-      .then((payload) => {
-        setTestSet(payload.test_set);
-        setDraft(payload.test_set);
-        setPendingCase(null);
-        setPage(1);
-        toast("新用例已保存");
-        return payload;
-      })
-      .catch((error) => {
-        setPendingCaseError(`保存失败：${error.message}。内容已保留，请修改后再次点击行外或重试。`);
-        toast(`新增用例保存失败：${error.message}`, "error");
-        return null;
-      })
-      .finally(() => {
-        setSavingPendingCase(false);
-        pendingCaseSaveRef.current = null;
-      });
-    pendingCaseSaveRef.current = savePromise;
-    return savePromise;
+    setDraft((current) => ({ ...current, cases: nextCases }));
+    setPendingCase(null);
+    setPage(1);
+    return nextCases;
   }
 
   async function save() {
-    if (pendingCase || pendingCaseSaveRef.current) {
-      await savePendingCase();
-      return;
+    if (!draft.name.trim()) {
+      toast("测试集名称不能为空", "error");
+      return false;
     }
+    const nextCases = pendingCase && !isBlankCaseValues(pendingCase.values, draft.columns)
+      ? [pendingCase, ...draft.cases]
+      : draft.cases;
     setSaving(true);
     try {
-      const payload = await request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(draft.cases) });
-      setTestSet(payload.test_set); setDraft(payload.test_set); toast("测试集修改已保存");
-    } catch (error) { toast(`保存失败：${error.message}`, "error"); }
+      const payload = await request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(nextCases) });
+      setTestSet(payload.test_set);
+      setDraft(payload.test_set);
+      setPendingCase(null);
+      toast("测试集修改已保存");
+      return true;
+    } catch (error) {
+      toast(`保存失败：${error.message}`, "error");
+      return false;
+    }
     finally { setSaving(false); }
   }
 
@@ -626,7 +659,7 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
     setPage(1);
   }
 
-  return <section className="ts-page"><div className="ts-detail-heading"><div className="ts-heading-left ts-detail-metadata"><button className="ts-btn ghost" onClick={onBack}><ArrowLeft className="ui-icon" />返回列表</button><span className="ts-detail-divider" />{editingName ? <input className="ts-detail-name-input" autoFocus maxLength="120" value={draft.name} onChange={(event) => { metadataDraftRef.current.name = event.target.value; setDraft({ ...draft, name: event.target.value }); }} onBlur={(event) => void commitName(metadataDraftRef.current.name === draft.name ? event.currentTarget.value : metadataDraftRef.current.name)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { nameEditCancelledRef.current = true; event.currentTarget.blur(); } }} aria-label="测试集名称" /> : <button type="button" className="ts-detail-name" title="编辑测试集名称" aria-label={`编辑测试集名称：${draft.name}`} onClick={() => { metadataDraftRef.current.name = draft.name; setEditingName(true); }}><span>{draft.name}</span><Pencil className="ui-icon" /></button>}<div className={`ts-detail-description ${editingDescription ? "is-editing" : ""}`}><FileText className="ui-icon" />{editingDescription ? <div className="ts-detail-description-editor"><textarea autoFocus maxLength="1000" rows="4" value={draft.description} onChange={(event) => { metadataDraftRef.current.description = event.target.value; setDraft({ ...draft, description: event.target.value }); }} onBlur={(event) => void commitDescription(metadataDraftRef.current.description === draft.description ? event.currentTarget.value : metadataDraftRef.current.description)} onKeyDown={(event) => { if (event.key === "Escape") { descriptionEditCancelledRef.current = true; event.currentTarget.blur(); } }} aria-label="测试集说明" /></div> : <button type="button" title="编辑测试集说明" aria-label="编辑测试集说明" onClick={() => { metadataDraftRef.current.description = draft.description; setEditingDescription(true); }}><span>{draft.description || "添加测试集说明"}</span><Pencil className="ui-icon" /></button>}</div></div><div className="ts-detail-actions"><button className="ts-btn secondary" onClick={() => onImport(draft)}><FileUp className="ui-icon" />从 .xlsx 添加</button><button className="ts-btn secondary" onClick={addCase}><Plus className="ui-icon" />手动添加</button><button className="ts-btn primary" disabled={saving} onClick={save}><Save className="ui-icon" />{saving ? "保存中…" : "保存修改"}</button></div></div>
+  return <section className="ts-page"><div className="ts-detail-heading"><div className="ts-heading-left ts-detail-metadata"><button className="btn" onClick={onBack}><ArrowLeft className="ui-icon" />返回</button><span className="ts-detail-divider" /><h1 className="ts-detail-name-heading">{editingName ? <input className="ts-detail-name-input" autoFocus maxLength="120" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => setEditingName(false)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { setDraft((current) => ({ ...current, name: testSet.name })); setEditingName(false); } }} aria-label="测试集名称" /> : <button type="button" className="ts-detail-name" title="编辑测试集名称" aria-label={`编辑测试集名称：${draft.name}`} onClick={() => setEditingName(true)}><span>{draft.name}</span><Pencil className="ui-icon" /></button>}</h1><div className={`ts-detail-description ${editingDescription ? "is-editing" : ""}`}><FileText className="ui-icon" />{editingDescription ? <div className="ts-detail-description-editor"><textarea autoFocus maxLength="1000" rows="4" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} onBlur={() => setEditingDescription(false)} onKeyDown={(event) => { if (event.key === "Escape") { setDraft((current) => ({ ...current, description: testSet.description })); setEditingDescription(false); } }} aria-label="测试集说明" /></div> : <button type="button" title="编辑测试集说明" aria-label="编辑测试集说明" onClick={() => setEditingDescription(true)}><span>{draft.description || "添加测试集说明"}</span><Pencil className="ui-icon" /></button>}</div></div><div className="ts-detail-actions"><button className="btn btn-secondary" onClick={() => onImport(draft)}><FileUp className="ui-icon" />从 .xlsx 添加</button><button className="btn btn-secondary" onClick={addCase}><Plus className="ui-icon" />手动添加</button><button className="btn btn-primary" disabled={saving || !dirty} onClick={save}><Save className="ui-icon" />{saving ? "保存中…" : "保存"}</button></div></div>
     <Metrics items={[["用例数", draft.cases.length], ["字段数", draft.columns.length]]} />
     <div className="ts-card">
       <div className="ts-toolbar"><label className="ts-search"><Search className="ui-icon" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="搜索当前测试集用例" /></label></div>
@@ -634,29 +667,83 @@ function DetailView({ testSetId, initial, onBack, onImport }) {
         <thead><tr>{draft.columns.map((column) => <th className="ts-case-header" key={column}><span>{column}</span></th>)}<th className="ts-field-settings-header"><button type="button" title="字段设置" onClick={() => setShowColumnSettings(true)}><Settings2 className="ui-icon" />字段设置</button></th></tr></thead>
         <tbody>
           {pendingCase && <>
-            <tr ref={pendingCaseRowRef} className={`ts-new-case-row${pendingCaseError ? " error" : ""}`}>
-              {draft.columns.map((column, index) => <td key={column}><input ref={index === 0 ? pendingCaseInputRef : null} className="ts-cell-input" aria-label={`新用例 ${column}`} disabled={savingPendingCase} value={pendingCase.values[column] || ""} onChange={(event) => { setPendingCase({ ...pendingCase, values: { ...pendingCase.values, [column]: event.target.value } }); setPendingCaseError(""); }} onBlur={(event) => { if (!pendingCaseRowRef.current?.contains(event.relatedTarget)) void savePendingCase(); }} /></td>)}
-              <td><div className="ts-new-case-status" aria-live="polite"><span>{savingPendingCase ? "正在保存…" : pendingCaseError ? "保存失败" : "新用例"}</span>{pendingCaseError && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void savePendingCase()}>重试</button>}</div></td>
+            <tr ref={pendingCaseRowRef} className="ts-new-case-row">
+              {draft.columns.map((column, index) => <td key={column}><input ref={index === 0 ? pendingCaseInputRef : null} className="ts-cell-input" aria-label={`新用例 ${column}`} value={pendingCase.values[column] || ""} onChange={(event) => setPendingCase({ ...pendingCase, values: { ...pendingCase.values, [column]: event.target.value } })} onBlur={(event) => { if (!pendingCaseRowRef.current?.contains(event.relatedTarget)) commitPendingCaseDraft(); }} /></td>)}
+              <td><div className="ts-new-case-status" aria-live="polite"><span>未保存</span></div></td>
             </tr>
-            {pendingCaseError && <tr className="ts-new-case-error"><td colSpan={draft.columns.length + 1}>{pendingCaseError}</td></tr>}
           </>}
-          {pageCases.map((item, rowIndex) => <tr key={item.id}>{draft.columns.map((column) => <td key={column}><input className="ts-cell-input" aria-label={`用例 ${(page - 1) * casePageSize + rowIndex + 1} ${column}`} value={item.values[column] || ""} onChange={(event) => setDraft({ ...draft, cases: draft.cases.map((testCase) => testCase.id === item.id ? { ...testCase, values: { ...testCase.values, [column]: event.target.value } } : testCase) })} /></td>)}<td><button className="ts-delete-case ts-icon-button" title="删除用例" aria-label="删除用例" onClick={() => setDraft({ ...draft, cases: draft.cases.filter((testCase) => testCase.id !== item.id) })}><Trash2 className="ui-icon" /></button></td></tr>)}
+          {pageCases.map((item, rowIndex) => <tr key={item.id}>{draft.columns.map((column) => <td key={column}><input className="ts-cell-input" aria-label={`用例 ${(page - 1) * casePageSize + rowIndex + 1} ${column}`} value={item.values[column] || ""} onChange={(event) => setDraft({ ...draft, cases: draft.cases.map((testCase) => testCase.id === item.id ? { ...testCase, values: { ...testCase.values, [column]: event.target.value } } : testCase) })} /></td>)}<td><button className="ts-delete-case btn-icon" title="删除用例" aria-label="删除用例" onClick={() => setDraft({ ...draft, cases: draft.cases.filter((testCase) => testCase.id !== item.id) })}><Trash2 className="ui-icon" /></button></td></tr>)}
         </tbody>
       </table></div>
       <PageControls total={filtered.length} unit="条用例" page={page} pages={pages} pageSize={casePageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPage(1); setCasePageSize(size); }} />
     </div>
     {showColumnSettings && <ColumnSettingsModal testSet={testSet} draft={draft} onClose={() => setShowColumnSettings(false)} onSaved={applyColumnSettings} />}
   </section>;
-}
+});
 
 function TestSetApp() {
   const [view, setView] = useState({ name: "list" });
-  if (view.name === "import") return <ImportView mode={view.mode} target={view.target} onBack={() => setView(view.target ? { name: "detail", id: view.target.id, initial: view.target } : { name: "list" })} onComplete={(record, persisted) => { if (persisted) toast("测试集已保存"); else toast("用例已追加，请保存修改"); setView({ name: "detail", id: record.id, initial: record }); }} />;
-  if (view.name === "detail") return <DetailView testSetId={view.id} initial={view.initial} onBack={() => setView({ name: "list" })} onImport={(target) => setView({ name: "import", mode: "append", target })} />;
-  return <ListView onCreate={() => setView({ name: "import", mode: "create" })} onOpen={(id) => setView({ name: "detail", id })} />;
+  const activeViewRef = useRef(null);
+  const pendingLeaveRef = useRef(null);
+  const navigationRequestRef = useRef(null);
+  const [pendingLeave, setPendingLeave] = useState(null);
+
+  function finishLeave(allowed) {
+    const pending = pendingLeaveRef.current;
+    if (!pending) return;
+    pendingLeaveRef.current = null;
+    setPendingLeave(null);
+    if (allowed && pending.nextView) setView(pending.nextView);
+    pending.resolve(allowed);
+  }
+
+  function requestNavigation(nextView) {
+    if (!activeViewRef.current?.isDirty?.()) {
+      if (nextView) setView(nextView);
+      return Promise.resolve(true);
+    }
+    if (pendingLeaveRef.current) return pendingLeaveRef.current.promise;
+    let resolveRequest;
+    const promise = new Promise((resolve) => { resolveRequest = resolve; });
+    pendingLeaveRef.current = { nextView, promise, resolve: resolveRequest };
+    setPendingLeave({ phase: "confirm" });
+    return promise;
+  }
+
+  async function saveAndLeave() {
+    if (!pendingLeaveRef.current) return;
+    setPendingLeave({ phase: "saving" });
+    const saved = await activeViewRef.current?.saveForLeave?.();
+    finishLeave(saved === true);
+  }
+
+  navigationRequestRef.current = requestNavigation;
+  useEffect(() => {
+    requestLeaveHandler = () => navigationRequestRef.current(null);
+    return () => { requestLeaveHandler = () => Promise.resolve(true); };
+  }, []);
+
+  let content;
+  if (view.name === "import") {
+    const backView = view.target
+      ? { name: "detail", id: view.target.id, initial: view.target, savedInitial: view.target }
+      : { name: "list" };
+    content = <ImportView ref={activeViewRef} mode={view.mode} target={view.target} onBack={() => void requestNavigation(backView)} onComplete={(record, persisted) => {
+      if (persisted) toast("测试集已保存");
+      else toast("用例已追加，请保存修改");
+      setView({ name: "detail", id: record.id, initial: record, savedInitial: persisted ? record : view.target });
+    }} />;
+  } else if (view.name === "detail") {
+    content = <DetailView ref={activeViewRef} testSetId={view.id} initial={view.initial} savedInitial={view.savedInitial} onBack={() => void requestNavigation({ name: "list" })} onImport={(target) => setView({ name: "import", mode: "append", target })} />;
+  } else {
+    content = <ListView onCreate={() => setView({ name: "import", mode: "create" })} onOpen={(id) => setView({ name: "detail", id })} />;
+  }
+
+  return <>{content}{pendingLeave?.phase === "confirm" && <UnsavedChangesModal onSave={() => void saveAndLeave()} onDiscard={() => finishLeave(true)} onCancel={() => finishLeave(false)} />}</>;
 }
 
 let root = null;
+let requestLeaveHandler = () => Promise.resolve(true);
 function unmount() {
   if (!root) return;
   root.unmount();
@@ -673,5 +760,5 @@ function mount() {
   root.render(<TestSetApp />);
 }
 
-window.TestSetManagement = { mount, unmount };
+window.TestSetManagement = { mount, unmount, requestLeave: () => requestLeaveHandler() };
 window.viewSets = mount;

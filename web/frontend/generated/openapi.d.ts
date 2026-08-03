@@ -443,7 +443,7 @@ export interface paths {
         put?: never;
         /**
          * Create Workflow
-         * @description 完整校验并原子创建 Workflow、Node、binding 和 Edge。
+         * @description 原子创建可继续编辑的 Workflow 草稿。
          */
         post: operations["create_workflow_api_workflows_post"];
         delete?: never;
@@ -466,7 +466,7 @@ export interface paths {
         get: operations["get_workflow_api_workflows__workflow_id__get"];
         /**
          * Update Workflow
-         * @description 完整校验并原子替换既有 Workflow 当前结构。
+         * @description 原子替换既有 Workflow 当前草稿。
          */
         put: operations["update_workflow_api_workflows__workflow_id__put"];
         post?: never;
@@ -592,6 +592,46 @@ export interface paths {
          * @description 以 SSE 交付实时临时快照；终态交付后服务端立即释放会话。
          */
         get: operations["stream_node_test_events_api_workflows__workflow_id__node_tests__test_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Workflow Node
+         * @description 只校验并保存当前节点，不校验或覆盖 Workflow 其他草稿。
+         */
+        put: operations["save_workflow_node_api_workflows__workflow_id__nodes__node_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/nodes/{node_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Node Run History
+         * @description 读取当前节点在最近 10 次 Workflow Execution 中的执行记录。
+         */
+        get: operations["list_node_run_history_api_workflows__workflow_id__nodes__node_id__runs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2097,7 +2137,7 @@ export interface components {
         };
         /**
          * WorkflowStructuralRecord
-         * @description Repository 返回对象，组合完整 Workflow 结构和数据库管理时间。
+         * @description Repository 返回对象，组合可继续编辑的 Workflow 草稿和数据库管理时间。
          */
         WorkflowStructuralRecord: {
             /**
@@ -2115,7 +2155,7 @@ export interface components {
              * @description 最近结构保存时间，UTC ISO-8601。
              */
             updated_at: string;
-            /** @description 完整且已校验的 Workflow Structural Model。 */
+            /** @description 已持久化的 Workflow Structural Model 草稿。 */
             workflow: components["schemas"]["WorkflowStructuralModel"];
         };
         /**
@@ -2138,6 +2178,11 @@ export interface components {
              * @description 用户可见名称。
              */
             name: string;
+            /**
+             * Node Count
+             * @description 当前绑定的节点数量。
+             */
+            node_count: number;
             /**
              * Updated At
              * @description 最近结构保存时间，UTC ISO-8601。
@@ -3307,7 +3352,9 @@ export interface operations {
     };
     create_workflow_api_workflows_post: {
         parameters: {
-            query?: never;
+            query?: {
+                validate_structure?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3371,7 +3418,9 @@ export interface operations {
     };
     update_workflow_api_workflows__workflow_id__put: {
         parameters: {
-            query?: never;
+            query?: {
+                validate_structure?: boolean;
+            };
             header?: never;
             path: {
                 workflow_id: string;
@@ -3618,6 +3667,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_workflow_node_api_workflows__workflow_id__nodes__node_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowNodeWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_node_run_history_api_workflows__workflow_id__nodes__node_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeExecutionListResponse"];
                 };
             };
             /** @description Validation Error */

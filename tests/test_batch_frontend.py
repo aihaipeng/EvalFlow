@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT / "web" / "static"
 BATCH_SOURCE = ROOT / "web" / "frontend" / "batch-runs.jsx"
 BATCH_API = ROOT / "web" / "frontend" / "batch-api.ts"
+BATCH_VALIDATION = ROOT / "web" / "frontend" / "batch-validation.mjs"
+API_RESULT = ROOT / "web" / "frontend" / "api-result.ts"
 DIALOG_SOURCE = ROOT / "web" / "frontend" / "components" / "dialog.jsx"
 
 
@@ -102,6 +104,17 @@ def test_batch_case_detail_leads_with_actionable_diagnosis_and_defers_raw_data()
     assert "<details" in javascript
 
 
+def test_batch_case_start_actions_remain_visible_during_parallel_single_runs():
+    javascript = read(STATIC_DIR / "execution.js")
+
+    assert "singleCaseActive" in javascript
+    assert 'item.execution_status === "QUEUED"' in javascript
+    assert "? '排队中'" in javascript
+    assert "? '执行中'" in javascript
+    assert 'aria-disabled="true"' in javascript
+    assert "var canStartCase = isLatestRound && !batchActive" not in javascript
+
+
 def test_management_navigation_and_lists_share_visual_contract():
     html = read(STATIC_DIR / "index.html")
     batch = read(BATCH_SOURCE)
@@ -120,6 +133,24 @@ def test_management_navigation_and_lists_share_visual_contract():
     assert ".management-list-footer.global-list-footer" in global_styles
 
 
+def test_batch_detail_uses_compact_theme_aware_status_filters():
+    styles = read(STATIC_DIR / "execution.css")
+
+    title_rule = styles[styles.index(".batch-detail-title h1 {"):]
+    title_rule = title_rule[:title_rule.index("}")]
+    card_rule = styles[styles.index(".batch-result-card {"):]
+    card_rule = card_rule[:card_rule.index("}")]
+    count_rule = styles[styles.index(".batch-result-card strong {"):]
+    count_rule = count_rule[:count_rule.index("}")]
+
+    assert "font-weight: 700;" in title_rule
+    assert "min-height: 68px;" in card_rule
+    assert "display: flex;" in card_rule
+    assert "font-size: 24px;" in count_rule
+    assert "text-transform: none;" in styles
+    assert ':root[data-theme="dark"] .batch-result-card.is-pass' in styles
+
+
 def test_batch_config_uses_schema_validation_and_inline_accessible_errors():
     source = read(BATCH_SOURCE)
     styles = read(STATIC_DIR / "execution.css")
@@ -132,13 +163,20 @@ def test_batch_config_uses_schema_validation_and_inline_accessible_errors():
         "batch-failure-retry-count-error",
         "batch-test-set-error",
         "batch-workflow-error",
+        "batch-case-display-column-error",
+        "batch-rule-display-column-error",
+        "batch-call-order-error",
         "batch-concurrency-error",
     ):
         assert field_id in source
-    assert source.count('className="batch-field-error"') == 5
-    assert source.count('role="alert"') >= 5
+    assert source.count('className="batch-field-error"') == 8
+    assert source.count('role="alert"') >= 10
     assert 'aria-invalid={Boolean(errors.name)}' in source
+    assert 'className="batch-row-field-error"' in source
+    assert "revealFirstError" in source
+    assert 'scrollIntoView({ behavior: "smooth", block: "center" })' in source
     assert ".batch-field-error" in styles
+    assert ".batch-row-field-error" in styles
     assert '.batch-create-grid [aria-invalid="true"]' in styles
 
 
@@ -165,6 +203,7 @@ def test_batch_config_keeps_confirmed_layout_and_business_fields():
 
 def test_batch_variable_and_evaluation_sections_keep_business_validation():
     source = read(BATCH_SOURCE)
+    validation = read(BATCH_VALIDATION)
     styles = read(STATIC_DIR / "execution.css")
 
     assert "function VariableRows" in source
@@ -172,9 +211,15 @@ def test_batch_variable_and_evaluation_sections_keep_business_validation():
     assert 'className="batch-section-heading"' in source
     assert "变量注入" in source
     assert "结果校验" in source
-    assert "请至少配置一个变量注入" in source
-    assert "Key 格式无效" in source
-    assert "校验规则 ${i + 1} 的路径不能为空" in source
+    assert "请至少添加一个变量注入" in validation
+    assert "只能以字母或下划线开头" in validation
+    assert '"batch-variable-value-options"' in source
+    assert '<datalist id="batch-variable-value-options">' in source
+    assert "输入表头，如 col_1" in source
+    assert 'source === "CUSTOM" && type === "null"' in validation
+    assert "请选择当前测试集中的字段" in validation
+    assert "路径格式无效" in validation
+    assert "String(row?.value ?? \"\")" in validation
     assert 'placeholder="例如 action_match"' in source
     assert ".batch-variable-table," in styles
     assert ".batch-variable-row:hover," in styles
@@ -190,3 +235,15 @@ def test_batch_dialogs_use_project_radix_wrapper():
     assert 'from "@radix-ui/react-dialog"' in dialog
     assert 'from "@radix-ui/react-alert-dialog"' in dialog
     assert "executionModalFocusableElements" not in source
+
+
+def test_api_errors_preserve_structured_validation_locations():
+    api_result = read(API_RESULT)
+    validation = read(BATCH_VALIDATION)
+
+    assert "export interface ApiValidationIssue" in api_result
+    assert "export class ApiRequestError extends Error" in api_result
+    assert "readonly issues: ApiValidationIssue[]" in api_result
+    assert "validationIssues(rawDetail)" in api_result
+    assert 'loc[0] === "variables"' in validation
+    assert 'loc[0] === "evaluation_rules"' in validation

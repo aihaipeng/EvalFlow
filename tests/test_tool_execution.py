@@ -142,7 +142,6 @@ def test_python_worker_reports_unserializable_top_level_variable():
 
     assert result["ok"] is False
     assert "Python 顶层变量无法序列化: msg" in result["error"]
-    assert "Traceback" in result["stderr"]
 
 
 def test_python_worker_rejects_non_json_response_and_reports_traceback():
@@ -157,8 +156,6 @@ def test_python_worker_rejects_non_json_response_and_reports_traceback():
     assert result["ok"] is False
     assert "NaN" in result["error"]
     assert "Infinity" in result["error"]
-    assert "Traceback" in "".join(logs)
-    assert "Traceback" in result["stderr"]
 
 
 def test_python_worker_timeout_terminates_process():

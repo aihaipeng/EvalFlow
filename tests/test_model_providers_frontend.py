@@ -72,6 +72,42 @@ def test_model_provider_react_page_preserves_management_and_connection_contracts
     assert "skip_ssl_verify" not in source
     assert "model_endpoint: endpoint" in source
     assert "model_configs: changed ? {}" in source
+    assert 'className="model-provider-validation-heading"' in source
+    assert '<span>推理端点</span>' not in source
+    assert '{endpoint(form.protocol, form.base_url) || "请填写接口地址"}' in source
+    assert "凭证与网络设置" not in source
+    assert 'role="table"' in source
+    assert 'role="columnheader"' in source
+    assert 'label: "Unknown"' in source
+    assert 'label: "Active"' in source
+    assert 'label: "Inactive"' in source
+    assert 'className="model-provider-model-state-label"' in source
+    assert "disabled={isTesting}" in source
+    assert "aria-busy={isTesting}" in source
+    assert 'className="model-provider-test-spinner"' in source
+
+
+def test_model_provider_places_protocol_before_api_key_and_aligns_model_columns():
+    source = SOURCE.read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "model-providers.css").read_text(encoding="utf-8")
+
+    protocol = source.index('id="model-provider-protocol"')
+    base_url = source.index('id="model-provider-base-url"')
+    api_key = source.index('id="model-provider-api-key"')
+    proxy = source.index('id="model-provider-proxy-mode"')
+    assert protocol < base_url < api_key < proxy
+    assert "--model-provider-model-columns:" in styles
+    assert ".model-provider-selected-head > span:first-child" in styles
+    assert "padding-left: 38px;" in styles
+    assert ".model-provider-selected-head > span:nth-child(2) { text-align: center; }" in styles
+    assert ".model-provider-selected-head > span:nth-child(3)" in styles
+    assert "padding-left: 13px;" in styles
+    assert ".model-provider-selected-head > span:last-child { text-align: center; }" in styles
+    assert ".model-provider-model-protocol" in styles
+    assert "text-align: center;" in styles
+    assert ".model-provider-model-actions {" in styles
+    assert "justify-content: center;" in styles
+    assert "grid-template-columns: minmax(140px, 1fr) max-content;" in styles
 
 
 def test_model_provider_config_dialog_keeps_keyboard_and_focus_contract():
@@ -101,6 +137,13 @@ def test_model_provider_styles_keep_existing_theme_and_desktop_contract():
     assert ".model-provider-switch input:checked + .model-provider-switch-track" in source
     assert '.model-provider-status[data-state="success"]' in source
     assert '.model-provider-status[data-state="error"]' in source
+    status_cards = source[source.index("/* Connection verification follows"):source.index("/* Supplier workspace")]
+    assert "min-height: 76px;" in status_cards
+    assert "background: var(--surface);" in status_cards
+    assert "border: 1px solid var(--border);" in status_cards
+    assert "color: var(--text-main);" in status_cards
+    assert "background: #171e28;" not in status_cards
+    assert "0 0 16px" not in status_cards
 
 
 def test_model_provider_list_uses_shared_management_visual_contract():

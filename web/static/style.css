@@ -337,23 +337,6 @@ body {
 }
 
 /* ===== Button ===== */
-.btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 7px 14px;
-    font-size: 13px;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    cursor: pointer;
-    background: var(--surface);
-    color: var(--text-main);
-    font-weight: 650;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-    transition: transform 0.12s, box-shadow 0.12s, background 0.12s, border-color 0.12s, color 0.12s;
-    white-space: nowrap;
-}
 
 .icon-svg {
     width: 16px;
@@ -376,56 +359,6 @@ body {
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
-}
-
-.btn:hover {
-    background: var(--surface-hover);
-    border-color: #b9c7dc;
-    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
-    transform: translateY(-1px);
-}
-
-.btn:has(.ui-icon) {
-    border: 0;
-    background: transparent;
-    color: var(--icon-button-text);
-    box-shadow: none;
-}
-
-.btn:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
-}
-
-.btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
-.btn-primary {
-    background: var(--color-accent);
-    color: #fff;
-    border-color: var(--color-accent);
-}
-
-.btn-primary:hover {
-    background: var(--color-accent-hover);
-    border-color: var(--color-accent-hover);
-    color: #fff;
-}
-
-.btn-danger {
-    background: #fff1f2;
-    color: var(--color-danger);
-    border-color: #fecdd3;
-}
-
-.btn-danger:hover {
-    background: #e11d48;
-    border-color: #e11d48;
-    color: #fff;
 }
 
 .btn-sm {
@@ -471,7 +404,7 @@ body {
     align-items: center;
     justify-content: center;
     font-size: 15px;
-    background: #fff;
+    background: var(--surface);
     border: 0;
     border-radius: var(--radius);
     cursor: pointer;
@@ -497,23 +430,23 @@ body {
 
 .btn-icon[data-action="open-dir"]:not(:has(.ui-icon)),
 .btn-icon[data-action="edit"]:not(:has(.ui-icon)) {
-    background: #dcfce7;
-    color: #047857;
+    background: color-mix(in srgb, var(--color-success) 12%, var(--surface));
+    color: var(--color-success);
 }
 
 .btn-icon[data-action="delete"]:not(:has(.ui-icon)) {
-    background: #ffe4e6;
+    background: color-mix(in srgb, var(--color-danger) 12%, var(--surface));
     color: var(--color-danger);
 }
 
 .btn-icon[data-action="open-dir"]:not(:has(.ui-icon)):hover,
 .btn-icon[data-action="edit"]:not(:has(.ui-icon)):hover {
-    background: #059669;
+    background: var(--color-success);
     color: #fff;
 }
 
 .btn-icon[data-action="delete"]:not(:has(.ui-icon)):hover {
-    background: #e11d48;
+    background: var(--color-danger);
     color: #fff;
 }
 
@@ -1377,42 +1310,6 @@ body {
     .radix-dialog-content { animation: none; }
 }
 
-/* All Lucide icon buttons share the same theme-aware interaction states. */
-.btn:has(.ui-icon),
-.btn-icon:has(.ui-icon) {
-    background: transparent;
-    color: var(--icon-button-text);
-    box-shadow: none;
-    transition:
-        transform 0.12s ease,
-        background 0.12s ease,
-        box-shadow 0.12s ease,
-        color 0.12s ease;
-}
-
-.btn:has(.ui-icon):not(:disabled):hover,
-.btn-icon:has(.ui-icon):not(:disabled):hover {
-    background: var(--icon-button-hover-bg);
-    color: var(--icon-button-text);
-    transform: translateY(-1px);
-}
-
-.btn:has(.ui-icon):not(:disabled):active,
-.btn-icon:has(.ui-icon):not(:disabled):active {
-    background: var(--icon-button-active-bg);
-    transform: scale(0.96);
-}
-
-.btn:has(.ui-icon):disabled,
-.btn:has(.ui-icon):disabled:hover,
-.btn-icon:has(.ui-icon):disabled,
-.btn-icon:has(.ui-icon):disabled:hover {
-    background: transparent;
-    color: var(--icon-button-text);
-    transform: none;
-    box-shadow: none;
-}
-
 /* ===== Empty state ===== */
 .empty-state {
     text-align: center;
@@ -1593,9 +1490,9 @@ textarea {
 }
 
 .btn-danger {
-    background: #fff1f2;
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--surface));
     color: var(--color-danger);
-    border-color: #fecdd3;
+    border-color: color-mix(in srgb, var(--color-danger) 25%, var(--surface));
 }
 
 .btn-danger:hover {
@@ -1629,8 +1526,22 @@ textarea {
     background: var(--color-accent-hover);
 }
 
+.btn-secondary {
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+    border-color: var(--strong-row-border);
+    background: var(--surface-hover);
+    color: var(--text-main);
+}
+
 .btn:disabled,
 .btn:disabled:hover {
+    opacity: 0.5;
+    cursor: not-allowed;
     box-shadow: none;
     transform: none;
 }
@@ -1761,8 +1672,17 @@ textarea:focus-visible {
 
 .management-list-table.table {
     width: 100%;
-    min-width: var(--management-list-min-width, 960px);
     table-layout: fixed;
+}
+
+/* 管理列表首列（名称）值放大显示 */
+.management-list-table.table td:first-child {
+    font-size: 15px;
+}
+
+/* 管理列表其他列值 14px */
+.management-list-table.table td:not(:first-child) {
+    font-size: 14px;
 }
 
 .management-list-table.table th,
@@ -1794,12 +1714,14 @@ textarea:focus-visible {
     font-variant-numeric: tabular-nums;
 }
 
+.management-list-count {
+    font-variant-numeric: tabular-nums;
+}
+
 .management-list-table.table th.management-list-actions-head,
 .management-list-table.table td.management-list-actions-cell {
     position: sticky;
     right: 0;
-    width: var(--management-list-actions-width, 112px);
-    min-width: var(--management-list-actions-width, 112px);
     overflow: visible;
     padding-inline: 10px;
     box-shadow: -1px 0 0 var(--border);
@@ -1947,8 +1869,8 @@ textarea:focus-visible {
 }
 
 .btn.btn-danger:has(.ui-icon):not(:disabled):hover {
-    border-color: #991b1b;
-    background: #991b1b;
+    border-color: var(--color-danger);
+    background: var(--color-danger);
     color: #fff;
 }
 
@@ -1962,6 +1884,11 @@ textarea:focus-visible {
 .btn-icon:has(.ui-icon):not(:disabled):hover {
     background: var(--icon-button-hover-bg);
     color: var(--text-main);
+}
+
+.btn-icon:has(.ui-icon):not(:disabled):active {
+    background: var(--icon-button-active-bg);
+    transform: scale(0.96);
 }
 
 .btn-icon .ui-icon {

@@ -1,11 +1,3 @@
-@font-face {
-    font-family: "Droid Sans Mono Slashed";
-    src: url("/assets/fonts/DroidSansMonoSlashed.ttf") format("truetype");
-    font-display: swap;
-    font-style: normal;
-    font-weight: 400;
-}
-
 :root {
     --wf-bg: #edf1f6;
     --wf-surface: #ffffff;
@@ -802,8 +794,7 @@ body.workflow-studio-open .radix-dialog-content {
     background: var(--color-warning);
 }
 
-.wf-node-meta,
-.wf-node-saved-state {
+.wf-node-meta {
     display: inline-flex;
     align-items: center;
 }
@@ -859,13 +850,6 @@ body.workflow-studio-open .radix-dialog-content {
 
 .wf-node-meta {
     gap: 5px;
-}
-
-.wf-node-saved-state {
-    gap: 2px;
-    color: var(--color-success);
-    font-size: 9px;
-    white-space: nowrap;
 }
 
 .wf-handle {
@@ -1154,11 +1138,6 @@ body.workflow-studio-open .radix-dialog-content {
     background: #eef2f7;
 }
 
-.wf-inspector-actions button.is-saved {
-    background: #edf8f0;
-    color: var(--color-success);
-}
-
 .wf-inspector-tabs {
     display: flex;
     gap: 18px;
@@ -1203,7 +1182,7 @@ body.workflow-studio-open .radix-dialog-content {
 .wf-inspector-body label {
     display: grid;
     min-width: 0;
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: center;
     gap: var(--wf-control-gap);
     margin-bottom: 15px;
@@ -1448,11 +1427,6 @@ body.workflow-studio-open .radix-dialog-content {
     font-size: 10px;
 }
 
-.wf-llm-message-role span {
-    display: inline-flex;
-    color: #929dae;
-}
-
 .wf-llm-message-tools > span {
     min-width: 48px;
     color: #8793a4;
@@ -1483,18 +1457,193 @@ body.workflow-studio-open .radix-dialog-content {
     opacity: 0.32;
 }
 
-.wf-llm-message textarea {
-    min-height: 82px;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    font-family: Consolas, "SFMono-Regular", monospace;
-    line-height: 1.55;
+.wf-markdown-editor {
+    width: 100%;
+    height: 140px;
+    min-height: 140px;
+    min-width: 0;
+    overflow: hidden;
     resize: vertical;
+    background: #fff;
+    color: #1e293b;
 }
 
-.wf-llm-message textarea:focus {
-    box-shadow: none;
+.wf-markdown-editor .cm-editor {
+    height: 100%;
+    min-height: 140px;
+    background: transparent;
+    font-family: Consolas, "SFMono-Regular", monospace;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.wf-markdown-editor .cm-scroller {
+    overflow: auto;
+    font-family: inherit;
+}
+
+.wf-markdown-editor .cm-content {
+    min-height: 100%;
+    padding: 12px 48px 40px 12px;
+    caret-color: currentColor;
+}
+
+.wf-markdown-editor .cm-gutters {
+    display: none;
+}
+
+.wf-markdown-editor .cm-editor.cm-focused {
+    outline: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--wf-blue) 78%, transparent);
+}
+
+.wf-markdown-editor.is-invalid {
+    box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+.wf-markdown-editor .cm-placeholder {
+    color: #687589;
+    font-style: normal;
+}
+
+.wf-markdown-editor .cm-template-variable {
+    border-radius: 3px;
+    background: #e7f4ef;
+    color: #087052;
+    font-weight: 650;
+}
+
+.wf-llm-message-editor {
+    position: relative;
+}
+
+.wf-llm-message-expand {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #f8fafc;
+    color: #536177;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.wf-llm-message-expand:hover {
+    border-color: #8aa2c5;
+    background: #eef3f8;
+    color: var(--wf-blue);
+}
+
+.wf-llm-message-expand:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--wf-blue) 32%, transparent);
+    outline-offset: 2px;
+}
+
+.wf-llm-editor-overlay {
+    position: fixed;
+    z-index: 2200;
+    inset: 0;
+    background: rgba(18, 25, 37, 0.48);
+}
+
+.wf-llm-editor-dialog {
+    position: fixed;
+    z-index: 2201;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: grid;
+    width: min(80vw, 1120px);
+    height: 75vh;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid var(--wf-border);
+    border-radius: 7px;
+    background: var(--wf-surface);
+    color: var(--wf-text);
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+    box-sizing: border-box;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.wf-llm-editor-dialog > header {
+    display: flex;
+    min-width: 0;
+    min-height: 54px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--wf-border);
+    background: var(--wf-soft);
+}
+
+.wf-llm-editor-dialog > header > div {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.wf-llm-editor-dialog > header strong {
+    color: var(--wf-text);
+    font-size: 15px;
+}
+
+.wf-llm-editor-dialog > header span {
+    color: #5d6879;
+    font-size: 11px;
+}
+
+.wf-llm-editor-dialog > header button {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--wf-muted);
+    cursor: pointer;
+}
+
+.wf-llm-editor-dialog > header button:hover {
+    background: color-mix(in srgb, var(--wf-text) 8%, transparent);
+    color: var(--wf-text);
+}
+
+.wf-llm-editor-dialog > header button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--wf-blue) 32%, transparent);
+    outline-offset: 1px;
+}
+
+.wf-llm-editor-dialog > .wf-markdown-editor {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    resize: none;
+    background: var(--wf-surface);
+    color: var(--wf-text);
+}
+
+.wf-markdown-editor.is-expanded .cm-editor {
+    min-height: 0;
+}
+
+.wf-markdown-editor.is-expanded .cm-content {
+    padding: 20px;
+    line-height: 1.6;
 }
 
 .wf-llm-add-message {
@@ -2496,7 +2645,7 @@ body.workflow-studio-open .radix-dialog-content {
 }
 
 .wf-inspector-body .wf-http-custom-proxy label {
-    grid-template-columns: 76px minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: var(--wf-control-gap);
     margin: 0;
 }
@@ -2685,7 +2834,7 @@ body.workflow-studio-open .radix-dialog-content {
 .wf-output-variable-row label {
     display: grid;
     min-width: 0;
-    grid-template-columns: 76px minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: center;
     gap: var(--wf-control-gap);
     margin: 0;
@@ -3518,14 +3667,14 @@ textarea.wf-script-console {
 
 .wf-node-test-overlay {
     position: fixed;
-    z-index: 1200;
+    z-index: 2100;
     inset: 0;
     background: rgba(18, 25, 37, 0.42);
 }
 
 .wf-node-test-dialog {
     position: fixed;
-    z-index: 1201;
+    z-index: 2101;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -3799,7 +3948,6 @@ textarea.wf-script-console {
 :root[data-theme="dark"] .wf-inspector header small,
 :root[data-theme="dark"] .wf-inspector header button,
 :root[data-theme="dark"] .wf-llm-context-heading > span,
-:root[data-theme="dark"] .wf-llm-message-role span,
 :root[data-theme="dark"] .wf-llm-message-tools > span {
     color: var(--wf-muted);
 }
@@ -3825,6 +3973,46 @@ textarea.wf-script-console {
 :root[data-theme="dark"] .wf-inspector-body input::placeholder,
 :root[data-theme="dark"] .wf-inspector-body textarea::placeholder {
     color: #8995a5;
+}
+
+:root[data-theme="dark"] .wf-markdown-editor {
+    background: #181e26;
+    color: #e5eaf1;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] .wf-markdown-editor .cm-placeholder {
+    color: #8995a5;
+}
+
+:root[data-theme="dark"] .wf-markdown-editor .cm-template-variable {
+    background: #183d38;
+    color: #80dec5;
+}
+
+:root[data-theme="dark"] .wf-llm-message-expand {
+    border-color: #46515f;
+    background: #242c36;
+    color: #c4ccd7;
+}
+
+:root[data-theme="dark"] .wf-llm-message-expand:hover {
+    border-color: #6f91e9;
+    background: #253554;
+    color: #a9c1ff;
+}
+
+:root[data-theme="dark"] .wf-llm-editor-dialog {
+    --wf-surface: #1d232b;
+    --wf-border: #343c47;
+    --wf-text: #e5eaf1;
+    --wf-muted: #9aa5b4;
+    --wf-soft: #252b34;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] .wf-llm-editor-dialog > header span {
+    color: #aab4c2;
 }
 
 :root[data-theme="dark"] .wf-inspector-body input:focus,

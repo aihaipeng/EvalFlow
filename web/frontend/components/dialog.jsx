@@ -43,7 +43,7 @@ export function ModalDialog({
           <div className="modal-footer">
             {footer || (
               <DialogPrimitive.Close asChild>
-                <button className="btn" type="button">
+                <button className="btn btn-secondary" type="button">
                   关闭
                 </button>
               </DialogPrimitive.Close>
@@ -60,7 +60,9 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel = "确认",
+  secondaryLabel,
   onConfirm,
+  onSecondary,
   onClose,
   busy = false,
   danger = false,
@@ -79,6 +81,13 @@ export function ConfirmDialog({
     event.preventDefault();
     if (busy) return;
     const shouldClose = await onConfirm();
+    if (shouldClose !== false) onClose();
+  }
+
+  async function secondary(event) {
+    event.preventDefault();
+    if (busy || !onSecondary) return;
+    const shouldClose = await onSecondary();
     if (shouldClose !== false) onClose();
   }
 
@@ -104,10 +113,20 @@ export function ConfirmDialog({
           </AlertDialogPrimitive.Description>
           <div className="modal-footer">
             <AlertDialogPrimitive.Cancel asChild>
-              <button className="btn" type="button" disabled={busy}>
+              <button className="btn btn-secondary" type="button" disabled={busy}>
                 取消
               </button>
             </AlertDialogPrimitive.Cancel>
+            {secondaryLabel && onSecondary ? (
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={busy}
+                onClick={secondary}
+              >
+                {secondaryLabel}
+              </button>
+            ) : null}
             <AlertDialogPrimitive.Action asChild>
               <button
                 className={`btn ${danger ? "btn-danger" : "btn-primary"}`}

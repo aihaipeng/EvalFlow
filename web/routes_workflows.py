@@ -21,6 +21,7 @@ from execution import (
     WorkflowExecutionError,
 )
 from execution.node_structural_models import NodeStructuralModel
+from execution.workflow_structural_models import validate_workflow_graph
 from execution.workflow_application import (
     WorkflowApplicationConflictError,
     WorkflowApplicationNotFoundError,
@@ -173,12 +174,16 @@ def list_workflows(services: WorkflowServicesDependency) -> WorkflowListResponse
 
 @router.post("", response_model=WorkflowEnvelope, status_code=201)
 def create_workflow(
-    body: WorkflowWriteRequest, services: WorkflowServicesDependency
+    body: WorkflowWriteRequest,
+    services: WorkflowServicesDependency,
+    validate_structure: bool = False,
 ) -> WorkflowEnvelope:
-    """完整校验并原子创建 Workflow、Node、binding 和 Edge。"""
+    """原子创建可继续编辑的 Workflow 草稿。"""
 
     workflow, nodes = _structural_model(str(uuid4()), body)
     try:
+        if validate_structure:
+            validate_workflow_graph(workflow, nodes, validate_context=False)
         record = services.repository.create(workflow, nodes)
     except WorkflowStructuralRepositoryError as exc:
         _raise_repository_http_error(exc)
@@ -213,16 +218,42 @@ def update_workflow(
     workflow_id: str,
     body: WorkflowWriteRequest,
     services: WorkflowServicesDependency,
+    validate_structure: bool = False,
 ) -> WorkflowEnvelope:
-    """完整校验并原子替换既有 Workflow 当前结构。"""
+    """原子替换既有 Workflow 当前草稿。"""
 
     workflow, nodes = _structural_model(workflow_id, body)
     try:
+        if validate_structure:
+            validate_workflow_graph(workflow, nodes, validate_context=False)
         record = services.application.update_workflow(workflow, nodes)
     except WorkflowApplicationNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except WorkflowApplicationConflictError as exc:
         raise HTTPException(409, str(exc)) from exc
+    except WorkflowStructuralRepositoryError as exc:
+        _raise_repository_http_error(exc)
+    return WorkflowEnvelope(workflow=record)
+
+
+@router.put("/{workflow_id}/nodes/{node_id}", response_model=WorkflowEnvelope)
+def save_workflow_node(
+    workflow_id: str,
+    node_id: str,
+    body: WorkflowNodeWrite,
+    services: WorkflowServicesDependency,
+) -> WorkflowEnvelope:
+    """只校验并保存当前节点，不校验或覆盖 Workflow 其他草稿。"""
+
+    if body.node.id != node_id:
+        raise HTTPException(400, "路径 node_id 与节点内容不一致")
+    try:
+        record = services.repository.save_node(
+            workflow_id,
+            body.node,
+            position_x=body.position_x,
+            position_y=body.position_y,
+        )
     except WorkflowStructuralRepositoryError as exc:
         _raise_repository_http_error(exc)
     return WorkflowEnvelope(workflow=record)
@@ -405,6 +436,24 @@ def list_node_executions(
         raise HTTPException(404, f"Workflow Execution 不存在: {execution_id}")
     return NodeExecutionListResponse(
         executions=services.store.get_nodes(workflow_id, execution_id)
+    )
+
+
+@router.get(
+    "/{workflow_id}/nodes/{node_id}/runs", response_model=NodeExecutionListResponse
+)
+def list_node_run_history(
+    workflow_id: str,
+    node_id: str,
+    services: WorkflowServicesDependency,
+) -> NodeExecutionListResponse:
+    """读取当前节点在最近 10 次 Workflow Execution 中的执行记录。"""
+
+    record = _get_or_404(workflow_id, services)
+    if not any(node.id == node_id for node in record.node_models):
+        raise HTTPException(404, f"Workflow 节点不存在: {node_id}")
+    return NodeExecutionListResponse(
+        executions=services.store.get_node_runs(workflow_id, node_id, limit=10)
     )
 
 

@@ -93,7 +93,7 @@ npm ci && npm run build             # 修改 web/frontend 后重建全部 4 个 
 ### 双模型存储（强制）
 
 - **Structural Model**（Workflow/Node/Edge/Model Provider/测试集/调度计划元数据）只允许存 SQLite（`run_storage/agent_bench.sqlite3`）。表定义统一集中在 `execution/database_schema.py`（SQLAlchemy Core `MetaData`），启动时由 `execution/init_db.py::upgrade_database()` 通过 Alembic 升级到最新版本；Repository 通过 `database_read_connection()` 或自动提交/回滚的 `database_transaction()` 使用共享 Engine 和 Core 表达式，不保留 sqlite3 facade。默认路径、按 resolved path 共享的初始化锁和 PRAGMA（WAL/foreign_keys）统一由 `execution/init_db.py` 拥有。改表结构必须同时改 `database_schema.py` 并新增手写的 `migrations/versions/` 迁移版本（命名 `YYYYMMDD_NNNN_描述.py`，启动时由 `upgrade_database()` 自动执行）；Alembic 迁移只能经应用托管连接执行（`migrations/env.py` 拒绝 CLI 直连），禁止在 Repository 中手写 DDL。
-- **Execution Model**（Workflow/Node/Batch/Case 运行记录）只允许存本机 JSON 文件（`run_storage/workflow_executions/`、`run_storage/batch_executions/`）。数据库不得创建 Execution 表，文件系统不得另存 Structural Model。
+- **Execution Model**（Workflow/Node/Batch/Case 运行记录）只允许存本机 JSON 文件（`run_storage/workflow_executions/`、`run_storage/batch_executions/`）。数据库不得创建 Execution 表，文件系统不得另存 Structural Model。例外：`batch_execution_history` 表只存 Batch 列表页展示用的运行摘要元数据（不含 Case 级执行证据，完整执行事实仍以 JSON 为准），属已确认的 Structural 定位。
 
 ### 执行链
 

@@ -27,6 +27,7 @@ BATCH_TERMINAL_STATUSES = {
     "SUCCESS", "COMPLETED_WITH_ERRORS", "STOPPED", "INTERRUPTED",
 }
 CASE_TERMINAL_STATUSES = {"SUCCESS", "FAILED", "INTERRUPTED"}
+TASK_CONFIGURATION_FIELDS = ("name", "description", "configuration", "updated_at")
 
 
 def summarize_case_runs(cases: list[dict[str, Any]]) -> dict[str, int]:
@@ -152,7 +153,35 @@ class BatchExecutionStore:
         if not target.is_file():
             raise BatchExecutionError(f"Batch Execution 不存在: {batch['id']}")
         with self._write_lock:
+            document = deepcopy(batch)
+            current = self._read(target)
+            for field in TASK_CONFIGURATION_FIELDS:
+                if field in current:
+                    document[field] = deepcopy(current[field])
+            self._atomic_write(target, document)
+
+    def write_configuration(
+        self,
+        batch_id: str,
+        configuration: dict[str, Any],
+        *,
+        updated_at: str,
+    ) -> dict[str, Any]:
+        target = self.batch_root(batch_id) / "batch.json"
+        if not target.is_file():
+            raise BatchExecutionError(f"任务不存在: {batch_id}")
+        with self._write_lock:
+            batch = self._read(target)
+            batch.update(
+                {
+                    "name": configuration["name"],
+                    "description": configuration["description"],
+                    "configuration": deepcopy(configuration),
+                    "updated_at": updated_at,
+                }
+            )
             self._atomic_write(target, batch)
+        return deepcopy(batch)
 
     def replace_current(
         self,
@@ -549,14 +578,16 @@ class BatchExecutionStore:
             was_stopping = batch.get("status") == "STOPPING"
             now = utc_execution_time()
             for case in self.list_cases(batch["id"]):
-                if case.get("status") == "RUNNING":
+                if case.get("status") == "RUNNING" or case.get(
+                    "execution_status"
+                ) == "QUEUED":
                     case.update(
                         {
                             "status": "INTERRUPTED",
                             "execution_status": "INTERRUPTED",
                             "finished_at": now,
                             "error": execution_error(
-                                "PROCESS_RESTARTED", "服务重启，活动 Case 未自动续跑"
+                                "PROCESS_RESTARTED", "服务重启，活动或排队 Case 未自动续跑"
                             ),
                         }
                     )

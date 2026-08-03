@@ -10,7 +10,6 @@ from execution.workflow_structural_models import (
     WorkflowStructuralModel,
     WorkflowStructuralRecord,
     WorkflowStructuralRepository,
-    validate_workflow_graph,
 )
 
 
@@ -41,7 +40,6 @@ class WorkflowApplicationService:
         current = self.repository.get(workflow.id)
         if current is None:
             raise WorkflowApplicationNotFoundError(f"Workflow 不存在: {workflow.id}")
-        validate_workflow_graph(workflow, nodes)
         next_node_ids = {node.id for node in nodes}
         removed_node_ids = {
             node.id for node in current.node_models if node.id not in next_node_ids

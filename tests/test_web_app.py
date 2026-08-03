@@ -1,4 +1,5 @@
 import ast
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -140,12 +141,18 @@ def test_global_toasts_stack_at_top_center_for_five_seconds():
 
 def test_index_loads_new_workflow_structural_studio():
     response = TestClient(app).get("/")
+    manifest_path = Path(__file__).resolve().parents[1] / "web/static/assets/vite/.vite/manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = manifest["web/frontend/workflow-canvas.jsx"]
+    implementation = manifest["web/frontend/workflow-canvas-implementation.jsx"]
 
     assert response.status_code == 200
     assert 'data-view="targets"' not in response.text
     assert 'data-view="workflows"' in response.text
     assert re.search(r"/assets/vite/workflow-canvas-[^\"]+\.js", response.text)
-    assert re.search(r"/assets/vite/workflow-canvas-[^\"]+\.css", response.text)
+    assert "css" not in entry
+    assert implementation["css"]
+    assert f'/assets/vite/{implementation["css"][0]}' not in response.text
 
 
 def test_frontend_no_longer_exposes_target_management():

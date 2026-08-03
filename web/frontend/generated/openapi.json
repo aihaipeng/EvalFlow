@@ -2707,7 +2707,7 @@
       },
       "WorkflowStructuralRecord": {
         "additionalProperties": false,
-        "description": "Repository 返回对象，组合完整 Workflow 结构和数据库管理时间。",
+        "description": "Repository 返回对象，组合可继续编辑的 Workflow 草稿和数据库管理时间。",
         "properties": {
           "created_at": {
             "description": "首次持久化时间，UTC ISO-8601。",
@@ -2755,7 +2755,7 @@
           },
           "workflow": {
             "$ref": "#/components/schemas/WorkflowStructuralModel",
-            "description": "完整且已校验的 Workflow Structural Model。"
+            "description": "已持久化的 Workflow Structural Model 草稿。"
           }
         },
         "required": [
@@ -2786,6 +2786,11 @@
             "title": "Name",
             "type": "string"
           },
+          "node_count": {
+            "description": "当前绑定的节点数量。",
+            "title": "Node Count",
+            "type": "integer"
+          },
           "updated_at": {
             "description": "最近结构保存时间，UTC ISO-8601。",
             "title": "Updated At",
@@ -2796,6 +2801,7 @@
           "id",
           "name",
           "description",
+          "node_count",
           "updated_at"
         ],
         "title": "WorkflowStructuralSummary",
@@ -4485,8 +4491,20 @@
         ]
       },
       "post": {
-        "description": "完整校验并原子创建 Workflow、Node、binding 和 Edge。",
+        "description": "原子创建可继续编辑的 Workflow 草稿。",
         "operationId": "create_workflow_api_workflows_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "validate_structure",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Validate Structure",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4609,7 +4627,7 @@
         ]
       },
       "put": {
-        "description": "完整校验并原子替换既有 Workflow 当前结构。",
+        "description": "原子替换既有 Workflow 当前草稿。",
         "operationId": "update_workflow_api_workflows__workflow_id__put",
         "parameters": [
           {
@@ -4619,6 +4637,16 @@
             "schema": {
               "title": "Workflow Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "validate_structure",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Validate Structure",
+              "type": "boolean"
             }
           }
         ],
@@ -4949,6 +4977,120 @@
           }
         },
         "summary": "Stream Node Test Events",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_id}": {
+      "put": {
+        "description": "只校验并保存当前节点，不校验或覆盖 Workflow 其他草稿。",
+        "operationId": "save_workflow_node_api_workflows__workflow_id__nodes__node_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowNodeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Workflow Node",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_id}/runs": {
+      "get": {
+        "description": "读取当前节点在最近 10 次 Workflow Execution 中的执行记录。",
+        "operationId": "list_node_run_history_api_workflows__workflow_id__nodes__node_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeExecutionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Node Run History",
         "tags": [
           "workflows"
         ]

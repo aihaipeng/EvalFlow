@@ -186,6 +186,23 @@ class WorkflowExecutionStore:
             ),
         )
 
+    def get_node_runs(
+        self, workflow_id: str, node_id: str, *, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        runs = []
+        for execution in self.list(workflow_id, limit=limit):
+            node = next(
+                (
+                    item
+                    for item in self.get_nodes(workflow_id, execution["id"])
+                    if item.get("node_id") == node_id
+                ),
+                None,
+            )
+            if node is not None:
+                runs.append(node)
+        return runs
+
     def list(self, workflow_id: str, *, limit: int = 10) -> list[dict[str, Any]]:
         root = self.workflow_root(workflow_id)
         candidates: dict[str, tuple[str, dict[str, Any] | None, Path | None]] = {}

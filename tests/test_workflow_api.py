@@ -93,6 +93,7 @@ def test_workflow_api_crud_round_trip_and_list_shape(client):
             "id": workflow_id,
             "name": " 质量检测 ",
             "description": "本机开发验证",
+            "node_count": 3,
             "updated_at": created["updated_at"],
         }
     ]
@@ -119,6 +120,39 @@ def test_workflow_api_crud_round_trip_and_list_shape(client):
     assert deleted.status_code == 200
     assert client.get(f"/api/workflows/{workflow_id}").status_code == 404
     assert client.get("/api/workflows").json() == {"workflows": []}
+
+
+def test_explicit_workflow_save_validates_structure_but_not_context(client):
+    invalid_draft = {"name": "允许保存的草稿", "description": "", "nodes": [], "edges": []}
+    draft_response = client.post("/api/workflows", json=invalid_draft)
+    assert draft_response.status_code == 201, draft_response.text
+
+    rejected = client.post(
+        "/api/workflows?validate_structure=true",
+        json={**invalid_draft, "name": "结构不完整"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["detail"] == "Workflow 必须恰好包含一个 START"
+
+    context_duplicate = workflow_body("Context 不阻断保存")
+    context_duplicate["nodes"][1]["node"]["outputs"][0]["name"] = "question"
+    accepted = client.post(
+        "/api/workflows?validate_structure=true",
+        json=context_duplicate,
+    )
+    assert accepted.status_code == 201, accepted.text
+
+    workflow_id = accepted.json()["workflow"]["workflow"]["id"]
+    broken_update = workflow_body("Context 不阻断保存")
+    broken_update["edges"] = []
+    update = client.put(
+        f"/api/workflows/{workflow_id}?validate_structure=true",
+        json=broken_update,
+    )
+    assert update.status_code == 400
+    assert "START 必须是唯一根节点" in update.json()["detail"]
+    restored = client.get(f"/api/workflows/{workflow_id}").json()["workflow"]
+    assert restored["workflow"]["edges"] == context_duplicate["edges"]
 
 
 def test_workflow_copy_api_uses_recursive_copy_name(client):
@@ -300,19 +334,24 @@ def test_workflow_api_merges_partial_execution_with_platform_defaults(client):
     }
 
 
-def test_workflow_api_rejects_invalid_graph_without_creating_record(client):
+def test_workflow_api_persists_incomplete_draft_but_rejects_run(client):
     body = workflow_body()
     body["nodes"].pop()
     body["edges"].pop()
 
     response = client.post("/api/workflows", json=body)
 
-    assert response.status_code == 400
-    assert "END" in response.json()["detail"]
-    assert client.get("/api/workflows").json() == {"workflows": []}
+    assert response.status_code == 201, response.text
+    workflow_id = response.json()["workflow"]["workflow"]["id"]
+    restored = client.get(f"/api/workflows/{workflow_id}")
+    assert restored.status_code == 200
+    assert len(restored.json()["workflow"]["node_models"]) == 2
+    started = client.post(f"/api/workflows/{workflow_id}/runs")
+    assert started.status_code == 400
+    assert "END" in started.json()["detail"]
 
 
-def test_invalid_workflow_update_is_rejected_before_node_test_cleanup(client, monkeypatch):
+def test_incomplete_workflow_update_is_saved_but_cannot_run(client, monkeypatch):
     created = client.post("/api/workflows", json=workflow_body("无副作用校验"))
     workflow_id = created.json()["workflow"]["workflow"]["id"]
     invalid = workflow_body("无副作用校验")
@@ -328,9 +367,69 @@ def test_invalid_workflow_update_is_rejected_before_node_test_cleanup(client, mo
 
     response = client.put(f"/api/workflows/{workflow_id}", json=invalid)
 
-    assert response.status_code == 400
-    assert cancelled == []
-    assert client.get(f"/api/workflows/{workflow_id}").status_code == 200
+    assert response.status_code == 200, response.text
+    assert cancelled == [(workflow_id, END_ID)]
+    restored = client.get(f"/api/workflows/{workflow_id}")
+    assert restored.status_code == 200
+    assert len(restored.json()["workflow"]["node_models"]) == 2
+    started = client.post(f"/api/workflows/{workflow_id}/runs")
+    assert started.status_code == 400
+    assert "END" in started.json()["detail"]
+
+
+def test_workflow_node_save_only_persists_current_node_and_position(client):
+    created = client.post("/api/workflows", json=workflow_body("单节点保存"))
+    workflow = created.json()["workflow"]
+    workflow_id = workflow["workflow"]["id"]
+    original_edges = workflow["workflow"]["edges"]
+    new_node = workflow_body()["nodes"][1]["node"]
+    new_node["id"] = str(uuid4())
+    new_node["name"] = "未连线草稿节点"
+    new_node["script"] = "draft = True"
+
+    saved = client.put(
+        f"/api/workflows/{workflow_id}/nodes/{new_node['id']}",
+        json={"node": new_node, "position_x": 720, "position_y": 360},
+    )
+
+    assert saved.status_code == 200, saved.text
+    restored = client.get(f"/api/workflows/{workflow_id}").json()["workflow"]
+    by_id = {node["id"]: node for node in restored["node_models"]}
+    bindings = {
+        binding["node_id"]: binding for binding in restored["workflow"]["nodes"]
+    }
+    assert set(by_id) == {START_ID, SCRIPT_ID, END_ID, new_node["id"]}
+    assert by_id[SCRIPT_ID]["name"] == "规则校验"
+    assert by_id[new_node["id"]]["name"] == "未连线草稿节点"
+    assert bindings[new_node["id"]] == {
+        "node_id": new_node["id"],
+        "position_x": 720.0,
+        "position_y": 360.0,
+    }
+    assert restored["workflow"]["edges"] == original_edges
+    started = client.post(f"/api/workflows/{workflow_id}/runs")
+    assert started.status_code == 400
+
+
+def test_workflow_node_save_rejects_invalid_current_node_without_writes(client):
+    created = client.post("/api/workflows", json=workflow_body("非法节点不保存"))
+    workflow_id = created.json()["workflow"]["workflow"]["id"]
+    invalid_node = workflow_body()["nodes"][1]["node"]
+    invalid_node["id"] = str(uuid4())
+    invalid_node["name"] = " "
+
+    response = client.put(
+        f"/api/workflows/{workflow_id}/nodes/{invalid_node['id']}",
+        json={"node": invalid_node, "position_x": 0, "position_y": 0},
+    )
+
+    assert response.status_code == 422
+    restored = client.get(f"/api/workflows/{workflow_id}").json()["workflow"]
+    assert {node["id"] for node in restored["node_models"]} == {
+        START_ID,
+        SCRIPT_ID,
+        END_ID,
+    }
 
 
 def test_workflow_api_rejects_duplicate_name_and_preserves_first(client):
@@ -526,6 +625,52 @@ def test_workflow_run_api_persists_and_returns_real_execution_json(client):
     ).json()["executions"]
     assert {node["type"] for node in nodes} == {"START", "SCRIPT", "END"}
     assert all(node["status"] == "SUCCESS" for node in nodes)
+
+
+def test_node_run_history_returns_only_target_node_latest_ten(client):
+    created = client.post("/api/workflows", json=workflow_body("节点历史聚合")).json()["workflow"]
+    workflow_id = created["workflow"]["id"]
+    store = client.app.state.workflow_services.store
+
+    for sequence in range(12):
+        execution_id = str(uuid4())
+        timestamp = f"2026-08-04T00:{sequence:02d}:00Z"
+        store.create({
+            "id": execution_id,
+            "workflow_id": workflow_id,
+            "created_at": timestamp,
+            "status": "FAILED" if sequence % 2 else "SUCCESS",
+        })
+        store.write_node({
+            "workflow_id": workflow_id,
+            "workflow_execution_id": execution_id,
+            "node_execution_id": str(uuid4()),
+            "node_id": SCRIPT_ID,
+            "type": "SCRIPT",
+            "status": "FAILED" if sequence % 2 else "SUCCESS",
+            "started_at": timestamp,
+            "sequence": sequence,
+        })
+        store.write_node({
+            "workflow_id": workflow_id,
+            "workflow_execution_id": execution_id,
+            "node_execution_id": str(uuid4()),
+            "node_id": START_ID,
+            "type": "START",
+            "status": "SUCCESS",
+            "started_at": timestamp,
+            "sequence": sequence,
+        })
+
+    response = client.get(f"/api/workflows/{workflow_id}/nodes/{SCRIPT_ID}/runs")
+
+    assert response.status_code == 200, response.text
+    executions = response.json()["executions"]
+    assert len(executions) == 10
+    assert [execution["sequence"] for execution in executions] == list(range(11, 1, -1))
+    assert {execution["node_id"] for execution in executions} == {SCRIPT_ID}
+    missing = client.get(f"/api/workflows/{workflow_id}/nodes/{uuid4()}/runs")
+    assert missing.status_code == 404
 
 
 def test_workflow_execution_snapshot_matches_structural_api_and_sqlite_record(client):

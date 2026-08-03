@@ -46,6 +46,8 @@ class BatchScheduler:
         self._active_executions: dict[str, set[str]] = {}
         self._case_events: dict[tuple[str, str], threading.Event] = {}
         self._case_threads: dict[tuple[str, str], threading.Thread] = {}
+        self._case_slots: dict[str, threading.Semaphore] = {}
+        self._single_case_previous_status: dict[str, str] = {}
         self._lock = threading.RLock()
         self._closed = False
 
@@ -112,35 +114,39 @@ class BatchScheduler:
                 raise BatchExecutionError("Batch 正在运行")
             if any(key[0] == batch_id for key in self._case_events):
                 raise BatchExecutionError("单条用例正在执行，请等待完成后再继续任务")
-        batch = self.store.get(batch_id)
-        if batch is None:
-            raise BatchExecutionError(f"Batch Execution 不存在: {batch_id}")
-        eligible = {"INTERRUPTED", "QUEUED"} | ({"FAILED"} if retry_failed else set())
-        reset = 0
-        for case in self.store.list_cases(batch_id):
-            if case["status"] not in eligible:
-                continue
-            case.update(
-                {
-                    "status": "QUEUED",
-                    "execution_status": "NOT_STARTED",
-                    "started_at": None,
-                    "finished_at": None,
-                    "error": None,
-                    "verdict": "NOT_EVALUATED",
-                    "evaluation": {"verdict": "NOT_EVALUATED", "rules": []},
-                }
+            batch = self.store.get(batch_id)
+            if batch is None:
+                raise BatchExecutionError(f"Batch Execution 不存在: {batch_id}")
+            eligible = {"INTERRUPTED", "QUEUED"} | (
+                {"FAILED"} if retry_failed else set()
             )
-            self.store.write_case(case)
-            reset += 1
-        if not reset:
-            raise BatchExecutionError("没有未执行的用例；重跑失败用例时请启用 retry_failed")
-        batch["status"] = "QUEUED"
-        batch["finished_at"] = None
-        batch["error"] = None
-        self._update_summary(batch)
-        self.store.write_batch(batch)
-        return self.start(batch_id, mode="__PREPARED")
+            reset = 0
+            for case in self.store.list_cases(batch_id):
+                if case["status"] not in eligible:
+                    continue
+                case.update(
+                    {
+                        "status": "QUEUED",
+                        "execution_status": "NOT_STARTED",
+                        "started_at": None,
+                        "finished_at": None,
+                        "error": None,
+                        "verdict": "NOT_EVALUATED",
+                        "evaluation": {"verdict": "NOT_EVALUATED", "rules": []},
+                    }
+                )
+                self.store.write_case(case)
+                reset += 1
+            if not reset:
+                raise BatchExecutionError(
+                    "没有未执行的用例；重跑失败用例时请启用 retry_failed"
+                )
+            batch["status"] = "QUEUED"
+            batch["finished_at"] = None
+            batch["error"] = None
+            self._update_summary(batch)
+            self.store.write_batch(batch)
+            return self.start(batch_id, mode="__PREPARED")
 
     def cancel(self, batch_id: str) -> bool:
         with self._lock:
@@ -176,30 +182,62 @@ class BatchScheduler:
             case = self.store.get_case(batch_id, case_run_id)
             if batch is None or case is None:
                 raise BatchExecutionError("Batch 或 Case 不存在")
-            if batch.get("status") in {"RUNNING", "STOPPING"}:
-                raise BatchExecutionError("任务活动期间不支持单条启动")
             if batch_id in self._threads and self._threads[batch_id].is_alive():
                 raise BatchExecutionError("任务正在运行")
-            if any(item[0] == batch_id for item in self._case_events):
-                raise BatchExecutionError("已有单条用例正在执行")
             key = (batch_id, case_run_id)
+            has_active_cases = any(item[0] == batch_id for item in self._case_events)
+            if batch.get("status") == "STOPPING":
+                raise BatchExecutionError("任务正在停止，请等待结束后再启动用例")
+            if batch.get("status") == "RUNNING" and (
+                batch.get("execution_mode") != "SINGLE_CASE" or not has_active_cases
+            ):
+                raise BatchExecutionError("任务活动期间不支持单条启动")
+            if key in self._case_events or case.get("execution_status") in {
+                "QUEUED",
+                "RUNNING",
+            }:
+                raise BatchExecutionError("该用例正在排队或执行，请勿重复启动")
+
+            if not has_active_cases:
+                self._single_case_previous_status[batch_id] = batch.get(
+                    "status", "QUEUED"
+                )
+                self._case_slots[batch_id] = threading.Semaphore(
+                    max(1, int(batch.get("case_concurrency", 1)))
+                )
+                self._active_executions[batch_id] = set()
+                group_started_at = utc_execution_time()
+            else:
+                group_started_at = batch.get("started_at") or utc_execution_time()
+
             event = threading.Event()
             self._case_events[key] = event
-            self._active_executions.setdefault(batch_id, set())
-            previous_status = batch.get("status", "QUEUED")
+            case.update(
+                {
+                    "status": "QUEUED",
+                    "execution_status": "QUEUED",
+                    "started_at": None,
+                    "finished_at": None,
+                    "error": None,
+                    "verdict": "NOT_EVALUATED",
+                    "evaluation": {"verdict": "NOT_EVALUATED", "rules": []},
+                }
+            )
+            self.store.write_case(case)
             batch.update(
                 {
                     "status": "RUNNING",
                     "execution_mode": "SINGLE_CASE",
-                    "started_at": utc_execution_time(),
+                    "started_at": group_started_at,
                     "finished_at": None,
                     "error": None,
                 }
             )
+            self._update_summary(batch)
             self.store.write_batch(batch)
             thread = threading.Thread(
                 target=self._run_single_case,
-                args=(batch, case, event, previous_status),
+                args=(batch, case, event, self._case_slots[batch_id]),
                 daemon=True,
                 name=f"single-case-{case_run_id}",
             )
@@ -212,11 +250,35 @@ class BatchScheduler:
         batch: dict[str, Any],
         case: dict[str, Any],
         event: threading.Event,
-        previous_status: str,
+        slots: threading.Semaphore,
     ) -> None:
+        acquired = False
         try:
-            self._run_case(batch, case, event)
+            while not event.is_set():
+                if slots.acquire(timeout=0.1):
+                    acquired = True
+                    break
+            if acquired and not event.is_set():
+                self._run_case(batch, case, event)
+            if event.is_set():
+                latest_case = self.store.get_case(batch["id"], case["id"])
+                if latest_case and latest_case.get("execution_status") == "QUEUED":
+                    latest_case.update(
+                        {
+                            "status": "INTERRUPTED",
+                            "execution_status": "INTERRUPTED",
+                            "finished_at": utc_execution_time(),
+                            "error": {
+                                "code": "USER_INTERRUPTED",
+                                "message": "用户停止任务",
+                                "details": None,
+                            },
+                        }
+                    )
+                    self.store.write_case(latest_case)
         finally:
+            if acquired:
+                slots.release()
             with self._lock:
                 key = (batch["id"], case["id"])
                 self._case_events.pop(key, None)
@@ -224,23 +286,33 @@ class BatchScheduler:
                 has_active_case = any(key[0] == batch["id"] for key in self._case_events)
                 if not has_active_case:
                     self._active_executions.pop(batch["id"], None)
-            latest = self.store.get(batch["id"])
-            if latest is not None:
-                self._update_summary(latest)
-                queued_cases = latest["summary"].get("queued", 0)
-                if has_active_case:
-                    latest["status"] = "RUNNING"
-                    latest["finished_at"] = None
-                elif queued_cases:
-                    latest["status"] = (
-                        "STOPPED" if previous_status == "STOPPED" else "QUEUED"
+                    self._case_slots.pop(batch["id"], None)
+                    previous_status = self._single_case_previous_status.pop(
+                        batch["id"], "QUEUED"
                     )
-                    latest["finished_at"] = case.get("finished_at") or utc_execution_time()
                 else:
-                    latest["status"] = self._completed_status(latest)
-                    latest["finished_at"] = case.get("finished_at") or utc_execution_time()
-                latest["execution_mode"] = None
-                self.store.write_batch(latest)
+                    previous_status = self._single_case_previous_status.get(
+                        batch["id"], "QUEUED"
+                    )
+                latest = self.store.get(batch["id"])
+                if latest is not None:
+                    self._update_summary(latest)
+                    queued_cases = latest["summary"].get("queued", 0)
+                    if has_active_case:
+                        latest["status"] = "RUNNING"
+                        latest["execution_mode"] = "SINGLE_CASE"
+                        latest["finished_at"] = None
+                    elif queued_cases:
+                        latest["status"] = (
+                            "STOPPED" if previous_status == "STOPPED" else "QUEUED"
+                        )
+                        latest["execution_mode"] = None
+                        latest["finished_at"] = utc_execution_time()
+                    else:
+                        latest["status"] = self._completed_status(latest)
+                        latest["execution_mode"] = None
+                        latest["finished_at"] = utc_execution_time()
+                    self.store.write_batch(latest)
 
     def shutdown(self, *, wait_seconds: float = 10) -> None:
         deadline = time.monotonic() + max(0, wait_seconds)

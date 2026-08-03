@@ -497,6 +497,7 @@ function ProviderEditor({ providerId, onBack }) {
   const [selected, setSelected] = useState([]);
   const [configs, setConfigs] = useState({});
   const [tests, setTests] = useState({});
+  const [testingModels, setTestingModels] = useState({});
   const [discovered, setDiscovered] = useState([]);
   const [chooser, setChooser] = useState(false);
   const [manual, setManual] = useState("");
@@ -599,7 +600,8 @@ function ProviderEditor({ providerId, onBack }) {
     toast(`已添加模型 ${model}`, "success");
   }
   async function testModel(model) {
-    if (!valid()) return;
+    if (!valid() || testingModels[model]) return;
+    setTestingModels((old) => ({ ...old, [model]: true }));
     try {
       const result = await testProviderModel({
         ...connectionPayload(form),
@@ -617,6 +619,12 @@ function ProviderEditor({ providerId, onBack }) {
         [model]: { available: false, error: e.message },
       }));
       toast(`${model} 不可用 · ${e.message}`, "error");
+    } finally {
+      setTestingModels((old) => {
+        const next = { ...old };
+        delete next[model];
+        return next;
+      });
     }
   }
   function save() {
@@ -690,10 +698,7 @@ function ProviderEditor({ providerId, onBack }) {
         aria-labelledby="model-provider-connection-title"
       >
         <header className="model-provider-section-heading">
-          <div>
-            <h2 id="model-provider-connection-title">基础配置</h2>
-            <span>凭证与网络设置</span>
-          </div>
+          <h2 id="model-provider-connection-title">基础配置</h2>
         </header>
         <form
           id="model-provider-form"
@@ -722,44 +727,6 @@ function ProviderEditor({ providerId, onBack }) {
               type="url"
               value={form.website_url}
               onChange={(e) => set("website_url", e.target.value)}
-            />
-          </label>
-          <label className="model-provider-field">
-            <span>
-              API Key <b>*</b>
-            </span>
-            <span className="model-provider-key-wrap">
-              <input
-                className="input"
-                id="model-provider-api-key"
-                type={keyVisible ? "text" : "password"}
-                autoComplete="off"
-                required
-                value={form.api_key}
-                onChange={(e) => set("api_key", e.target.value)}
-              />
-              <button
-                id="model-provider-key-toggle"
-                className="model-provider-key-toggle"
-                type="button"
-                aria-label={keyVisible ? "隐藏 API Key" : "显示 API Key"}
-                onClick={() => setKeyVisible(!keyVisible)}
-              >
-                <Icon name={keyVisible ? "eye-off" : "eye"} />
-              </button>
-            </span>
-          </label>
-          <label className="model-provider-field">
-            <span>
-              接口地址 <b>*</b>
-            </span>
-            <input
-              className="input"
-              id="model-provider-base-url"
-              type="url"
-              required
-              value={form.base_url}
-              onChange={(e) => set("base_url", e.target.value)}
             />
           </label>
           <div className="model-provider-field model-provider-protocol-setting">
@@ -805,6 +772,44 @@ function ProviderEditor({ providerId, onBack }) {
               <option value="ANTHROPIC">Anthropic Claude Messages</option>
             </select>
           </div>
+          <label className="model-provider-field">
+            <span>
+              接口地址 <b>*</b>
+            </span>
+            <input
+              className="input"
+              id="model-provider-base-url"
+              type="url"
+              required
+              value={form.base_url}
+              onChange={(e) => set("base_url", e.target.value)}
+            />
+          </label>
+          <label className="model-provider-field">
+            <span>
+              API Key <b>*</b>
+            </span>
+            <span className="model-provider-key-wrap">
+              <input
+                className="input"
+                id="model-provider-api-key"
+                type={keyVisible ? "text" : "password"}
+                autoComplete="off"
+                required
+                value={form.api_key}
+                onChange={(e) => set("api_key", e.target.value)}
+              />
+              <button
+                id="model-provider-key-toggle"
+                className="model-provider-key-toggle"
+                type="button"
+                aria-label={keyVisible ? "隐藏 API Key" : "显示 API Key"}
+                onClick={() => setKeyVisible(!keyVisible)}
+              >
+                <Icon name={keyVisible ? "eye-off" : "eye"} />
+              </button>
+            </span>
+          </label>
           <div className="model-provider-field model-provider-proxy-setting">
             <span>
               代理模式 <b>*</b>
@@ -881,7 +886,12 @@ function ProviderEditor({ providerId, onBack }) {
       </section>
       <section className="model-provider-editor-section model-provider-validation-section">
         <header className="model-provider-section-heading">
-          <h2>连接验证</h2>
+          <div className="model-provider-validation-heading">
+            <h2>连接验证</h2>
+            <small>
+              {endpoint(form.protocol, form.base_url) || "请填写接口地址"}
+            </small>
+          </div>
           <div className="model-provider-actions">
             <button
               id="model-provider-latency"
@@ -929,12 +939,6 @@ function ProviderEditor({ providerId, onBack }) {
           <div className="model-provider-metric">
             <span>访问延迟</span>
             <strong>{status.latency}</strong>
-          </div>
-          <div className="model-provider-metric model-provider-metric-wide">
-            <span>推理端点</span>
-            <small>
-              {endpoint(form.protocol, form.base_url) || "请填写接口地址"}
-            </small>
           </div>
           <div className="model-provider-metric">
             <span>发现模型</span>
@@ -991,60 +995,96 @@ function ProviderEditor({ providerId, onBack }) {
             <h2>已添加模型</h2>
             <span>{selected.length} 个</span>
           </header>
-          <div id="model-provider-selected-list">
+          <div
+            id="model-provider-selected-list"
+            role="table"
+            aria-label="已添加模型列表"
+          >
             {!selected.length ? (
               <div className="model-provider-empty">暂无已添加模型</div>
             ) : (
-              selected.map((model) => {
-                const config = configs[model] || {};
-                const test = tests[model];
-                const metadata =
-                  [
-                    config.context_window && `上下文 ${config.context_window}`,
-                    config.max_output_tokens &&
-                      `最大输出 ${config.max_output_tokens}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || protocolLabel(form.protocol);
-                return (
-                  <div className="model-provider-selected-row" key={model}>
-                    <span className="model-provider-model-mark">M</span>
-                    <strong>{model}</strong>
-                    <span>{metadata}</span>
-                    <button
-                      className={`model-provider-test-button ${test ? (test.available ? "is-success" : "is-error") : ""}`}
-                      type="button"
-                      aria-label={`测试 ${model}`}
-                      onClick={() => testModel(model)}
+              <>
+                <div className="model-provider-selected-head" role="row">
+                  <span role="columnheader">模型名称</span>
+                  <span role="columnheader">协议</span>
+                  <span role="columnheader">状态</span>
+                  <span role="columnheader">操作</span>
+                </div>
+                {selected.map((model) => {
+                  const test = tests[model];
+                  const isTesting = Boolean(testingModels[model]);
+                  const availability = test
+                    ? test.available
+                      ? { className: "is-active", label: "Active" }
+                      : { className: "is-inactive", label: "Inactive" }
+                    : { className: "is-unknown", label: "Unknown" };
+                  return (
+                    <div
+                      className="model-provider-selected-row"
+                      key={model}
+                      role="row"
                     >
-                      <Icon name="play" />
-                    </button>
-                    <button
-                      className="model-provider-config-button"
-                      type="button"
-                      aria-label={`配置 ${model}`}
-                      onClick={() => setConfigModel(model)}
-                    >
-                      <Icon name="settings" />
-                    </button>
-                    <button
-                      className="model-provider-remove-button"
-                      type="button"
-                      aria-label={`移除 ${model}`}
-                      onClick={() => {
-                        setSelected((old) => old.filter((x) => x !== model));
-                        setConfigs((old) => {
-                          const next = { ...old };
-                          delete next[model];
-                          return next;
-                        });
-                      }}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  </div>
-                );
-              })
+                      <div className="model-provider-model-name" role="cell">
+                        <span className="model-provider-model-mark">M</span>
+                        <strong>{model}</strong>
+                      </div>
+                      <span className="model-provider-model-protocol" role="cell">
+                        {protocolLabel(form.protocol)}
+                      </span>
+                      <span
+                        className={`model-provider-model-state ${availability.className}`}
+                        role="cell"
+                      >
+                        <i aria-hidden="true" />
+                        <span className="model-provider-model-state-label">
+                          {availability.label}
+                        </span>
+                      </span>
+                      <div className="model-provider-model-actions" role="cell">
+                        <button
+                          className={`model-provider-test-button ${isTesting ? "is-busy" : ""}`}
+                          type="button"
+                          aria-label={
+                            isTesting ? `正在测试 ${model}` : `测试 ${model}`
+                          }
+                          aria-busy={isTesting}
+                          disabled={isTesting}
+                          onClick={() => testModel(model)}
+                        >
+                          {isTesting ? (
+                            <span className="model-provider-test-spinner" />
+                          ) : (
+                            <Icon name="play" />
+                          )}
+                        </button>
+                        <button
+                          className="model-provider-config-button"
+                          type="button"
+                          aria-label={`配置 ${model}`}
+                          onClick={() => setConfigModel(model)}
+                        >
+                          <Icon name="settings" />
+                        </button>
+                        <button
+                          className="model-provider-remove-button"
+                          type="button"
+                          aria-label={`移除 ${model}`}
+                          onClick={() => {
+                            setSelected((old) => old.filter((x) => x !== model));
+                            setConfigs((old) => {
+                              const next = { ...old };
+                              delete next[model];
+                              return next;
+                            });
+                          }}
+                        >
+                          <Icon name="trash" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
             )}
           </div>
         </section>
@@ -1065,7 +1105,7 @@ function ProviderEditor({ providerId, onBack }) {
       <ConfirmDialog
         open={Boolean(protocolConfirm)}
         title="保存协议变更"
-        confirmLabel="确认保存"
+        confirmLabel="保存"
         busy={saveMutation.isPending}
         onClose={() => setProtocolConfirm(null)}
         onConfirm={async () => {

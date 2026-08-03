@@ -7,7 +7,6 @@ import json
 import math
 import sys
 import threading
-import traceback
 from copy import deepcopy
 from contextlib import redirect_stderr, redirect_stdout
 from types import MappingProxyType
@@ -348,13 +347,9 @@ def main() -> None:
             if payload.get("_missing_variable_names"):
                 result["missing_variable_names"] = payload["_missing_variable_names"]
     except Exception as exc:  # noqa: BLE001
-        traceback_text = traceback.format_exc()
-        with redirect_stderr(stderr_writer):
-            print(traceback_text, end="", file=sys.stderr)
         stdout_writer.flush()
         stderr_writer.flush()
         result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        result["traceback"] = traceback_text
         if isinstance(exc, _HttpResponseError):
             result["response"] = _serialize_response(exc.response)
             result["http_status"] = exc.status_code

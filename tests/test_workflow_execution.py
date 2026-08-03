@@ -767,7 +767,52 @@ def test_script_stays_pending_during_fractional_initial_delay(tmp_path):
         if item["type"] == "SCRIPT"
     )
     assert finished["status"] == "SUCCESS"
-    assert final_script["duration_ms"] >= 200
+    assert final_script["duration_ms"] is not None
+
+
+def test_business_node_duration_starts_after_initial_delay(monkeypatch):
+    class MemoryStore:
+        def write_node(self, _document):
+            return None
+
+    class Controller:
+        def interrupted(self):
+            return False
+
+    clock = [10.0]
+    monkeypatch.setattr(workflow_node_runner_base_module.time, "monotonic", lambda: clock[0])
+
+    def finish_delay(_controller, _delay_milliseconds):
+        clock[0] += 5.0
+        return False
+
+    monkeypatch.setattr(
+        workflow_node_runner_base_module.NodeRunnerBase,
+        "_wait_interruptibly",
+        staticmethod(finish_delay),
+    )
+    runner = workflow_node_runner_base_module.NodeRunnerBase(None, MemoryStore(), None)
+    node = make_node(
+        "SCRIPT",
+        execution={
+            "timeout_seconds": 5,
+            "max_attempts": 0,
+            "retry_interval_seconds": 0,
+            "delay_seconds": 5,
+        },
+    )
+    document = runner._base_node(
+        {"id": str(uuid4()), "workflow_id": str(uuid4())},
+        node,
+        str(uuid4()),
+    )
+
+    started_clock = runner._begin_business_node(document, node, Controller())
+    clock[0] += 0.25
+    runner._finish_node(document, "SUCCESS", started_clock)
+
+    assert document["status"] == "SUCCESS"
+    assert document["duration_ms"] == 250
 
 
 def test_initial_delay_and_retry_interval_are_applied_once_and_timeout_is_converted(
@@ -776,7 +821,7 @@ def test_initial_delay_and_retry_interval_are_applied_once_and_timeout_is_conver
     waits = []
     worker_timeouts = []
     results = [
-        {"ok": False, "error": "temporary failure", "traceback": None},
+        {"ok": False, "error": "temporary failure"},
         {"ok": True, "python_variables": {"result": "ok"}},
     ]
 

@@ -3,8 +3,8 @@
 
 #ts-current-selection{color:var(--ts-muted);font-weight:400}
 
-.test-set-app input,.test-set-app textarea,.test-set-app select{color:var(--ts-text);background:#fff}
-.ts-modal-layer input,.ts-modal-layer textarea,.ts-modal-layer select{color:var(--ts-text)!important;background:#fff!important}
+.test-set-app input,.test-set-app textarea,.test-set-app select{color:var(--ts-text);background:var(--input-bg,#fff)}
+.ts-modal-layer input,.ts-modal-layer textarea,.ts-modal-layer select{color:var(--ts-text)!important;background:var(--input-bg,#fff)!important}
 
 .ts-schema p{grid-template-columns:minmax(140px,1fr) 180px}
 .ts-schema p code{font-size:13px;font-weight:700;color:var(--ts-text)}
@@ -49,8 +49,8 @@
 .ts-table .ts-actions{justify-content:center}
 
 /* impeccable:test-set-polish-start */
-.test-set-app {
-    min-height: calc(100vh - 60px);
+.test-set-app,
+.ts-modal-layer {
     --ts-primary: var(--color-accent, #2457d6);
     --ts-primary-soft: var(--surface-selected, #eaf0ff);
     --ts-border: var(--border, #d9e1ec);
@@ -59,6 +59,10 @@
     --ts-muted: var(--text-muted, #64748b);
     --ts-bg: transparent;
     font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.test-set-app {
+    min-height: calc(100vh - 60px);
 }
 
 .ts-page {
@@ -111,23 +115,6 @@
 .ts-list-table th:nth-child(4) { width: 25%; }
 .ts-list-table th:nth-child(5) { width: 18%; }
 
-.ts-btn {
-    height: 36px;
-    border-radius: var(--radius);
-    background: var(--surface, #fff);
-    color: var(--ts-text);
-    font-weight: 650;
-    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.03);
-    transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
-}
-
-.ts-btn:hover:not(:disabled) {
-    filter: none;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-    transform: translateY(-1px);
-}
-
-.ts-btn:focus-visible,
 .ts-actions button:focus-visible,
 .ts-delete-case:focus-visible,
 .ts-field-settings-header button:focus-visible,
@@ -250,9 +237,24 @@
 
 .ts-modal header,
 .ts-modal footer {
-    min-height: 62px;
-    padding-inline: 20px;
     background: var(--surface, #fff);
+}
+
+.ts-modal header {
+    min-height: 60px;
+    padding: 16px 20px;
+}
+
+.ts-modal footer {
+    min-height: 62px;
+    padding: 12px 20px;
+}
+
+.ts-modal h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
 }
 
 .ts-modal-body {
@@ -363,27 +365,19 @@
 
 
 /* impeccable:test-set-icons-start */
-.ts-btn {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:7px;
-}
-.ts-btn .ui-icon,.ts-search .ui-icon,.ts-field-settings-header .ui-icon{width:16px;height:16px}
+.ts-btn-large-full { height: 42px; width: 100%; }
+.ts-search .ui-icon,.ts-field-settings-header .ui-icon{width:16px;height:16px}
 .ts-search>.ui-icon{flex:0 0 auto;color:var(--ts-muted)}
-.ts-icon-button{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0!important;border:0;border-radius:8px;background:transparent;color:var(--ts-primary);cursor:pointer}
-.ts-icon-button:hover{background:var(--ts-primary-soft)}
-.ts-icon-button.danger,.ts-delete-case.ts-icon-button{color:var(--color-danger)}
-.ts-icon-button.danger:hover,.ts-delete-case.ts-icon-button:hover{background:#fff1f2}
 .ts-modal-close{color:var(--ts-muted)}
-.ts-clear-button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--color-danger);cursor:pointer}
 .ts-tab-remove{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--ts-muted)}
 .ts-tab-remove:hover{background:var(--ts-primary-soft);color:var(--ts-primary)}
 .ts-selection-empty b .ui-icon{width:36px;height:36px}
 .ts-tip b .ui-icon{width:13px;height:13px}
 .ts-pagination button{display:inline-flex;align-items:center;justify-content:center}
 .ts-pagination button .ui-icon{width:17px;height:17px}
-:root[data-theme="dark"] .ts-icon-button.danger:hover,:root[data-theme="dark"] .ts-delete-case.ts-icon-button:hover{background:#3b1f28}
+.ts-delete-case.btn-icon{color:var(--color-danger)}
+.ts-delete-case.btn-icon:hover{background:color-mix(in srgb, var(--color-danger) 12%, var(--surface))}
+:root[data-theme="dark"] .ts-delete-case.btn-icon:hover{background:color-mix(in srgb, var(--color-danger) 12%, var(--surface))}
 /* impeccable:test-set-icons-end */
 
 /* 字段设置弹窗感官改进：表头与行对齐、删除列精简、deleted 行柔和 */
@@ -398,6 +392,15 @@
 .ts-column-settings-list > div {
     grid-template-columns: 28px minmax(0, 1fr) 44px;
     padding: 8px 12px;
+}
+.ts-column-settings-list > div > input {
+    border-color: var(--ts-border-strong);
+    background: var(--input-bg, #fff);
+}
+.ts-column-settings-list label input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
 }
 .ts-column-settings-list label span {
     display: none;
@@ -416,8 +419,6 @@
 .ts-confirm-modal .ts-modal-body p { margin: 0; }
 .ts-confirm-detail { color: var(--text-muted); font-size: 13px; }
 .ts-confirm-modal footer { justify-content: flex-end; }
-.ts-btn.danger { border-color: var(--color-danger); background: var(--color-danger); color: #fff; }
-.ts-btn.danger:hover { filter: brightness(.94); }
 
 /* impeccable:inline-case-create-start */
 .ts-new-case-row {
@@ -510,6 +511,13 @@
   flex: 0 0 1px;
   background: var(--ts-border);
 }
+.ts-detail-name-heading {
+  min-width: 0;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
 .ts-detail-name,
 .ts-detail-name-input {
   width: min(320px, 27vw);
@@ -522,8 +530,8 @@
   background: transparent;
   color: var(--ts-text);
   font: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: inherit;
+  font-weight: inherit;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -573,8 +581,8 @@
   border-radius: 5px;
   color: var(--ts-muted);
 }
-.ts-detail-metadata > .ts-btn,
-.ts-detail-actions .ts-btn {
+.ts-detail-metadata > .btn,
+.ts-detail-actions .btn {
   flex: 0 0 auto;
   white-space: nowrap;
 }

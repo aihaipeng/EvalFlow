@@ -66,17 +66,16 @@ class NodeRunnerBase:
             "error": None,
         }
 
-    def _start_node(
-        self, document: dict[str, Any], *, lifecycle_started: float | None = None
-    ) -> float:
+    def _start_node(self, document: dict[str, Any]) -> float:
         self.store.write_node(document)
+        started_clock = time.monotonic()
         document["status"] = "RUNNING"
         document["started_at"] = local_execution_time()
         document["transitions"].append(
             {"status": "RUNNING", "at": utc_execution_time(), "reason": None}
         )
         self.store.write_node(document)
-        return lifecycle_started if lifecycle_started is not None else time.monotonic()
+        return started_clock
 
     @staticmethod
     def _wait_interruptibly(
@@ -102,7 +101,6 @@ class NodeRunnerBase:
     ) -> float | None:
         """持久化 PENDING、执行唯一首次延迟，并在实际尝试前进入 RUNNING。"""
 
-        lifecycle_started = time.monotonic()
         self.store.write_node(document)
         delay_milliseconds = seconds_to_milliseconds(node.execution.delay_seconds)
         interrupted = self._wait_interruptibly(controller, delay_milliseconds)
@@ -112,7 +110,7 @@ class NodeRunnerBase:
             return None
         if on_running is not None:
             on_running()
-        return self._start_node(document, lifecycle_started=lifecycle_started)
+        return self._start_node(document)
 
     def _finish_node(
         self,

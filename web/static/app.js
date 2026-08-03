@@ -177,7 +177,7 @@ function applyTheme(theme) {
     if (!button) return;
 
     var dark = theme === 'dark';
-    var nextLabel = dark ? '白天模式' : '黑夜模式';
+    var nextLabel = dark ? '白天模式' : '夜间模式';
     button.setAttribute('aria-label', '切换到' + nextLabel);
     button.setAttribute('aria-pressed', String(dark));
     button.setAttribute('title', '切换到' + nextLabel);
@@ -269,16 +269,21 @@ function init() {
 init();
 
 /* ===== Sidebar Navigation ===== */
-document.querySelector('.sidebar-nav').addEventListener('click', function (e) {
+document.querySelector('.sidebar-nav').addEventListener('click', async function (e) {
     var item = e.target.closest('.sidebar-item');
     if (!item) return;
+    var view = item.getAttribute('data-view');
+    if (view === currentView) return;
+    if (currentView === 'sets' && window.TestSetManagement && typeof window.TestSetManagement.requestLeave === 'function') {
+        var canLeave = await window.TestSetManagement.requestLeave();
+        if (!canLeave) return;
+    }
     document.querySelectorAll('.sidebar-item').forEach(function (el) {
         el.classList.remove('active');
         el.removeAttribute('aria-current');
     });
     item.classList.add('active');
     item.setAttribute('aria-current', 'page');
-    var view = item.getAttribute('data-view');
     if (view !== 'sets' && window.TestSetManagement) window.TestSetManagement.unmount();
     if (view !== 'models' && window.ModelProviderManagement) window.ModelProviderManagement.unmount();
     if (view !== 'batch-runs' && window.BatchRunManagement) window.BatchRunManagement.unmount();
@@ -352,19 +357,31 @@ function renderGlobalListPagination(containerId, total, page, pageSize, onPageCh
 
 function enableTableColumnResize(root) {
     (root || document).querySelectorAll('table.table').forEach(function (table) {
-        if (table.classList.contains('management-list-table')) return;
         if (table.dataset.columnResizeReady === 'true') return;
         var headers = Array.from(table.querySelectorAll('thead th'));
         if (!headers.length) return;
         table.dataset.columnResizeReady = 'true';
+        var equalize = table.classList.contains('management-list-table');
         var colgroup = document.createElement('colgroup');
-        headers.forEach(function (header) {
+        var colCount = headers.length;
+        var baseWidth = equalize
+            ? Math.max(80, Math.floor(table.clientWidth / colCount))
+            : 0;
+        headers.forEach(function (header, index) {
             var col = document.createElement('col');
-            col.style.width = Math.max(80, header.getBoundingClientRect().width) + 'px';
+            if (equalize) {
+                // 均分：最后一列吸收取整余数，避免总和超出容器产生横向滚动条
+                col.style.width = (index === colCount - 1
+                    ? Math.max(80, table.clientWidth - baseWidth * (colCount - 1))
+                    : baseWidth) + 'px';
+            } else {
+                col.style.width = Math.max(80, header.getBoundingClientRect().width) + 'px';
+            }
             colgroup.appendChild(col);
         });
         table.insertBefore(colgroup, table.firstChild);
         table.style.tableLayout = 'fixed';
+        if (equalize) return;
         headers.forEach(function (header, index) {
             var handle = document.createElement('span');
             handle.className = 'table-column-resize';

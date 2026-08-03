@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
-from sqlalchemy import delete, insert, literal_column, select, update
+from sqlalchemy import delete, func, insert, literal_column, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
@@ -155,9 +155,9 @@ class WorkflowStructuralModel(_WorkflowModel):
 
 
 class WorkflowStructuralRecord(_WorkflowModel):
-    """Repository 返回对象，组合完整 Workflow 结构和数据库管理时间。"""
+    """Repository 返回对象，组合可继续编辑的 Workflow 草稿和数据库管理时间。"""
 
-    workflow: WorkflowStructuralModel = Field(description="完整且已校验的 Workflow Structural Model。")
+    workflow: WorkflowStructuralModel = Field(description="已持久化的 Workflow Structural Model 草稿。")
     node_models: list[Annotated[NodeStructuralModel, Field(discriminator="type")]] = Field(
         description="Workflow bindings 所引用的完整 Node Structural Model 数组。"
     )
@@ -171,6 +171,7 @@ class WorkflowStructuralSummary(_WorkflowModel):
     id: str = Field(description="Workflow UUIDv4。")
     name: str = Field(description="用户可见名称。")
     description: str = Field(description="用户可见说明。")
+    node_count: int = Field(description="当前绑定的节点数量。")
     updated_at: str = Field(description="最近结构保存时间，UTC ISO-8601。")
 
 
@@ -193,8 +194,10 @@ def _raise_workflow_integrity_error(operation: str, exc: IntegrityError) -> None
 def validate_workflow_graph(
     workflow: WorkflowStructuralModel,
     node_models: list[NodeStructuralModel],
+    *,
+    validate_context: bool = True,
 ) -> None:
-    """验证完整 DAG、系统节点边界和 Workflow 级 Context 名称唯一性。"""
+    """验证完整 DAG、系统节点边界，并按需验证 Workflow Context。"""
 
     models = [NODE_STRUCTURAL_ADAPTER.validate_python(node) for node in node_models]
     by_id = {node.id: node for node in models}
@@ -266,6 +269,9 @@ def validate_workflow_graph(
     if can_reach_end != set(binding_ids):
         raise WorkflowStructuralRepositoryError("所有节点都必须能够到达 END")
 
+    if not validate_context:
+        return
+
     context_names: list[str] = []
     for node in models:
         if node.type == "START":
@@ -332,7 +338,7 @@ def validate_workflow_graph(
 
 
 class WorkflowStructuralRepository:
-    """以单个 SQLite 事务保存 Workflow、Node、binding 和 Edge 当前结构。"""
+    """以 SQLite 事务保存可不完整的 Workflow 编辑草稿。"""
 
     def __init__(self, database_path: str | Path = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path).resolve()
@@ -357,7 +363,6 @@ class WorkflowStructuralRepository:
     ) -> WorkflowStructuralRecord:
         validated = WorkflowStructuralModel.model_validate(workflow)
         nodes = [NODE_STRUCTURAL_ADAPTER.validate_python(node) for node in node_models]
-        validate_workflow_graph(validated, nodes)
         now = timestamp or utc_now_iso()
         try:
             with self._transaction(immediate=True) as connection:
@@ -385,12 +390,20 @@ class WorkflowStructuralRepository:
             return self._record_from_connection(connection, row)
 
     def list(self) -> list[WorkflowStructuralSummary]:
+        node_count_subquery = (
+            select(func.count(workflow_node_bindings.c.node_id))
+            .where(workflow_node_bindings.c.workflow_id == workflows_table.c.id)
+            .correlate(workflows_table)
+            .scalar_subquery()
+            .label("node_count")
+        )
         with self._connect() as connection:
             rows = connection.execute(
                 select(
                     workflows_table.c.id,
                     workflows_table.c.name,
                     workflows_table.c.description,
+                    node_count_subquery,
                     workflows_table.c.updated_at,
                 ).order_by(
                     workflows_table.c.updated_at.desc(), workflows_table.c.id.desc()
@@ -452,7 +465,6 @@ class WorkflowStructuralRepository:
                         for edge in current.workflow.edges
                     ],
                 )
-                validate_workflow_graph(copied_workflow, copied_nodes)
                 connection.execute(insert(workflows_table).values(
                     id=copied_workflow.id,
                     name=copied_workflow.name,
@@ -481,7 +493,6 @@ class WorkflowStructuralRepository:
     ) -> WorkflowStructuralRecord:
         validated = WorkflowStructuralModel.model_validate(workflow)
         nodes = [NODE_STRUCTURAL_ADAPTER.validate_python(node) for node in node_models]
-        validate_workflow_graph(validated, nodes)
         now = timestamp or utc_now_iso()
         try:
             with self._transaction(immediate=True) as connection:
@@ -586,6 +597,99 @@ class WorkflowStructuralRepository:
             created_at=current["created_at"],
             updated_at=now,
         )
+
+    def save_node(
+        self,
+        workflow_id: str,
+        node: NodeStructuralModel,
+        *,
+        position_x: float,
+        position_y: float,
+        timestamp: str | None = None,
+    ) -> WorkflowStructuralRecord:
+        """只保存一个节点及其位置，不改动其他节点和连线。"""
+
+        validated_node = NODE_STRUCTURAL_ADAPTER.validate_python(node)
+        binding = WorkflowNodeBinding(
+            node_id=validated_node.id,
+            position_x=position_x,
+            position_y=position_y,
+        )
+        now = timestamp or utc_now_iso()
+        try:
+            with self._transaction(immediate=True) as connection:
+                workflow_row = connection.execute(
+                    select(workflows_table).where(workflows_table.c.id == workflow_id)
+                ).mappings().first()
+                if workflow_row is None:
+                    raise WorkflowStructuralRepositoryError(
+                        f"Workflow 不存在: {workflow_id}"
+                    )
+
+                current = connection.execute(
+                    select(
+                        node_models_table.c.type,
+                        workflow_node_bindings.c.workflow_id,
+                    )
+                    .select_from(
+                        node_models_table.outerjoin(
+                            workflow_node_bindings,
+                            node_models_table.c.id == workflow_node_bindings.c.node_id,
+                        )
+                    )
+                    .where(node_models_table.c.id == validated_node.id)
+                ).mappings().first()
+                if current is not None and current["workflow_id"] not in {None, workflow_id}:
+                    raise WorkflowStructuralRepositoryError(
+                        f"Node 已属于其他 Workflow: {validated_node.id}"
+                    )
+                if current is not None and current["type"] != validated_node.type:
+                    raise WorkflowStructuralRepositoryError(
+                        f"节点 type 创建后不可修改: {current['type']} -> {validated_node.type}"
+                    )
+
+                if current is None:
+                    self._insert_node(connection, validated_node, now)
+                else:
+                    connection.execute(
+                        update(node_models_table)
+                        .where(node_models_table.c.id == validated_node.id)
+                        .values(
+                            name=validated_node.name,
+                            description=validated_node.description,
+                            definition_json=dump_node_definition(validated_node),
+                            updated_at=now,
+                        )
+                    )
+                statement = sqlite_insert(workflow_node_bindings).values(
+                    workflow_id=workflow_id,
+                    node_id=binding.node_id,
+                    position_x=binding.position_x,
+                    position_y=binding.position_y,
+                )
+                connection.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[
+                            workflow_node_bindings.c.workflow_id,
+                            workflow_node_bindings.c.node_id,
+                        ],
+                        set_={
+                            "position_x": statement.excluded.position_x,
+                            "position_y": statement.excluded.position_y,
+                        },
+                    )
+                )
+                connection.execute(
+                    update(workflows_table)
+                    .where(workflows_table.c.id == workflow_id)
+                    .values(updated_at=now)
+                )
+                saved_row = dict(workflow_row)
+                saved_row["updated_at"] = now
+                record = self._record_from_connection(connection, saved_row)
+        except IntegrityError as exc:
+            _raise_workflow_integrity_error("保存节点到", exc)
+        return record
 
     def delete(self, workflow_id: str) -> bool:
         with self._transaction(immediate=True) as connection:
@@ -702,7 +806,6 @@ class WorkflowStructuralRepository:
                 **definition,
             }
             nodes.append(NODE_STRUCTURAL_ADAPTER.validate_python(payload))
-        validate_workflow_graph(workflow, nodes)
         return WorkflowStructuralRecord(
             workflow=workflow,
             node_models=nodes,

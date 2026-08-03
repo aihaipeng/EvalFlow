@@ -220,16 +220,23 @@ def test_duplicate_name_update_rolls_back_all_node_and_workflow_changes(tmp_path
         ),
     ],
 )
-def test_repository_rejects_invalid_graphs_without_writes(tmp_path, mutate, message):
-    repository = WorkflowStructuralRepository(tmp_path / "workflow.sqlite3")
+def test_graph_validation_rejects_invalid_drafts(mutate, message):
     nodes = node_models()
     workflow = workflow_payload(nodes=nodes)
     mutate(workflow, nodes)
 
     with pytest.raises(WorkflowStructuralRepositoryError, match=message):
-        repository.create(workflow, nodes)
+        workflow_module.validate_workflow_graph(workflow, nodes)
 
-    assert repository.list() == []
+
+def test_graph_structure_validation_skips_context_rules_only():
+    nodes = node_models()
+    workflow = workflow_payload(nodes=nodes)
+    nodes[1].outputs.append(nodes[1].outputs[0].model_copy(update={"name": "question"}))
+
+    workflow_module.validate_workflow_graph(workflow, nodes, validate_context=False)
+    with pytest.raises(WorkflowStructuralRepositoryError, match="Context 变量名"):
+        workflow_module.validate_workflow_graph(workflow, nodes)
 
 
 def test_delete_cascades_workflow_nodes_bindings_and_edges(tmp_path):
@@ -356,9 +363,7 @@ def test_repository_rejects_invalid_static_context_references(
     )
 
     with pytest.raises(WorkflowStructuralRepositoryError, match=message):
-        WorkflowStructuralRepository(tmp_path / "static-invalid.sqlite3").create(
-            workflow, nodes
-        )
+        workflow_module.validate_workflow_graph(workflow, nodes)
 
 
 @pytest.mark.parametrize("producer_is_upstream", [False, True])
@@ -415,8 +420,9 @@ def test_static_context_reference_requires_a_directed_upstream_path(
     )
 
     if producer_is_upstream:
+        workflow_module.validate_workflow_graph(workflow, nodes)
         saved = repository.create(workflow, nodes)
         assert saved.workflow.id == workflow.id
     else:
         with pytest.raises(WorkflowStructuralRepositoryError, match="可达上游"):
-            repository.create(workflow, nodes)
+            workflow_module.validate_workflow_graph(workflow, nodes)

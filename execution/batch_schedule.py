@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from apscheduler.events import EVENT_JOB_MISSED
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import and_, delete, select, update
@@ -248,21 +249,36 @@ class BatchScheduleRepository:
         now: datetime | None = None,
         error: str | None = None,
         executed: bool,
+        expected_next_run_at: str | None = None,
     ) -> dict[str, Any] | None:
         now = (now or _utc_now()).astimezone(UTC)
-        schedule = self.get(batch_id)
-        if schedule is None:
-            return None
-        if schedule["cadence"] == "ONCE":
-            enabled = False
-            next_run = None
-        else:
-            enabled = schedule["enabled"]
-            next_run = next_schedule_at(schedule, now) if enabled else None
-        with self._transaction() as connection:
+        with self._transaction(immediate=True) as connection:
+            row = connection.execute(
+                select(batch_schedules).where(batch_schedules.c.batch_id == batch_id)
+            ).mappings().first()
+            if row is None:
+                return None
+            schedule = self._row(row)
+            if (
+                expected_next_run_at is not None
+                and schedule.get("next_run_at") != expected_next_run_at
+            ):
+                return schedule
+            if schedule["cadence"] == "ONCE":
+                enabled = False
+                next_run = None
+            else:
+                enabled = schedule["enabled"]
+                next_run = next_schedule_at(schedule, now) if enabled else None
+            occurrence = batch_schedules.c.batch_id == batch_id
+            if expected_next_run_at is not None:
+                occurrence = and_(
+                    occurrence,
+                    batch_schedules.c.next_run_at == expected_next_run_at,
+                )
             connection.execute(
                 update(batch_schedules)
-                .where(batch_schedules.c.batch_id == batch_id)
+                .where(occurrence)
                 .values(
                     enabled=int(enabled),
                     next_run_at=_utc_iso(next_run) if next_run else None,
@@ -284,6 +300,7 @@ class BatchScheduleRepository:
                 now=now,
                 error="应用关闭期间错过执行，已跳过",
                 executed=False,
+                expected_next_run_at=schedule["next_run_at"],
             )
         return len(schedules)
 
@@ -312,9 +329,13 @@ class BatchScheduleRepository:
             yield connection
 
     @contextmanager
-    def _transaction(self) -> Iterator[Any]:
+    def _transaction(self, *, immediate: bool = False) -> Iterator[Any]:
         self.initialize()
-        with database_transaction(self.database_path, initialize=False) as connection:
+        with database_transaction(
+            self.database_path,
+            initialize=False,
+            immediate=immediate,
+        ) as connection:
             yield connection
 
 
@@ -327,6 +348,7 @@ class BatchScheduleManager:
         scheduler: BatchScheduler,
         *,
         poll_interval_seconds: float = 0.5,
+        misfire_grace_time_seconds: int = 60,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self.repository = repository
@@ -334,6 +356,7 @@ class BatchScheduleManager:
         self.inputs = inputs
         self.scheduler = scheduler
         self.poll_interval_seconds = max(0.05, poll_interval_seconds)
+        self.misfire_grace_time_seconds = max(1, int(misfire_grace_time_seconds))
         self.now = now
         self._scheduler: BackgroundScheduler | None = None
 
@@ -344,8 +367,13 @@ class BatchScheduleManager:
         self._scheduler = BackgroundScheduler(
             timezone=UTC,
             daemon=True,
-            job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 1},
+            job_defaults={
+                "coalesce": True,
+                "max_instances": 1,
+                "misfire_grace_time": self.misfire_grace_time_seconds,
+            },
         )
+        self._scheduler.add_listener(self._handle_job_missed, EVENT_JOB_MISSED)
         self._scheduler.start()
         self.refresh()
         return recovered
@@ -392,6 +420,18 @@ class BatchScheduleManager:
         finally:
             self.refresh()
 
+    def _handle_job_missed(self, event: Any) -> None:
+        job_id = str(getattr(event, "job_id", ""))
+        prefix = "batch-schedule:"
+        if not job_id.startswith(prefix):
+            return
+        batch_id = job_id[len(prefix) :]
+        logger.warning("定时任务超过执行宽限，重新挂载持久计划: %s", batch_id)
+        try:
+            self.refresh(batch_id)
+        except Exception:
+            logger.exception("重新挂载错过的定时任务失败: %s", batch_id)
+
     def run_due(self, *, now: datetime | None = None) -> int:
         now = (now or self.now()).astimezone(UTC)
         triggered = 0
@@ -409,6 +449,7 @@ class BatchScheduleManager:
                     now=now,
                     error="上一次任务仍在运行，本次执行已跳过",
                     executed=False,
+                    expected_next_run_at=schedule["next_run_at"],
                 )
                 continue
             try:
@@ -420,6 +461,7 @@ class BatchScheduleManager:
                     now=now,
                     error=str(exc),
                     executed=False,
+                    expected_next_run_at=schedule["next_run_at"],
                 )
                 continue
             self.repository.complete_occurrence(
@@ -427,6 +469,7 @@ class BatchScheduleManager:
                 now=now,
                 error=None,
                 executed=True,
+                expected_next_run_at=schedule["next_run_at"],
             )
             triggered += 1
         return triggered

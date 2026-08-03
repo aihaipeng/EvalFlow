@@ -12,7 +12,11 @@ from execution.batch_execution_store import BatchExecutionError, BatchExecutionS
 from execution.test_sets import TestSetRecord, TestSetRepository
 from execution.workflow_execution_snapshot import record_from_snapshot, snapshot_record
 from execution.workflow_execution_store import utc_execution_time
-from execution.workflow_structural_models import WorkflowStructuralRepository
+from execution.workflow_structural_models import (
+    WorkflowStructuralRepository,
+    WorkflowStructuralRepositoryError,
+    validate_workflow_graph,
+)
 from execution.workflow_values import (
     WorkflowOutputTypeError,
     convert_output,
@@ -50,7 +54,10 @@ def _normalize_variables(
         if value_type not in _VARIABLE_TYPES:
             raise BatchExecutionError(f"变量 {index} 的 type 无效")
         if source == "TEST_SET":
-            if not isinstance(value, str) or value not in columns:
+            if not isinstance(value, str):
+                raise BatchExecutionError(f"变量 {index} 的测试集字段不存在: {value}")
+            value = value.strip()
+            if value not in columns:
                 raise BatchExecutionError(f"变量 {index} 的测试集字段不存在: {value}")
         else:
             if value_type == "null":
@@ -200,12 +207,11 @@ class BatchInputService:
         if batch is None:
             raise BatchExecutionError(f"任务不存在: {batch_id}")
         configuration, _prepared = self._prepare_configuration(**values)
-        batch["name"] = configuration["name"]
-        batch["description"] = configuration["description"]
-        batch["configuration"] = configuration
-        batch["updated_at"] = utc_execution_time()
-        self.store.write_batch(batch)
-        return batch
+        return self.store.write_configuration(
+            batch_id,
+            configuration,
+            updated_at=utc_execution_time(),
+        )
 
     def prepare_execution(self, batch_id: str) -> dict[str, Any]:
         batch = self.store.get(batch_id)
@@ -266,6 +272,13 @@ class BatchInputService:
         workflow_record = self.workflow_repository.get(workflow_id)
         if workflow_record is None:
             raise BatchExecutionError(f"工作流不存在: {workflow_id}")
+        try:
+            validate_workflow_graph(
+                workflow_record.workflow,
+                workflow_record.node_models,
+            )
+        except WorkflowStructuralRepositoryError as exc:
+            raise BatchExecutionError(f"工作流尚未配置完整: {exc}") from exc
         columns = tuple(column.key for column in test_set.columns)
         display_columns = {
             "case": self._display_column(columns, case_display_column, "用例列"),

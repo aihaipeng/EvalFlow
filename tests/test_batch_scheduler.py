@@ -99,6 +99,66 @@ def test_batch_input_injects_test_set_fields_and_freezes_snapshot(tmp_path: Path
     assert not list((store.batch_root(batch["id"]) / "input").glob("source.*"))
 
 
+def test_batch_input_converts_typed_test_set_values_selected_by_header(tmp_path: Path):
+    workflow_id, repository, test_sets, _manager, store = _services(
+        tmp_path, "result = 'ok'"
+    )
+    test_set = test_sets.create(
+        name="类型转换测试集",
+        description="",
+        columns=[
+            "col_string",
+            "col_number",
+            "col_integer",
+            "col_boolean",
+            "col_object",
+            "col_array",
+            "col_null",
+        ],
+        cases=[
+            {
+                "values": {
+                    "col_string": "hello",
+                    "col_number": "12.5",
+                    "col_integer": "42",
+                    "col_boolean": "true",
+                    "col_object": '{"kind":"refund"}',
+                    "col_array": '["a",2]',
+                    "col_null": "null",
+                }
+            }
+        ],
+    )
+
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="类型转换",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {"source": "TEST_SET", "key": "text", "value": " col_string ", "type": "string"},
+            {"source": "TEST_SET", "key": "score", "value": "col_number", "type": "number"},
+            {"source": "TEST_SET", "key": "count", "value": "col_integer", "type": "integer"},
+            {"source": "TEST_SET", "key": "enabled", "value": "col_boolean", "type": "boolean"},
+            {"source": "TEST_SET", "key": "payload", "value": "col_object", "type": "object"},
+            {"source": "TEST_SET", "key": "items", "value": "col_array", "type": "array"},
+            {"source": "TEST_SET", "key": "empty", "value": "col_null", "type": "null"},
+        ],
+        case_concurrency=1,
+    )
+
+    case = store.list_cases(batch["id"])[0]
+    assert batch["variables"][0]["value"] == "col_string"
+    assert case["start_inputs"] == {
+        "text": "hello",
+        "score": 12.5,
+        "count": 42,
+        "enabled": True,
+        "payload": {"kind": "refund"},
+        "items": ["a", 2],
+        "empty": None,
+    }
+
+
 def test_batch_input_rejects_invalid_variable_config_and_keeps_case_ids(tmp_path: Path):
     workflow_id, repository, test_sets, _manager, store = _services(tmp_path, "result = 'ok'")
     test_set = _test_set(test_sets, [("C-1", "a"), ("C-2", "b")])
@@ -140,6 +200,57 @@ def test_scheduler_isolates_failed_case_and_resume_skips_success(tmp_path: Path)
     assert resumed["C-1"]["workflow_execution_ids"] == successful["C-1"]
     assert resumed["C-3"]["workflow_execution_ids"] == successful["C-3"]
     assert len(resumed["C-2"]["workflow_execution_ids"]) == 2
+
+
+def test_concurrent_resume_claims_batch_once(tmp_path: Path):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path, "import time\ntime.sleep(0.3)\nresult = 'ok'"
+    )
+    test_set = _test_set(test_sets, [("C-1", "retry")])
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="concurrent resume",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {
+                "source": "TEST_SET",
+                "key": "question",
+                "value": "question",
+                "type": "string",
+            }
+        ],
+        case_concurrency=1,
+    )
+    case = store.list_cases(batch["id"])[0]
+    case.update({"status": "INTERRUPTED", "execution_status": "INTERRUPTED"})
+    store.write_case(case)
+    batch["status"] = "INTERRUPTED"
+    store.write_batch(batch)
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
+    barrier = threading.Barrier(3)
+    started = []
+    errors = []
+
+    def resume() -> None:
+        barrier.wait()
+        try:
+            started.append(scheduler.resume(batch["id"]))
+        except BatchExecutionError as exc:
+            errors.append(str(exc))
+
+    threads = [threading.Thread(target=resume) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=3)
+
+    finished = _wait_batch(store, batch["id"])
+    latest_case = store.get_case(batch["id"], case["id"])
+    assert len(started) == 1
+    assert errors == ["Batch 正在运行"]
+    assert finished["status"] == "SUCCESS"
+    assert latest_case and len(latest_case["workflow_execution_ids"]) == 1
 
 
 def test_scheduler_marks_case_failed_when_any_context_rule_fails(tmp_path: Path):
@@ -263,7 +374,7 @@ def test_scheduler_stop_waits_for_running_case_and_leaves_queued_case_unexecuted
         time.sleep(0.03)
     assert store.get(batch["id"])["summary"]["running"] == 1
     assert scheduler.cancel(batch["id"])
-    assert store.get(batch["id"])["status"] == "STOPPING"
+    assert store.get(batch["id"])["status"] in {"STOPPING", "STOPPED"}
     assert not scheduler.cancel(batch["id"])
     finished = _wait_batch(store, batch["id"])
     cases = store.list_cases(batch["id"])
@@ -376,6 +487,117 @@ def test_single_case_execution_blocks_batch_commands_and_updates_summary(tmp_pat
     cases = store.list_cases(batch["id"])
     assert finished["status"] == "SUCCESS"
     assert [len(item["workflow_execution_ids"]) for item in cases] == [2, 1]
+
+
+def test_multiple_single_cases_respect_batch_concurrency_and_promote_queue(
+    tmp_path: Path,
+):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path,
+        'import time\ntime.sleep(0.4)\nresult = context["question"]',
+    )
+    test_set = _test_set(
+        test_sets,
+        [("C-1", "one"), ("C-2", "two"), ("C-3", "three")],
+    )
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="parallel single cases",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {
+                "source": "TEST_SET",
+                "key": "question",
+                "value": "question",
+                "type": "string",
+            }
+        ],
+        case_concurrency=2,
+    )
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=3)
+    cases = store.list_cases(batch["id"])
+
+    for case in cases:
+        scheduler.start_case(batch["id"], case["id"])
+
+    deadline = time.monotonic() + 5
+    observed_running = 0
+    observed_queued = 0
+    while time.monotonic() < deadline:
+        current_cases = store.list_cases(batch["id"])
+        observed_running = sum(item["status"] == "RUNNING" for item in current_cases)
+        observed_queued = sum(
+            item["execution_status"] == "QUEUED" for item in current_cases
+        )
+        if observed_running == 2 and observed_queued == 1:
+            break
+        time.sleep(0.02)
+
+    assert observed_running == 2
+    assert observed_queued == 1
+    with pytest.raises(BatchExecutionError, match="排队或执行"):
+        scheduler.start_case(batch["id"], cases[2]["id"])
+
+    finished = _wait_batch(store, batch["id"])
+    final_cases = store.list_cases(batch["id"])
+    assert finished["status"] == "SUCCESS"
+    assert [item["status"] for item in final_cases] == ["SUCCESS"] * 3
+    assert scheduler._case_events == {}
+    assert scheduler._case_threads == {}
+
+
+def test_cancel_stops_running_and_queued_single_cases(tmp_path: Path):
+    workflow_id, repository, test_sets, manager, store = _services(
+        tmp_path,
+        'import time\ntime.sleep(30)\nresult = context["question"]',
+    )
+    test_set = _test_set(
+        test_sets,
+        [("C-1", "one"), ("C-2", "two"), ("C-3", "three")],
+    )
+    batch = BatchInputService(repository, test_sets, store).create(
+        name="cancel parallel single cases",
+        test_set_id=test_set.id,
+        workflow_id=workflow_id,
+        variables=[
+            {
+                "source": "TEST_SET",
+                "key": "question",
+                "value": "question",
+                "type": "string",
+            }
+        ],
+        case_concurrency=1,
+    )
+    scheduler = BatchScheduler(store, manager, max_total_case_concurrency=3)
+    cases = store.list_cases(batch["id"])
+    for case in cases:
+        scheduler.start_case(batch["id"], case["id"])
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        current_cases = store.list_cases(batch["id"])
+        if (
+            sum(item["status"] == "RUNNING" for item in current_cases) == 1
+            and sum(item["execution_status"] == "QUEUED" for item in current_cases)
+            == 2
+        ):
+            break
+        time.sleep(0.02)
+
+    assert scheduler.cancel(batch["id"])
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not scheduler._case_events and not scheduler._case_threads:
+            break
+        time.sleep(0.03)
+
+    final_cases = store.list_cases(batch["id"])
+    latest = store.get(batch["id"])
+    assert [item["status"] for item in final_cases] == ["INTERRUPTED"] * 3
+    assert latest["status"] not in {"RUNNING", "STOPPING"}
+    assert scheduler._case_events == {}
+    assert scheduler._case_threads == {}
 
 
 def test_cancel_event_prevents_failure_retry_from_starting_another_workflow(

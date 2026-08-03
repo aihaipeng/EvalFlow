@@ -48,7 +48,6 @@ class ScriptNodeRunner(NodeRunnerBase):
                 "attempt": attempt_number,
                 "status": "RUNNING",
                 "console": [],
-                "traceback": None,
                 "error": None,
             }
             document["logs"]["attempts"].append(attempt)
@@ -103,9 +102,6 @@ class ScriptNodeRunner(NodeRunnerBase):
                         "SCRIPT_RUNTIME_ERROR",
                         result.get("error") or "SCRIPT 执行失败",
                     )
-                traceback_text = result.get("traceback")
-                if traceback_text:
-                    attempt["traceback"] = self._append_log_text(document["logs"], traceback_text)
                 attempt.update({"status": final_status, "error": final_error})
                 if result.get("error_code") == "SCRIPT_OUTPUT_SERIALIZATION_ERROR":
                     break

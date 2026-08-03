@@ -1,5 +1,276 @@
 # Workflow Studio 节点内聚与执行协议计划（T13.2）
 
+## T13.47 供应商字段换位与模型表格对齐（已完成，2026-08-04）
+
+### 业务背景与验收目标
+
+- Why：供应商基础配置当前把 API Key 放在协议之前，不符合本次期望的录入顺序；“已添加模型”虽然表头和数据行使用相同列宽，但模型名称前有图标缩进、操作按钮为整组布局，导致表头文字与实际字段内容视觉错位。
+- Who / Where：测试工程师在供应商管理新建或编辑模型供应商，并在已添加模型区域扫描模型、协议、状态和操作。
+- What / Priority：P1 高频配置与扫描体验。协议与 API Key 交换网格位置，数据字段、校验和保存协议不变；协议下拉右边缘与 SSL 证书校验文字尾端对齐；模型表头对齐每列真实内容锚点。
+- How to Measure：表单视觉/DOM 顺序为名称、官网、协议、接口地址、API Key、代理模式；协议下拉与 SSL 控件右边界误差不超过 1px；桌面端模型名称和状态按文字左边界对齐，协议按表头与字段中心线对齐，操作按表头与按钮组中心线对齐，各锚点误差不超过 1px；窄屏不遮挡字段或操作。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|
+| 13.47.1 | 交换协议与 API Key 并对齐 SSL 尾端 | 源码顺序契约先失败，表单及右边界专项通过 | 无 | completed |
+| 13.47.2 | 对齐模型表头和数据内容 | 浏览器 bounding box 四列误差 <= 1px | 13.47.1 | completed |
+| 13.47.3 | 完整回归 | 供应商 CRUD、暗色主题、pytest、typecheck、build、E2E/axe、diff check、Impeccable | 13.47.2 | completed |
+
+### 实施与验证记录
+
+- 基础配置 DOM 与视觉顺序调整为“供应商名称、官网链接、协议、接口地址、API Key、代理模式”；协议切换提示、API Key 显隐、字段值与保存 payload 保持原协议。
+- 代理控制改为“代理选择弹性占位 + SSL 控件内容宽度”，SSL 证书校验尾端与协议下拉右边缘动态对齐，浏览器实测误差不超过 1px。
+- 已添加模型表头和数据行统一使用 `--model-provider-model-columns`；模型名称和状态表头补齐图标占位后与文字左锚点对齐，协议表头与协议字段居中，操作表头与按钮组居中。真实页面各锚点偏差均为 0px，无横向溢出。
+- 验证：供应商前端专项 `6 passed`；Node `26 passed`；全量 pytest 的 454 项通过、4 项跳过，另有 1 项无关 Batch 取消历史写入竞态在两次全量中偶发失败、单测重跑通过；`npm run typecheck` 和生产构建通过；完整 Playwright/axe `18 passed`。
+
+## T13.48 任务详情多用例并行单条执行（已完成，2026-08-04）
+
+### 业务背景与验收目标
+
+- Why：任务详情启动一条用例后，任务状态切为 `RUNNING`，前端据此移除所有行的启动按钮；后端同时拒绝同一任务的第二条单独启动。测试工程师无法连续挑选多条重点用例并行验证，只能逐条等待，且按钮突然消失会被误解为权限或数据异常。
+- Who / Where：测试工程师在任务详情页按用例逐条排查或回归时，希望连续启动多条用例，并继续查看每条的运行、排队和结果状态。
+- What / Priority：P1 高频执行效率修复。允许同一任务并行提交多条单用例，遵守任务 `case_concurrency`；超过并发数的已提交用例显示“排队中”。整批执行与单条队列继续互斥，当前行不可重复提交，停止任务应中断运行中及排队中的单条请求。
+- How to Measure：配置并发数 2、连续启动 3 条时，同时运行最多 2 条，第 3 条显示排队中并在槽位释放后自动运行；其他未提交行的启动按钮始终可见可点，运行中/排队中行保留禁用按钮并说明状态；全部完成后任务、汇总和按钮恢复正确，整批启动、停止、重启恢复无回归。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.48.1 | 调度器支持有界多单条队列 | 同一 Batch 多个 Case 启动请求 / 按 `case_concurrency` 运行、排队、原子终态收敛 | 调度器并发测试：最大活跃数、排队晋升、重复提交、批量互斥、停止/关闭 | 无 | completed |
+| 13.48.2 | 详情页保持逐行操作与明确状态 | Batch/Case 运行事实 / 可见启动按钮、运行中与排队中禁用态、持续轮询 | 前端契约测试、键盘/ARIA、Playwright 两运行一排队 | 13.48.1 | completed |
+| 13.48.3 | 完整流程与回归 | 单条并行、整批、历史、恢复 / 无状态污染或资源泄漏 | Batch 专项、全量 pytest、Node、typecheck、build、完整 Playwright/axe、diff、Impeccable | 13.48.2 | completed |
+
+### 实施与验证记录
+
+- 13.48.1：单条请求按 Case 建立独立取消事件，并由 Batch 级信号量执行 `case_concurrency` 上限；等待槽位的 Case 保存为 `execution_status=QUEUED`，最后一个线程在锁内统一收敛任务状态，避免并发完成互相覆盖。调度器与 Store 专项 `30 passed`，覆盖两运行一排队、排队晋升、重复提交、整批互斥、停止全部、关闭清理与重启中断。
+- 13.48.2：最新轮次每行固定保留启动按钮；执行中、排队中及整批活动时按钮禁用并通过 `title/aria-label/aria-disabled` 说明原因，单条活动期间其他行继续可点。前端专项 `13 passed`、JS 语法通过；Playwright 实际连续启动三条，观察到两运行一排队、自动晋升及最终三条成功，axe 通过。
+- 13.48.3：Batch API/调度/Store/前端专项 `58 passed`，Node 前端 `26 passed`；全量 pytest `455 passed, 4 skipped`（4 项为未配置真实供应商密钥的 live 测试），完整 Playwright/axe `18 passed`。`npm run typecheck`、`npm run build`、JS 语法、`git diff --check` 通过，Impeccable 检测为空。并发回归额外修正停止操作的合法瞬时状态断言，允许线程已从 `STOPPING` 提前收敛到 `STOPPED`。
+
+## T13.46 任务保存逐字段错误定位与变量 Value 修复（已完成，2026-08-04）
+
+### 业务背景与验收目标
+
+- Why：任务配置保存失败时当前主要依赖 Toast，顶层字段未统一落位，变量注入和结果校验又使用独立本地数组；用户只能逐项猜测哪个字段非法。旧任务中的数字 `0` 或布尔 `false` 还会被 `value || ""` 误判为空，形成“界面有值但无法保存”的核心阻断。
+- Who / Where：本机任务调度中的测试工程师，在新建、编辑或拷贝任务时配置任务名称、测试集、工作流、执行策略、变量注入和结果校验，然后点击保存。
+- What / Priority：P1 核心流程修复。修正 falsy Value 判空与前后端空值契约偏差；所有前端和 API 保存错误必须映射到具体字段，变量与规则精确到第 N 行及字段名；首个错误自动滚动并聚焦，Toast 只给出行动结论，不替代字段内证据。
+- How to Measure：任务名称、测试集、工作流、并发数、失败重试、调用顺序、展示列，以及变量 `source/key/value/type`、规则 `name/result_path/operator/expected_value/type` 的非法输入均在对应控件旁显示中文原因并设置 `aria-invalid`；旧配置的 `0/false` 可保存；API `422/400` 能回填对应字段；用户无需阅读 JSON 或后端字段路径即可在 10 秒内定位并修正。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.46.1 | 固化错误模型并复现现有问题 | 当前表单、OpenAPI/Pydantic 错误、旧 `0/false` 值 / 稳定字段路径与失败样例 | 纯函数/前端契约测试先失败；确认现有主路径基线 | 无 | completed |
+| 13.46.2 | 前端逐字段校验与定位 | RHF 顶层字段、变量/规则本地数组 / 行级字段错误、摘要、首错聚焦 | 前端专项测试；键盘与 `aria-invalid/aria-describedby` 检查 | 13.46.1 | completed |
+| 13.46.3 | API 错误结构化映射 | `422 detail.loc`、Batch 业务校验错误 / 可映射字段路径与中文消息 | API 错误注入测试；确认未知错误保留可行动兜底 | 13.46.2 | completed |
+| 13.46.4 | 完整保存流程与回归 | 新建/编辑/拷贝任务及变量、规则全部字段 / 浏览器证据与无回归结果 | pytest、Node、typecheck、build、Playwright/axe、diff check、Impeccable 检测 | 13.46.3 | completed |
+
+### 验收场景
+
+- 顶层：空任务名称、未选测试集/工作流、非法并发数或失败重试时，错误紧邻具体控件，保存弹窗保持打开并聚焦首错。
+- 变量注入：第 2 行 Value 为空时显示“变量注入第 2 行 · Value：请选择测试集字段/请输入自定义值”；Key 重复、格式错误、类型转换失败分别落在对应 Key/Type/Value 控件。
+- 结果校验：第 3 行路径为空、`EXISTS` 类型不是 boolean、数值/JSON/正则预期值非法时，错误落在对应路径、类型或预期值控件；`NOT_EMPTY` 的空预期值不报错。
+- 后端：API 返回 `variables.1.value` 或 `evaluation_rules.2.expected_value` 时，前端转成业务字段名称并落到第 2/3 行控件；无法映射的系统错误显示“任务保存失败”及可执行重试建议。
+
+### 实施与验证记录
+
+- 13.46.1：复现旧实现对 `0/false` 使用 falsy 判空的问题；新增独立字段错误模型与规范化函数。专项 Node 测试 `6 passed`，覆盖旧值、重复 Key、测试集字段、类型转换、规则路径/正则/EXISTS、`NOT_EMPTY`、422 `loc` 和 400 业务错误映射。
+- 13.46.2：基础配置 8 个字段、变量 4 个字段和规则 5 个字段接入行内中文错误、`aria-invalid/aria-describedby` 与首错滚动聚焦；弹窗失败时保留全部输入。纯函数 `7 passed`、前端专项 `11 passed`、生产构建通过；Playwright 构造变量第 2 行 Value 与规则预期值错误，焦点和 axe 检查均通过。
+- 13.46.3：API 解包错误保留 HTTP 状态与 FastAPI `detail.loc/msg/type`；422 路径及 400 Batch 业务消息映射到顶层、变量行或规则行，未知错误保留“检查配置或网络后重试”兜底。TypeScript、前端专项与 422 浏览器注入场景通过。
+- 13.46.4：Batch 后端专项 `63 passed`，Node 前端 `26 passed`，全量 pytest `449 passed, 4 skipped`（4 项为未配置真实供应商密钥的 live 测试）；`npm run typecheck`、`npm run build`、`git diff --check` 通过，Impeccable 检测结果为空。完整 Playwright/axe 串行回归 `17 passed`；首轮与 build 并行时 2 个 Excel 用例受 manifest 改写竞争影响，build 完成后隔离端口串行重跑全部通过。
+
+## T13.45 节点 Inspector 历史请求与状态污染修复（已完成，2026-08-04）
+
+### 业务背景与验收目标
+
+- Why：双击或点击配置只是编辑节点，却会加载最近 10 次 Workflow Run，并为每个 Run 请求完整 `/nodes`；随后把该节点最近一次历史状态写回画布。历史多时产生 N+1 请求，最近 HTTP 执行失败时又让本次未运行节点显示 `FAILED`。
+- Who / Where：Workflow 作者在画布双击 START、SCRIPT、LLM、HTTP 或点击配置按钮进入 Inspector；此时尚未运行节点，也未主动查看日志。
+- What / Priority：P0 状态正确性与请求治理。设置面板不得加载历史或改变运行状态；日志 tab 按需加载；浏览器只请求一次单节点历史聚合 API，不再遍历每个 Workflow Run。
+- How to Measure：双击空配置 HTTP 后节点保持 `PENDING`，且 `/runs`、`/runs/{id}/nodes`、单节点历史请求均为 0；进入日志 tab 后只出现 1 次 `/nodes/{node_id}/runs`，返回最多 10 条该节点记录；历史 `FAILED` 只显示在日志中，不覆盖画布状态。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|
+| 13.45.1 | 设置面板与历史加载解耦 | 前端契约测试先失败；双击设置零历史请求 | 无 | completed |
+| 13.45.2 | 单节点历史聚合 API | API 测试仅返回目标节点、按新到旧最多 10 条 | 13.45.1 | completed |
+| 13.45.3 | 前端切换聚合接口且不污染状态 | 前端契约 + Playwright 请求计数和状态断言 | 13.45.2 | completed |
+| 13.45.4 | 完整回归 | pytest、Node、typecheck、build、E2E/axe、diff check | 13.45.3 | completed |
+
+### 实施与验证记录
+
+- 双击节点或点击配置只设置 `editorNodeId` 并打开设置 tab；Inspector 仅在内部 tab 切换到 `logs` 时调用历史加载。历史记录只写入 `runHistory`，不再覆盖画布节点的 `status` 或 `executionDurationMs`。
+- 新增 `GET /api/workflows/{workflow_id}/nodes/{node_id}/runs`，由 Execution Store 聚合最近 10 次 Workflow Run 中的目标节点记录；未知 Workflow 或节点返回 404。浏览器不再先取 `/runs` 后为每条 Run 请求完整 `/nodes`。
+- API 测试构造 12 次历史并验证仅按新到旧返回目标节点最新 10 条；前端契约测试验证日志 tab 生命周期、聚合 URL 和旧 N+1 URL 已移除。
+- Playwright 构造一条 HTTP 配置不完整的 `FAILED` 历史：重新打开画布后双击 HTTP，历史请求为 0 且节点保持 `PENDING`；点击日志后只请求 1 次聚合接口，日志显示 `FAILED`，画布仍保持 `PENDING`。
+- 回归：受影响 API/前端 `74 passed`；全量 pytest `446 passed, 4 skipped`，4 项为未配置真实供应商密钥的 live 测试；Node `19 passed`；Playwright/axe `16 passed`；`npm run typecheck`、`npm run build` 与 `git diff --check` 通过。
+
+## T13.44 节点字段可见间距与 START 顺序修正（已完成，2026-08-03）
+
+### 业务背景与验收目标
+
+- Why：上一轮只统一了网格 `column-gap`，但固定 64px 标签列仍在短标签文字后保留额外空白，用户实际看到的文字到输入框距离依然过大；START 输入又把类型放在值之前，与其他变量行的“类型最后”不一致。
+- Who / Where：Workflow 作者在节点 Inspector 中连续配置 START、SCRIPT、LLM、HTTP、END，尤其在暗色主题和宽 Inspector 下横向扫描字段。
+- What / Priority：P1 视觉一致性修正。所有节点字段按标签文字实际宽度布局，文字后 10px 即进入控件；START 输入调整为“变量名 -> 值 -> 类型”，SCRIPT、LLM、HTTP 输出保持“变量名 -> 来源 -> 类型”。不改变字段数据、保存或执行协议。
+- How to Measure：浏览器以 `control.left - labelText.right` 测量五类节点的可见间距，所有字段均为 10px；START 字段 DOM/焦点顺序为 name、value、type，三类输出变量为 name、source、type；明暗主题无横向溢出。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|
+| 13.44.1 | 复现固定标签列空白和 START 顺序差异 | 源码契约 + 浏览器可见边界测量先失败 | 无 | completed |
+| 13.44.2 | 改为内容宽度标签列并统一类型末置 | Workflow 专项、构建、五类节点 Playwright | 13.44.1 | completed |
+| 13.44.3 | 完整回归与视觉质量门禁 | pytest、Node、typecheck、build、E2E/axe、截图、diff check、Impeccable | 13.44.2 | completed |
+
+### 实施与验证记录
+
+- 节点 Inspector 和输出变量行的标签列由固定 64px 改为 `max-content`；HTTP 自定义代理字段同步采用内容宽度。`--wf-control-gap: 10px` 保持不变，因此可见标签文字结束后 10px 即进入输入控件，不再叠加隐藏列空白。
+- START 输入 DOM 与焦点顺序改为 `name -> value -> type`，SCRIPT、LLM、HTTP 输出保持 `name -> source -> type`；仅调整渲染顺序，不改变数据字段、保存结构和执行协议。
+- 浏览器在暗色主题逐一测量 START、SCRIPT、LLM、HTTP、END：基础字段、START 输入和三类输出变量的 `control.left - labelText.right` 均为 10px；START 与 SCRIPT 截图确认无横向溢出且类型位于末列。
+- 契约测试在旧实现上先失败，完成后 Workflow 前端专项 `38 passed`；`npm run typecheck`、Node 测试（16 passed）和生产构建通过。
+- 串行完整回归：`uv run pytest -q` -> `440 passed, 4 skipped`，完整 Playwright/axe -> `15 passed`。4 项 skip 为未配置真实供应商密钥的 live 测试；生产构建仅保留既有字体解析和大 chunk 提示。
+
+## T13.43 节点输出变量统一布局（已完成，2026-08-03）
+
+### 业务背景与验收目标
+
+- Why：SCRIPT、LLM、HTTP 都需要把节点结果声明为下游可引用的输出变量。编排人员会频繁在三类节点间切换，字段位置或间距不一致会增加重复辨认成本，也容易误把类型和取值来源对应错。
+- Who / Where：Workflow 作者在本机画布的节点 Inspector 中配置输出变量，通常连续编辑多个 SCRIPT、LLM、HTTP 节点，并在浅色或深色主题下使用。
+- What / Priority：P1 高频配置体验优化。三类可执行节点共用“变量名 -> 来源字段 -> 类型”的字段顺序，类型固定为最后一个业务字段，行操作保持在末列；SCRIPT、LLM、HTTP、START、END 的字段标签与输入控件统一贴近。START、END 不新增输出变量配置，不改变输出变量保存和执行协议。
+- How to Measure：SCRIPT、LLM、HTTP 的输出变量行具有相同 DOM 与网格结构；字段顺序均为变量名、来源字段、类型，类型后只有增删操作；五类节点 Inspector 统一采用“超时与重试”的 64px 标签列和 10px 控件 gap，输出变量与 START 输入不再使用更宽的 76px 标签列；明暗主题、长字段值和多行变量无溢出，键盘焦点顺序与视觉顺序一致。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.43.1 | 固化统一布局契约 | 三类节点输出变量结构 / 可观察的字段语义、顺序和专属间距 | 前端源码与 CSS 契约测试先失败、实现后通过 | 无 | completed |
+| 13.43.2 | 实现共享紧凑布局 | 现有共享 JSX 与 CSS / 类型末置、五类节点复用 64px + 10px 标签控件间距 | Workflow 前端专项、构建、暗色样式检查 | 13.43.1 | completed |
+| 13.43.3 | 完整流程与回归 | SCRIPT、LLM、HTTP Inspector / 浏览器布局证据与无回归结果 | Playwright computed style/顺序/溢出、axe、全量 pytest、Node、typecheck、build、diff check、Impeccable 检测 | 13.43.2 | completed |
+
+### 实施与验证记录
+
+- SCRIPT、LLM、HTTP 继续复用同一输出变量渲染入口，并增加可测试的字段语义顺序：`name -> source -> type`；类型固定为最后一个业务字段，增删按钮保持在末列。START、END 未新增输出变量配置。
+- 输出变量和 START 输入的标签列从 76px 收窄为 64px，控件 gap 复用 `--wf-control-gap: 10px`，与“超时与重试”以及五类节点的名称、说明字段保持一致；Inspector 暴露节点类型用于浏览器逐类验收。
+- 契约测试在旧实现上先按预期失败，完成后 Workflow 前端专项 `37 passed`；`npm run typecheck`、`npm run test:frontend`（16 passed）和 `npm run build` 通过。
+- 完整 `uv run pytest -q` -> `438 passed, 4 skipped`，4 项为未配置真实供应商密钥的 live 测试；完整 Playwright/axe `15 passed`。新增浏览器场景逐一验证 START、SCRIPT、LLM、HTTP、END 的 64px 标签列与 10px gap，并验证三类输出变量字段顺序、暗色主题和无横向溢出。
+- `git diff --check` 无错误；Impeccable layout 检测结果为空。生产构建仍仅报告既有字体构建期解析与大 chunk 提示。
+
+## T13.42 画布节点保存按钮状态恢复（已完成，2026-08-03）
+
+### 业务背景与验收目标
+
+- Why：节点 Inspector 保存成功后永久挂载 `is-saved` 样式，按钮背景持续显示为近白色，用户会误以为按钮仍处于按下、选中或异常状态。
+- Who / Where：Workflow 作者在本机画布打开任意节点配置，点击右上角保存按钮后继续编辑、切换节点或运行测试。
+- What / Priority：P0 交互状态修复。移除保存按钮的永久背景状态，继续保留保存时间 title、节点“已保存”标记和 2.4 秒成功 Toast；不改变 `saveNode`、自动保存或持久化协议。
+- How to Measure：浅色和深色主题下，节点保存按钮保存完成并移开鼠标后，背景与保存前一致且不残留 `is-saved` class；保存请求仍成功、节点脏状态清除、Toast 正常出现，键盘焦点仍有可访问轮廓。
+
+### 子任务与验证门禁
+
+| 子任务 | 目标 | 验证方法 | 状态 |
+|---|---|---|---|
+| 13.42.1 | 删除持久保存底色并保持成功反馈 | 源码/CSS 契约、生产构建 | completed |
+| 13.42.2 | 浏览器和完整受影响回归 | 明暗主题保存前后 computed style、节点 API 回读、pytest、Node、E2E、axe | completed |
+
+### 实施与验证记录
+
+- 节点 Inspector 保存按钮不再根据 `savedAt && !isDirty` 永久挂载 `is-saved` class，并删除对应的近白色背景规则；保存时间 title、节点“已保存”标记和 2.4 秒成功 Toast 保持不变。
+- 浏览器 E2E 在浅色和深色主题分别记录保存前背景、执行真实节点保存、移开鼠标并再次读取 computed style；两种主题保存前后背景一致，按钮均无 `is-saved` class，Workflow API 回读节点名称和结构正确。
+- 验证：Workflow 前端专项 `33 passed`；全量 `uv run pytest -q` -> `431 passed, 4 skipped in 57.31s`，4 项为未配置真实供应商密钥的 live 测试；`npm run typecheck`、`npm run test:frontend`（10 passed）、`npm run build` 均通过。
+- 完整 `npm run test:e2e` -> `10 passed`，覆盖四目录、测试集跨 Sheet/离开保护、供应商、LLM 上下文、节点保存、Batch 和 axe WCAG A/AA，console error 为 0；Impeccable 机械检测结果为空。
+
+## T13.41 测试集跨 Sheet 导入与未保存离开保护（已完成，2026-08-03）
+
+### 业务背景与验收目标
+
+- Why：测试工程师会从同一 Excel 的多个 Sheet 累计选择用例，并在测试集详情中集中编辑后显式保存。当前选区回调丢失真实 Sheet 身份，导致第二个 Sheet 仍按第一个 Sheet 取值；名称、说明和手动新增用例又会在失焦时写库，用户无法决定是否保留草稿。
+- Who / Where：本机浏览器中的测试工程师，在“测试集管理”从 `.xlsx` 创建或追加用例、编辑详情，并通过返回按钮或左侧目录切换离开当前页面。
+- What / Priority：P0 数据正确性与用户控制权。修复跨 Sheet 选区绑定；测试集新建、详情编辑和 Excel 追加统一使用显式保存；存在未保存草稿时，返回或切换目录必须提供“保存并离开 / 不保存并离开 / 取消”。同一目录重复点击不应重挂载页面；浏览器刷新/关闭不在本次范围。
+- How to Measure：同一 `.xlsx` 的 Sheet1、Sheet2 各选择一段区域后，预览和保存结果必须分别来自正确 Sheet；详情名称、说明和手动新增用例失焦后数据库保持不变；返回和侧栏切换均出现三动作提示，保存后写库并离开，不保存后丢弃草稿并离开，取消后原页面和草稿完整保留。
+
+### 子任务与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.41.1 | 修复跨 Sheet 取数 | FortuneSheet `sheetId + selection` / 绑定真实 Sheet 的累计选区 | 纯函数测试 + 双 Sheet 浏览器导入，核对 Sheet 名、选区和保存值 | 无 | completed |
+| 13.41.2 | 详情显式保存与统一离开守卫 | 新建、详情、追加草稿 / 三动作确认与单次持久化 | API 计数与数据库回读：失焦不写、保存写入、不保存丢弃、取消保留 | 13.41.1 | completed |
+| 13.41.3 | 全局导航接入与回归 | 返回按钮、侧栏目录 / 不丢草稿且不误切换 | 前端专项、Node 测试、构建、Playwright E2E、axe、完整受影响流程 | 13.41.2 | completed |
+
+### 实施与验证记录
+
+- 跨 Sheet：FortuneSheet 选区快照同时保存 `sourceId / sheetId / ranges`，取值只从回调对应 Sheet 的 `sourceMatrix` 读取，不再回退首个 Sheet；为避开 FortuneSheet 1.0.4 在 `allowEdit=false` 下选区触发的递归更新缺陷，改用可选择模式并通过 `beforeUpdateCell / beforePaste / beforeAddSheet / beforeDeleteSheet / beforeUpdateSheetName` 全部拒绝修改，保持浏览器导入只读。
+- 显式保存：详情名称、说明和手动新增用例失焦后只更新本地草稿；主保存按钮或“保存并离开”才提交完整测试集。Excel 新建、详情编辑和 Excel 追加均实现 `isDirty / saveForLeave`，取消保留草稿，不保存丢弃草稿，保存成功后才离开。
+- 全局导航：侧栏先等待测试集离开许可，再更新高亮、卸载 React Root 和切换目录；取消时不改变当前目录。同一目录重复点击直接 no-op。
+- 自动验证：`uv run pytest -q` -> `427 passed, 4 skipped in 57.58s`；4 项为未配置真实供应商密钥的 live 测试。`npm run typecheck`、`npm run test:frontend`（10 passed）、`npm run build` 和 `git diff --check` 均通过。
+- 浏览器 E2E：完整 `npm run test:e2e` -> `8 passed`；双 Sheet Excel 分别保存 `Sheet1-value / Sheet2-value`，详情失焦数据库不变，三种离开动作、Excel 追加侧栏保存、原有供应商/Workflow/Batch 流程和 axe WCAG A/AA 全部通过，console error 为 0。Impeccable 机械检测结果为空；隔离端口 `8765` 已释放。
+
+## T13.40 接入 loguru 统一后台日志系统（待实施，2026-08-02）
+
+### 业务背景与目标
+
+- Why：当前项目无后台日志系统——Workflow/Batch 执行过程没有任何运行时记录，排障只能靠 Execution Model JSON 终态快照。任务失败后，用户必须手动翻阅多个 JSON 文件才能拼凑失败链路，严重违反"10 秒定位失败"的最高产品准则。
+- Who / Where：4 至 5 名测试工程师在本机浏览器和 SQLite 单机环境使用；排障时不接触源码，只通过浏览器界面和 `logs/` 目录下的日志文件定位问题。
+- What / Priority：用 loguru 建立统一日志系统。P0：集中配置、文件轮转、接管标准库、替换现有散落 print 和裸 logger。P1：Workflow/Batch 关键路径加结构化日志点，确保每次任务执行有迹可循。P2：接入 Uvicorn access log 统一格式。
+- How to Measure：每条验收标准必须用真实用户排障场景验证，而非仅检查文件存在。核心标准——一次失败的 Batch Case 执行后，用户打开 `logs/app.log` 能按时间倒序找到：哪个 batch、哪个 case、哪个 workflow、哪个节点失败、期望值 vs 实际值（若为校验失败）、错误堆栈（若为系统异常）。单个失败 Case 的完整链路信息应在日志中连续、自包含、无需跨文件跳跃。
+
+### 选型结论
+
+选择 **loguru**：零样板配置、异常自动美化、完全兼容标准库、纯 Python 无系统依赖。`uv add loguru` 即完成安装，不引入新的包管理负担。
+
+### 子任务、依赖与逐步验证门禁
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 13.40.1 | 依赖安装与集中日志配置 | `pyproject.toml` / `web/log_config.py` 新建，`web/app.py` lifespan 中初始化 | `uv sync --locked` 通过；启动应用后 stderr 可见彩色日志输出；`logs/` 目录自动创建 | 无 | pending |
+| 13.40.2 | 接管标准库 logging | `web/log_config.py` / Uvicorn、SQLAlchemy、APScheduler 日志统一经 loguru 输出 | 启动应用，确认 stderr 和日志文件中包含 uvicorn 启动信息，格式与 loguru 一致，不再出现标准库默认格式 | 13.40.1 | pending |
+| 13.40.3 | 替换现有散落日志点 | `execution/batch_scheduler.py`、`batch_schedule.py`、`tool_worker.py` / logging 和裸 print 全部替换为 loguru | 触发 Batch 执行和定时调度，确认日志文件中有对应来源的 `__name__` 标记；触发 SCRIPT 节点变量缺失，确认日志为结构化 warning 而非裸 stderr | 13.40.2 | pending |
+| 13.40.4 | Workflow 执行关键路径日志 | `execution/workflow_execution.py` / start/cancel/终态收敛点加 `logger.info()`，含 workflow_id、节点数、终态、耗时 | 启动一个 Workflow 执行，日志文件中能按时间顺序还原：启动 → 各节点完成 → 终态（SUCCESS/FAILED），包含 workflow_id 和 execution_id | 13.40.3 | pending |
+| 13.40.5 | Batch 调度关键路径日志 | `execution/batch_scheduler.py` / start/resume/cancel/shutdown 加 `logger.info()`，含 batch_id、case 数、并发度；Case 级别记录 workflow_execution_id | 启动一个 Batch，至少一个 Case 失败，日志中能定位到：batch_id → 具体 case → workflow_execution_id → 失败原因；信息连续自包含，无需跨文件跳跃 | 13.40.4 | pending |
+| 13.40.6 | 定时触发日志 | `execution/batch_schedule.py` / 正常触发补 `logger.info()`；保留已有 `logger.exception()` | 设置一个 1 分钟后触发的定时任务，确认日志中有触发时间、batch_id、执行结果；若任务失败，错误信息包含原因和建议动作 | 13.40.5 | pending |
+| 13.40.7 | Uvicorn access log 统一 | `web/log_config.py` / 接管 uvicorn.access，统一格式 | 浏览器访问任意页面，日志中 access 行格式与其他日志一致，包含 method、path、status、耗时 | 13.40.2 | pending |
+| 13.40.8 | 端到端排障场景验证 | 以上全部 / 构造一次完整的失败链路并验证日志可用性 | 按"验收标准"执行端到端场景：创建包含故意失败节点的 Workflow → 启动 Batch → 确认失败 → 打开 `logs/app.log`，验证能在 30 秒内定位失败位置、原因和上下文（实际用户可能需 10 秒，首次实施容忍 30 秒） | 13.40.1-13.40.7 | pending |
+| 13.40.9 | 全量回归 | 全部变更文件 / 所有现有测试与构建通过 | `uv run pytest -q`、`npm run typecheck`、`npm run test:frontend`、`npm run build`、`npm run test:e2e` 全部通过；`logs/` 已加入 `.gitignore` | 13.40.8 | pending |
+
+### 验收标准（面向排障场景）
+
+每次日志输出必须包含：`时间 | 级别 | 模块 | 事件描述 + 关键标识（workflow_id / batch_id / case_id / execution_id）`。
+
+**场景：一个 Case 执行失败，用户打开 `logs/app.log`，期望看到：**
+
+```
+HH:MM:SS.mmm | INFO     | execution.workflow_execution | Workflow 开始执行 workflow_id=wf-xxx execution_id=exec-yyy nodes=5
+HH:MM:SS.mmm | INFO     | execution.workflow_execution | 节点开始 node_id=node-script-1 type=SCRIPT
+HH:MM:SS.mmm | ERROR    | execution.workflow_execution | 节点失败 node_id=node-script-1 error=ValueError: 输入参数 'threshold' 类型错误（期望 int，实际 str） traceback=...
+HH:MM:SS.mmm | INFO     | execution.workflow_execution | Workflow 终态 workflow_id=wf-xxx execution_id=exec-yyy status=FAILED elapsed=2.34s
+HH:MM:SS.mmm | INFO     | execution.batch_scheduler    | Case 完成 batch_id=batch-zzz case_id=case-001 row=3 verdict=FAIL evaluation="threshold 校验失败：期望>=0.5，实际=0.32"
+```
+
+用户不需要打开 Execution Model JSON、不需要理解 Context 结构、不需要 grep 多个文件，即可在单一日志文件中还原完整失败链路。
+
+### 不做的
+
+- 不引入 ELK / Loki / 云日志服务（违反单机部署约束）。
+- 不引入 OpenTelemetry 或分布式链路追踪（单进程无此需求）。
+- 不用 structlog（依赖链重，loguru 的结构化输出 `serialize=True` 已满足需求）。
+- 不改造 Execution Model JSON 存储（那是业务证据，不是日志）。
+- 不在 `tool_worker.py` 子进程中做文件日志（子进程 stderr 被父进程捕获后统一记录，避免子进程持有文件句柄导致轮转冲突）。
+- 不新增命令行参数或环境变量控制日志级别（当前单机开发场景固定 DEBUG 级别；待生产部署需求明确后再抽象）。
+
+### 文件变更清单
+
+| 文件 | 操作 | 说明 |
+|---|---|---|
+| `pyproject.toml` | 修改 | 添加 loguru 依赖 |
+| `uv.lock` | 修改 | 锁定版本 |
+| `web/log_config.py` | 新建 | 集中日志配置 + InterceptHandler |
+| `web/app.py` | 修改 | lifespan 中调用日志初始化 |
+| `execution/batch_scheduler.py` | 修改 | logging → loguru；关键路径加 info |
+| `execution/batch_schedule.py` | 修改 | logging → loguru；正常触发加 info |
+| `execution/tool_worker.py` | 修改 | print → logger |
+| `execution/workflow_execution.py` | 修改 | start/cancel/终态/节点完成加 info |
+| `.gitignore` | 修改 | 确认 logs/ 已覆盖 |
+
+---
+
 ## T13.39 全仓技术审查整改与第二阶段开源替换（已完成，2026-08-02）
 
 - Why：先修复影响运行正确性、重启收敛和错误定位的契约偏差，再由成熟组件接管构建、接口类型、弹窗和数据库查询等通用能力；不得用框架迁移掩盖真实缺陷。
@@ -333,7 +604,7 @@
 - 最终受影响回归 `107 passed`；全量 pytest `289 passed, 4 skipped, 1 warning`，4 项为无真实密钥的既有 live 测试，warning 为 Starlette TestClient 弃用提示。`compileall`、`npm run build`、JavaScript 语法和 `git diff --check` 全部通过。
 - 2026-07-28 Case ID 可用性修复：创建弹窗打开后自动读取 Sheet/表头并填充 Case ID，测试集、Sheet、Workflow、首行模式或 Case ID 变化会刷新映射；支持 AUTO/HEADER/DATA 和无表头旧测试集。真实 `testcases (3).xlsx` 自动识别为 10 行 5 列 DATA，Case ID 可切换；长 JSON 样例下弹窗限制在 720px 视口内且 footer 可见。专项 `39 passed`，全量 `292 passed, 4 skipped, 1 warning`，compileall/build/diff 通过。
 
-## T13.32 后端高内聚低耦合治理（实施中，2026-07-27）
+## T13.32 后端高内聚低耦合治理（已完成，2026-08-02）
 
 ### 业务背景与目标
 
@@ -352,7 +623,7 @@
 | 13.32.4 | Node Runner 拆分 | Node 类型与共享生命周期 / Script、LLM、HTTP Runner registry | 单节点、串并行、协议、重试和错误矩阵 | 13.32.3 | completed |
 | 13.32.5 | Workflow 应用服务 | 删除/更新跨资源流程 / 原子补偿与领域错误 | DB/目录失败注入、活动执行、API 映射 | 13.32.4 | completed |
 | 13.32.6 | 公共 codec/config 边界 | Node definition、Local config / 无私有跨模块 import | AST 依赖守卫、Schema 往返 | 13.32.1、13.32.5 | completed |
-| 13.32.7 | 完整回归与文档 | 当前后端、前端 bundle、真实本地数据库 | pytest、compileall、build、diff、E2E、integrity | 13.32.1-13.32.6 | in_progress |
+| 13.32.7 | 完整回归与文档 | 当前后端、前端 bundle、真实本地数据库 | pytest、compileall、build、diff、E2E、integrity | 13.32.1-13.32.6 | completed |
 
 ### 实施原则
 
@@ -369,6 +640,7 @@
 - 13.32.4：`WorkflowNodeExecutor` 从 935 行收敛为 125 行注册表协调器；共享生命周期及 SCRIPT/LLM/HTTP Runner 分别独立为 187/160/292/240 行模块。执行、协议、重试、取消和 API 专项 `75 passed, 1 warning`。
 - 13.32.5：新增 `WorkflowApplicationService`，接管完整更新的节点测试清理和删除时的 Execution 目录补偿事务；路由仅处理 DTO 与 HTTP 错误映射。Workflow API/Web/Execution 专项 `69 passed, 1 warning`。
 - 13.32.6：新增公开 Node codec、Structural 时间工具和 Local Config Service，删除跨路由/Repository 私有 helper import及 NodeTestManager 无效 Repository 依赖；首轮发现并修复 Node JSON 回读缺失标准库 import，修复后边界/Schema/配置/执行专项 `109 passed, 1 warning`。
+- 13.32.7：完整回归由 T13.39 最终发布回归覆盖并记录（pytest 420 passed、前端专项 61 passed、Node 8 passed、Playwright 5 passed、typecheck 与 build 通过、真实数据库两次 Alembic 升级无损）；本条目仅回填遗留状态标记。
 
 ## T13.31 SQLite 路径与初始化锁统一（已完成，2026-07-27）
 

@@ -64,10 +64,6 @@
     border-radius: var(--radius);
 }
 
-.execution-table {
-    min-width: 960px;
-}
-
 .execution-table th,
 .execution-table td {
     text-align: center;
@@ -83,7 +79,6 @@
 .workflow-table {
     --management-list-min-width: 960px;
     --management-list-actions-width: 112px;
-    min-width: 1040px;
 }
 
 .workflow-table th:last-child,
@@ -100,20 +95,14 @@
 }
 
 #workflows-toolbar .btn-primary:not(:has(.ui-icon)) {
-    border-color: #0f766e;
-    background: #0f766e;
+    border-color: var(--color-accent);
+    background: var(--color-accent);
     color: #fff;
 }
 
 #workflows-toolbar .btn-primary:not(:has(.ui-icon)):hover {
-    border-color: #0d9488;
-    background: #0d9488;
-}
-
-#btn-workflow-refresh:not(:has(.ui-icon)) {
-    border-color: #bfdbfe;
-    background: #eff6ff;
-    color: var(--color-accent);
+    border-color: var(--color-accent-hover);
+    background: var(--color-accent-hover);
 }
 
 .workflow-list-count {
@@ -420,7 +409,7 @@
     min-width: 0;
     overflow: hidden;
     font-size: 20px;
-    font-weight: 400;
+    font-weight: 700;
     line-height: 34px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -447,13 +436,13 @@
 }
 
 .batch-result-card {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    display: flex;
     min-width: 0;
-    min-height: 116px;
-    align-items: start;
-    gap: 16px;
-    padding: 17px 20px;
+    min-height: 68px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
     border: 1px solid var(--status-card-border);
     border-radius: 8px;
     background: var(--surface);
@@ -494,13 +483,13 @@
     font-weight: 650;
     line-height: 1.15;
     text-overflow: ellipsis;
-    text-transform: uppercase;
+    text-transform: none;
     white-space: nowrap;
 }
 
 .batch-result-card strong {
-    align-self: end;
-    font-size: 36px;
+    flex: 0 0 auto;
+    font-size: 24px;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
     line-height: 1;
@@ -674,11 +663,17 @@
     --case-result-fg: #dce3ec;
 }
 
-.batch-result-card.is-pass { --status-card-border: #279967; --status-card-fg: #54e99a; }
-.batch-result-card.is-failed { --status-card-border: #b96d78; --status-card-fg: #ffadb5; }
-.batch-result-card.is-error { --status-card-border: #6f2aca; --status-card-fg: #ceb2ff; }
-.batch-result-card.is-running { --status-card-border: #6481b7; --status-card-fg: #b3c9ff; }
-.batch-result-card.is-pending { --status-card-border: #718096; --status-card-fg: #aeb8c8; }
+.batch-result-card.is-pass { --status-card-border: #4ba77d; --status-card-fg: #16714f; }
+.batch-result-card.is-failed { --status-card-border: #c37d86; --status-card-fg: #a63c4b; }
+.batch-result-card.is-error { --status-card-border: #8b5fc7; --status-card-fg: #6d32aa; }
+.batch-result-card.is-running { --status-card-border: #6f88b4; --status-card-fg: #3b5f99; }
+.batch-result-card.is-pending { --status-card-border: #8792a2; --status-card-fg: #566173; }
+
+:root[data-theme="dark"] .batch-result-card.is-pass { --status-card-border: #279967; --status-card-fg: #54e99a; }
+:root[data-theme="dark"] .batch-result-card.is-failed { --status-card-border: #b96d78; --status-card-fg: #ffadb5; }
+:root[data-theme="dark"] .batch-result-card.is-error { --status-card-border: #8c57cf; --status-card-fg: #ceb2ff; }
+:root[data-theme="dark"] .batch-result-card.is-running { --status-card-border: #6481b7; --status-card-fg: #b3c9ff; }
+:root[data-theme="dark"] .batch-result-card.is-pending { --status-card-border: #718096; --status-card-fg: #c0c8d4; }
 
 .batch-case-result-mark {
     display: inline-flex;
@@ -709,8 +704,11 @@
     letter-spacing: 0;
 }
 
-.batch-case-execution-state.is-running { color: #38bdf8; }
+.batch-case-execution-state.is-running { color: #0369a1; }
+.batch-case-execution-state.is-queued { color: #92400e; }
 .batch-case-execution-state.is-pending { color: var(--text-subtle); }
+:root[data-theme="dark"] .batch-case-execution-state.is-running { color: #7dd3fc; }
+:root[data-theme="dark"] .batch-case-execution-state.is-queued { color: #fbbf24; }
 
 @media (max-width: 1200px) {
     .batch-result-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -720,8 +718,8 @@
 
 @media (max-width: 700px) {
     .batch-result-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .batch-result-card { min-height: 104px; padding: 15px 16px; }
-    .batch-result-card strong { font-size: 32px; }
+    .batch-result-card { min-height: 68px; padding: 12px 14px; }
+    .batch-result-card strong { font-size: 24px; }
     .batch-case-search { min-width: 0; }
 }
 
@@ -858,6 +856,19 @@
     border-color: var(--color-danger);
 }
 
+.batch-row-field-error,
+.batch-section-error {
+    display: block;
+    color: var(--color-danger);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.batch-row-field-error { margin-top: 4px; }
+.batch-section-error { margin-top: 7px; }
+
 .batch-config-card {
     padding: 18px;
     border: 1px solid var(--border);
@@ -936,6 +947,7 @@
 .batch-variable-row,
 .batch-evaluation-rule {
     min-height: 56px;
+    align-items: start;
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -963,6 +975,8 @@
 .batch-evaluation-rule label { display: block; min-width: 0; }
 .batch-variable-row .input,
 .batch-evaluation-rule .input { width: 100%; min-width: 0; min-height: 34px; }
+.batch-variable-row [aria-invalid="true"],
+.batch-evaluation-rule [aria-invalid="true"] { border-color: var(--color-danger); }
 .batch-variable-row textarea.input { min-height: 56px; padding-top: 6px; resize: vertical; }
 .batch-variable-index,
 .batch-evaluation-index { color: var(--text-subtle); font-size: 11px; text-align: center; }

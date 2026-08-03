@@ -9,3 +9,24 @@ export function workflowNodeExecutionDuration(
     if (Number.isNaN(startedAtMs)) return Math.max(reportedDurationMs, previousDurationMs);
     return Math.max(reportedDurationMs, previousDurationMs, nowMs - startedAtMs);
 }
+
+export function workflowNodeLiveDuration(data, nowMs = Date.now()) {
+    return workflowNodeExecutionDuration({
+        status: data?.status,
+        started_at: data?.executionStartedAt,
+        duration_ms: data?.executionDurationMs,
+    }, data?.executionDurationMs, nowMs);
+}
+
+export function resetWorkflowNodeForRun(node) {
+    return {
+        ...node,
+        data: {
+            ...node.data,
+            status: 'PENDING',
+            executionId: null,
+            executionDurationMs: 0,
+            executionStartedAt: null,
+        },
+    };
+}

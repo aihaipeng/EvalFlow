@@ -413,6 +413,14 @@ function workflowCanvasSaveBody(draft) {
     };
 }
 
+function workflowCanvasNodeWrite(node) {
+    return {
+        node: workflowCanvasNode(node),
+        position_x: node.position.x,
+        position_y: node.position.y,
+    };
+}
+
 function renderWorkflowTable() {
     var body = document.getElementById('workflow-list-body');
     var count = document.getElementById('workflow-count');
@@ -430,7 +438,7 @@ function renderWorkflowTable() {
         renderWorkflowTable();
     }, '个工作流');
     if (!executionState.workflows.length) {
-        body.innerHTML = '<tr><td colspan="4">' + executionEmpty('尚未创建工作流', '新建工作流', 'workflow-empty-add') + '</td></tr>';
+        body.innerHTML = '<tr><td colspan="5">' + executionEmpty('尚未创建工作流', '新建工作流', 'workflow-empty-add') + '</td></tr>';
         document.getElementById('workflow-empty-add').addEventListener('click', function () { openWorkflowCanvas(); });
         return;
     }
@@ -438,6 +446,7 @@ function renderWorkflowTable() {
         return '<tr>' +
             '<td class="management-list-primary" title="' + escAttr(workflow.name) + '"><button class="execution-name-button" type="button" data-workflow-open="' + esc(workflow.id) + '">' + esc(workflow.name) + '</button></td>' +
             '<td class="management-list-text workflow-description-cell" title="' + escAttr(workflow.description || '—') + '">' + esc(workflow.description || '—') + '</td>' +
+            '<td class="management-list-count">' + esc(String(workflow.node_count ?? 0)) + '</td>' +
             '<td class="management-list-time">' + esc(formatDateTime(workflow.updated_at)) + '</td>' +
             '<td class="management-list-actions-cell"><div class="management-list-row-actions execution-row-actions">' +
                 '<button class="btn-icon" type="button" data-workflow-copy="' + esc(workflow.id) + '" title="拷贝工作流" aria-label="拷贝工作流">' + icon('copy') + '</button>' +
@@ -490,7 +499,7 @@ function viewWorkflows() {
                 '<button class="btn btn-primary" id="btn-workflow-add" type="button">' + icon('add') + '新建工作流</button>' +
                 '<button class="btn" id="btn-workflow-refresh" type="button">' + icon('refresh') + '刷新</button>' +
             '</div>' +
-            '<div class="table-wrap execution-table-wrap management-list-wrap"><table class="table execution-table management-list-table workflow-table"><thead><tr><th>名称</th><th>说明</th><th>更新时间</th><th class="management-list-actions-head">操作</th></tr></thead><tbody id="workflow-list-body"></tbody></table></div>' +
+            '<div class="table-wrap execution-table-wrap management-list-wrap"><table class="table execution-table management-list-table workflow-table"><thead><tr><th>名称</th><th>说明</th><th>节点数量</th><th>更新时间</th><th class="management-list-actions-head">操作</th></tr></thead><tbody id="workflow-list-body"></tbody></table></div>' +
             '<div id="workflow-pagination" class="global-list-footer management-list-footer"></div>' +
         '</section>';
     document.getElementById('btn-workflow-add').addEventListener('click', function () { openWorkflowCanvas(); });
@@ -513,16 +522,40 @@ async function openWorkflowCanvas(workflowId) {
         }
         options.onPersist = async function (draft) {
             var body = workflowCanvasSaveBody(draft);
+            var validationQuery = draft.validateStructure ? '?validate_structure=true' : '';
             var result = draft.id
-                ? await API.put('/api/workflows/' + encodeURIComponent(draft.id), body)
-                : await API.post('/api/workflows', body);
+                ? await API.put('/api/workflows/' + encodeURIComponent(draft.id) + validationQuery, body)
+                : await API.post('/api/workflows' + validationQuery, body);
+            var record = result.workflow;
+            return {id: record.workflow.id, name: record.workflow.name, description: record.workflow.description};
+        };
+        options.onPersistNode = async function (draft) {
+            var nodeWrite = workflowCanvasNodeWrite(draft.node);
+            var result = draft.id
+                ? await API.put(
+                    '/api/workflows/' + encodeURIComponent(draft.id) + '/nodes/' + encodeURIComponent(draft.node.id),
+                    nodeWrite,
+                )
+                : await API.post('/api/workflows', {
+                    name: draft.name,
+                    description: draft.description || '',
+                    nodes: [nodeWrite],
+                    edges: [],
+                });
             var record = result.workflow;
             return {id: record.workflow.id, name: record.workflow.name, description: record.workflow.description};
         };
         options.onPersistMetadata = async function (metadata) {
-            var result = await API.put('/api/workflows/' + encodeURIComponent(metadata.id) + '/metadata', {
-                name: metadata.name, description: metadata.description,
-            });
+            var result = metadata.id
+                ? await API.put('/api/workflows/' + encodeURIComponent(metadata.id) + '/metadata', {
+                    name: metadata.name, description: metadata.description,
+                })
+                : await API.post('/api/workflows', {
+                    name: metadata.name,
+                    description: metadata.description,
+                    nodes: [],
+                    edges: [],
+                });
             var record = result.workflow;
             return {id: record.workflow.id, name: record.workflow.name, description: record.workflow.description};
         };
@@ -636,7 +669,7 @@ async function viewBatchDetail(batchId, page, pageSize, roundId, options) {
         contentArea.innerHTML = '<section class="execution-page batch-detail">' +
             '<header class="execution-page-header batch-detail-header"><div class="batch-detail-title"><button class="btn btn-sm" id="batch-back">' + icon('back') + '返回</button><h1>' + esc(batch.name) + '</h1></div></header>' +
             '<section class="batch-case-controls" aria-label="用例筛选"><div class="batch-result-cards">' + filterOptions.map(function (option) { var selected = option.kind === 'state' ? executionState.batchDetailStateFilter === option.value : executionState.batchDetailResultFilter === option.value; var filterLabel = option.kind === 'state' ? '执行状态' : '结果'; return '<button type="button" class="batch-result-card is-' + option.tone + (selected ? ' is-active' : '') + '" data-case-filter="' + esc(option.value) + '" data-filter-kind="' + option.kind + '" aria-label="按' + filterLabel + ' ' + esc(option.label) + ' 筛选" aria-pressed="' + (selected ? 'true' : 'false') + '"><span class="batch-result-card-label">' + icon(option.icon) + '<span>' + esc(option.label) + '</span></span><strong>' + option.count + '</strong></button>'; }).join('') + '</div><label class="batch-case-search" data-full-value="' + esc(executionState.batchDetailSearch) + '">' + icon('search') + '<input class="input" id="batch-case-search" value="' + esc(executionState.batchDetailSearch) + '" placeholder="搜索用例或规则" /></label></section>' +
-            '<div class="table-wrap execution-table-wrap batch-case-table-wrap"><table class="table execution-table batch-case-table"><thead><tr><th>用例</th><th>规则</th><th><button class="table-head-action" data-batch-sort="count" title="按执行次数排序">执行次数' + icon('arrow-up-down') + '</button></th><th><button class="table-head-action" data-batch-sort="duration" title="按耗时排序">耗时' + icon('arrow-up-down') + '</button></th><th>结果</th><th class="batch-case-actions-head">操作</th></tr></thead><tbody>' + cases.map(function (item) { var result = batchCaseResult(item); var executionStatus = batchCaseExecutionStatus(item); var batchActive = ['RUNNING', 'STOPPING'].includes(batch.status); var canStartCase = isLatestRound && !batchActive && item.status !== 'RUNNING'; var operations = '<button class="btn-icon" data-case-open="' + item.id + '" title="查看用例详情">' + icon('browse') + '</button>' + (canStartCase ? '<button class="btn-icon" data-case-start="' + item.id + '" title="执行用例" aria-label="执行用例">' + icon('play') + '</button>' : ''); var resultCell = result ? '<span class="batch-case-result is-' + result.toLowerCase() + '"><i class="batch-case-result-mark" aria-hidden="true"></i><span>' + esc(batchCaseResultLabel(result)) + '</span></span>' : executionStatus ? '<span class="batch-case-execution-state is-' + executionStatus.toLowerCase() + '">' + executionStatus + '</span>' : '<span class="batch-case-empty-result">—</span>'; return '<tr><td class="batch-case-primary">' + esc(batchDisplayValue(item.source_values, displayColumns.case)) + '</td><td>' + esc(batchDisplayValue(item.source_values, displayColumns.rule)) + '</td><td>' + item.workflow_execution_ids.length + '</td><td>' + esc(batchCaseDuration(item)) + '</td><td>' + resultCell + '</td><td class="batch-case-actions-cell"><span class="batch-case-row-actions">' + (operations || '—') + '</span></td></tr>'; }).join('') + '</tbody></table></div><div id="batch-case-pagination" class="global-list-footer"></div>' +
+            '<div class="table-wrap execution-table-wrap batch-case-table-wrap"><table class="table execution-table batch-case-table"><thead><tr><th>用例</th><th>规则</th><th><button class="table-head-action" data-batch-sort="count" title="按执行次数排序">执行次数' + icon('arrow-up-down') + '</button></th><th><button class="table-head-action" data-batch-sort="duration" title="按耗时排序">耗时' + icon('arrow-up-down') + '</button></th><th>结果</th><th class="batch-case-actions-head">操作</th></tr></thead><tbody>' + cases.map(function (item) { var result = batchCaseResult(item); var executionStatus = batchCaseExecutionStatus(item); var operations = '<button class="btn-icon" data-case-open="' + item.id + '" title="查看用例详情">' + icon('browse') + '</button>' + batchCaseStartAction(batch, item, isLatestRound); var resultCell = result ? '<span class="batch-case-result is-' + result.toLowerCase() + '"><i class="batch-case-result-mark" aria-hidden="true"></i><span>' + esc(batchCaseResultLabel(result)) + '</span></span>' : executionStatus ? '<span class="batch-case-execution-state is-' + executionStatus.toLowerCase() + '">' + batchCaseExecutionStatusLabel(executionStatus) + '</span>' : '<span class="batch-case-empty-result">—</span>'; return '<tr><td class="batch-case-primary">' + esc(batchDisplayValue(item.source_values, displayColumns.case)) + '</td><td>' + esc(batchDisplayValue(item.source_values, displayColumns.rule)) + '</td><td>' + item.workflow_execution_ids.length + '</td><td>' + esc(batchCaseDuration(item)) + '</td><td>' + resultCell + '</td><td class="batch-case-actions-cell"><span class="batch-case-row-actions">' + (operations || '—') + '</span></td></tr>'; }).join('') + '</tbody></table></div><div id="batch-case-pagination" class="global-list-footer"></div>' +
         '</section>';
         document.getElementById('batch-back').addEventListener('click', viewBatchRuns);
         document.querySelectorAll('[data-case-start]').forEach(function (button) { button.addEventListener('click', async function () { button.disabled = true; try { await API.post('/api/batch-runs/' + batchId + '/cases/' + button.dataset.caseStart + '/start', {}); await viewBatchDetail(batchId, page, pageSize, roundId); } catch (error) { showToast(executionErrorMessage(error), 'error'); button.disabled = false; } }); });
@@ -721,9 +754,32 @@ function batchCaseResult(caseRun) {
 }
 
 function batchCaseExecutionStatus(caseRun) {
+    if (caseRun.execution_status === "QUEUED") return 'Queued';
     if (caseRun.status === 'RUNNING' || caseRun.execution_status === 'RUNNING') return 'Running';
     if (caseRun.status === 'QUEUED' || caseRun.execution_status === 'NOT_STARTED') return 'Pending';
     return '';
+}
+
+function batchCaseExecutionStatusLabel(status) {
+    return {Queued: '排队中', Running: '执行中', Pending: '待执行'}[status] || status;
+}
+
+function batchCaseStartAction(batch, item, isLatestRound) {
+    if (!isLatestRound) return '';
+    var singleCaseActive = batch.status === 'RUNNING' && batch.execution_mode === 'SINGLE_CASE';
+    var disabledReason = item.execution_status === "QUEUED"
+        ? '排队中'
+        : item.status === 'RUNNING' || item.execution_status === 'RUNNING'
+            ? '执行中'
+            : batch.status === 'STOPPING'
+                ? '任务停止中'
+                : batch.status === 'RUNNING' && !singleCaseActive
+                    ? '整批执行中'
+                    : '';
+    if (disabledReason) {
+        return '<button class="btn-icon" type="button" disabled aria-disabled="true" data-case-start-state="disabled" title="' + disabledReason + '" aria-label="' + disabledReason + '">' + icon('play') + '</button>';
+    }
+    return '<button class="btn-icon" type="button" data-case-start="' + item.id + '" title="执行用例" aria-label="执行用例">' + icon('play') + '</button>';
 }
 
 function batchCaseDetailValue(value) {
@@ -732,25 +788,15 @@ function batchCaseDetailValue(value) {
     return JSON.stringify(value);
 }
 
-function batchCaseComparisonRows(caseRun, execution) {
+function batchCaseComparisonRows(caseRun) {
     var rules = caseRun.evaluation && Array.isArray(caseRun.evaluation.rules) ? caseRun.evaluation.rules : [];
-    var summary = execution && execution.result && execution.result.diagnostic_summary;
-    var observed = summary && summary.observed && typeof summary.observed === 'object' ? summary.observed : {};
-    var expected = summary && summary.expected && typeof summary.expected === 'object' ? summary.expected : {};
-    var resultKeys = {
-        root_cause_match: 'root_cause',
-        risk_level_match: 'risk_level',
-        action_match: 'recommended_action',
-    };
     return rules.slice().sort(function (left, right) {
         return (left.status === 'PASS' ? 1 : 0) - (right.status === 'PASS' ? 1 : 0);
     }).map(function (rule) {
-        var ruleKey = String(rule.result_path || '').replace(/^context\./, '').split('.').pop();
-        var businessKey = resultKeys[ruleKey];
         return {
             label: String(rule.name || '').trim() || batchRuleDisplayPath(rule.result_path) || '—',
-            expected: businessKey && Object.prototype.hasOwnProperty.call(expected, businessKey) ? expected[businessKey] : rule.expected,
-            actual: businessKey && Object.prototype.hasOwnProperty.call(observed, businessKey) ? observed[businessKey] : rule.actual,
+            expected: rule.expected,
+            actual: rule.actual,
             status: rule.status || 'ERROR',
             message: rule.message || '',
         };
@@ -803,7 +849,7 @@ function batchCaseRawErrorMessage(error) {
 
 function batchCaseDetailModel(caseRun, execution, nodeExecutions) {
     var result = batchCaseResult(caseRun);
-    var comparisons = batchCaseComparisonRows(caseRun, execution);
+    var comparisons = batchCaseComparisonRows(caseRun);
     var failedRules = comparisons.filter(function (rule) { return rule.status !== 'PASS'; });
     var problemNode = batchCaseProblemNode(nodeExecutions, result);
     var rawError = problemNode && problemNode.error ? problemNode.error : caseRun.error || (execution && execution.error);

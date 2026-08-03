@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -10,8 +11,10 @@ def test_test_set_modals_and_edit_controls_are_keyboard_accessible():
     assert 'from "@radix-ui/react-dialog"' in source
     assert 'from "@radix-ui/react-alert-dialog"' in source
     assert source.count("<Dialog.Root") == 2
-    assert source.count("<AlertDialog.Root") == 1
+    assert source.count("<AlertDialog.Root") == 2
     assert "function useModalAccessibility" not in source
+    assert 'aria-labelledby="ts-save-modal-title"' in source
+    assert 'aria-labelledby="ts-column-settings-title"' in source
     assert 'title="编辑测试集名称"' in source
     assert 'title="编辑测试集说明"' in source
     assert "onDoubleClick" not in source[source.index('return <section className="ts-page"><div className="ts-detail-heading"'):]
@@ -29,7 +32,7 @@ def test_test_set_destructive_confirmations_use_application_modals():
     assert 'title="删除字段"' in source
     assert "<AlertDialog.Content" in source
     assert ".ts-confirm-modal-layer" in styles
-    assert ".ts-btn.danger" in styles
+    assert "btn-danger" in source
 
 
 def test_test_set_detail_defaults_to_twenty_editable_rows():
@@ -48,6 +51,11 @@ def test_excel_import_stays_in_the_browser_and_uses_database_api():
 
     assert "await file.arrayBuffer()" in source
     assert "XLSX.read(" in source
+    assert 'import("@fortune-sheet/react")' in source
+    assert 'import("xlsx")' in source
+    assert 'import("@fortune-sheet/react/dist/index.css")' in source
+    assert 'import { Workbook } from "@fortune-sheet/react"' not in source
+    assert 'import * as XLSX from "xlsx"' not in source
     assert 'request("/api/test-sets"' in source
     assert "/api/excel" not in source
     assert "/api/excel" not in app_js
@@ -109,6 +117,19 @@ def test_test_set_list_omits_summary_metric_cards():
 
     list_view = source[source.index("function ListView("):source.index("function SaveModal(")]
     assert "<Metrics items=" not in list_view
+    assert '<span className="execution-count">{state.total} 个测试集</span>' in list_view
+
+
+def test_test_set_detail_uses_consistent_semantic_title():
+    root = Path(__file__).parents[1]
+    source = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
+    source_css = (root / "web" / "frontend" / "test-sets.css").read_text(encoding="utf-8")
+
+    assert '<h1 className="ts-detail-name-heading">' in source
+    title_rule = source_css[source_css.index(".ts-detail-name-heading {"):]
+    title_rule = title_rule[:title_rule.index("}")]
+    assert "font-size: 20px;" in title_rule
+    assert "font-weight: 700;" in title_rule
 
 
 def test_test_set_react_root_unmounts_before_other_navigation_views():
@@ -120,8 +141,20 @@ def test_test_set_react_root_unmounts_before_other_navigation_views():
     assert "root.unmount();" in source
     assert "root = null;" in source
     assert "window.currentView = \"sets\";" in source
-    assert "window.TestSetManagement = { mount, unmount };" in source
+    assert "window.TestSetManagement = { mount, unmount, requestLeave: () => requestLeaveHandler() };" in source
     assert "if (view !== 'sets' && window.TestSetManagement) window.TestSetManagement.unmount();" in app_js
+
+
+def test_built_test_set_entry_defers_excel_dependencies():
+    root = Path(__file__).parents[1]
+    output = root / "web" / "static" / "assets" / "vite"
+    manifest = json.loads((output / ".vite" / "manifest.json").read_text(encoding="utf-8"))
+    entry = manifest["web/frontend/test-sets.jsx"]
+    script = output / entry["file"]
+
+    assert script.stat().st_size < 500_000
+    assert "node_modules/@fortune-sheet/react/dist/index.esm.js" in entry["dynamicImports"]
+    assert "node_modules/xlsx/xlsx.mjs" in entry["dynamicImports"]
 
 
 def test_test_set_list_name_has_no_leading_icon():
@@ -134,7 +167,7 @@ def test_test_set_list_name_has_no_leading_icon():
     assert ".ts-name i{" not in source_css
 
 
-def test_manual_case_is_inserted_first_and_auto_saves_on_row_blur():
+def test_manual_case_is_inserted_first_as_unsaved_draft_on_row_blur():
     root = Path(__file__).parents[1]
     source = (root / "web" / "frontend" / "test-sets.jsx").read_text(
         encoding="utf-8"
@@ -144,10 +177,12 @@ def test_manual_case_is_inserted_first_and_auto_saves_on_row_blur():
     )
 
     assert 'const nextCases = [pendingCase, ...draft.cases];' in source
-    assert 'className={`ts-new-case-row${pendingCaseError ? " error" : ""}`}' in source
+    assert 'className="ts-new-case-row"' in source
     assert "!pendingCaseRowRef.current?.contains(event.relatedTarget)" in source
-    assert "void savePendingCase();" in source
-    assert "内容已保留，请修改后再次点击行外或重试" in source
+    assert "commitPendingCaseDraft();" in source
+    assert 'setDraft((current) => ({ ...current, cases: nextCases }));' in source
+    assert '<span>未保存</span>' in source
+    assert "savePendingCase" not in source
     assert ".ts-new-case-row {" in source_css
     new_row_styles = source_css[source_css.index(".ts-new-case-row {"):]
     new_row_styles = new_row_styles[:new_row_styles.index("}")]
@@ -160,13 +195,12 @@ def test_blank_manual_case_is_removed_without_saving():
         Path(__file__).parents[1] / "web" / "frontend" / "test-sets.jsx"
     ).read_text(encoding="utf-8")
 
-    blank_check = 'if (isBlankCase(pendingCase)) {'
-    save_request = 'const savePromise = request(`/api/test-sets/${draft.id}`'
-
-    assert "return isBlankCaseValues(testCase.values, draft.columns);" in source
+    blank_check = 'if (isBlankCaseValues(pendingCase.values, draft.columns)) {'
     assert blank_check in source
-    assert source.index(blank_check) < source.index(save_request)
-    assert 'setPendingCase(null);' in source[source.index(blank_check):source.index(save_request)]
+    draft_start = source.index("function commitPendingCaseDraft()")
+    draft_function = source[draft_start:source.index("async function save()", draft_start)]
+    assert 'setPendingCase(null);' in draft_function
+    assert 'request(' not in draft_function
 
 
 def test_test_set_import_and_save_filter_blank_cases():
@@ -182,18 +216,31 @@ def test_test_set_import_and_save_filter_blank_cases():
     assert "const nonBlankCases = filterBlankCases(cases, draft.columns);" in source
 
 
-def test_test_set_metadata_uses_inline_blur_save_without_replacing_case_draft():
+def test_test_set_metadata_blur_keeps_draft_until_explicit_save():
     source = (
         Path(__file__).parents[1] / "web" / "frontend" / "test-sets.jsx"
     ).read_text(encoding="utf-8")
 
-    assert 'request(`/api/test-sets/${draft.id}/metadata`' in source
-    assert 'metadataDraftRef.current.name === draft.name ? event.currentTarget.value : metadataDraftRef.current.name' in source
-    assert 'metadataDraftRef.current.description === draft.description ? event.currentTarget.value : metadataDraftRef.current.description' in source
-    assert 'metadataDraftRef.current.name = event.target.value' in source
-    assert 'metadataDraftRef.current.description = event.target.value' in source
-    assert 'setDraft((current) => current ? { ...current, ...metadata } : payload.test_set);' in source
+    assert 'request(`/api/test-sets/${draft.id}/metadata`' not in source
+    assert 'onBlur={() => setEditingName(false)}' in source
+    assert 'onBlur={() => setEditingDescription(false)}' in source
+    assert 'request(`/api/test-sets/${draft.id}`, { method: "PUT", body: writeBody(nextCases) })' in source
+    assert 'disabled={saving || !dirty}' in source
     assert 'toast("测试集名称不能为空", "error")' in source
+
+
+def test_test_set_navigation_waits_for_unsaved_leave_decision():
+    root = Path(__file__).parents[1]
+    source = (root / "web" / "frontend" / "test-sets.jsx").read_text(encoding="utf-8")
+    app_source = (root / "web" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert "function UnsavedChangesModal" in source
+    assert "不保存并离开" in source
+    assert "保存并离开" in source
+    assert "requestLeave: () => requestLeaveHandler()" in source
+    assert "await window.TestSetManagement.requestLeave()" in app_source
+    assert "if (!canLeave) return;" in app_source
+    assert "if (view === currentView) return;" in app_source
 
 
 def test_management_lists_use_names_as_the_only_edit_entry():

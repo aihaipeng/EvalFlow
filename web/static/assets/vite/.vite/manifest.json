@@ -1,14 +1,15 @@
 {
-  "_api-result-BiDJlMBy.js": {
-    "file": "chunks/api-result-BiDJlMBy.js",
+  "_api-result-Cj_zPAs8.js": {
+    "file": "chunks/api-result-Cj_zPAs8.js",
     "name": "api-result",
     "imports": [
-      "_dist-BPOBA6G3.js"
+      "_dist-BPOBA6G3.js",
+      "_defineProperty-DmSgLQbW.js"
     ]
   },
-  "_dialog-BMOcRNjR.js": {
-    "file": "chunks/dialog-BMOcRNjR.js",
-    "name": "dialog",
+  "_defineProperty-DmSgLQbW.js": {
+    "file": "chunks/defineProperty-DmSgLQbW.js",
+    "name": "defineProperty",
     "imports": [
       "_dist-BPOBA6G3.js"
     ]
@@ -17,6 +18,10 @@
     "file": "chunks/dist-BPOBA6G3.js",
     "name": "dist"
   },
+  "_preload-helper-BTe_eKfg.js": {
+    "file": "chunks/preload-helper-BTe_eKfg.js",
+    "name": "preload-helper"
+  },
   "_x-BNrdNBnO.js": {
     "file": "chunks/x-BNrdNBnO.js",
     "name": "x",
@@ -24,53 +29,89 @@
       "_dist-BPOBA6G3.js"
     ]
   },
+  "node_modules/@fortune-sheet/react/dist/index.css": {
+    "file": "dist-DXnEUQB2.css",
+    "src": "node_modules/@fortune-sheet/react/dist/index.css"
+  },
+  "node_modules/@fortune-sheet/react/dist/index.esm.js": {
+    "file": "chunks/index.esm-Nofut_4C.js",
+    "name": "index.esm",
+    "src": "node_modules/@fortune-sheet/react/dist/index.esm.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BPOBA6G3.js"
+    ]
+  },
+  "node_modules/xlsx/xlsx.mjs": {
+    "file": "chunks/xlsx-BOlvmhcK.js",
+    "name": "xlsx",
+    "src": "node_modules/xlsx/xlsx.mjs",
+    "isDynamicEntry": true
+  },
   "web/frontend/batch-runs.jsx": {
-    "file": "batch-runs-BvmrS6vB.js",
+    "file": "batch-runs-bNKuSxVF.js",
     "name": "batch-runs",
     "src": "web/frontend/batch-runs.jsx",
     "isEntry": true,
     "imports": [
       "_dist-BPOBA6G3.js",
-      "_api-result-BiDJlMBy.js",
-      "_dialog-BMOcRNjR.js"
+      "_api-result-Cj_zPAs8.js",
+      "_defineProperty-DmSgLQbW.js"
     ]
   },
   "web/frontend/model-providers.jsx": {
-    "file": "model-providers-BMA2GW5Q.js",
+    "file": "model-providers-BN_piBKh.js",
     "name": "model-providers",
     "src": "web/frontend/model-providers.jsx",
     "isEntry": true,
     "imports": [
       "_dist-BPOBA6G3.js",
-      "_api-result-BiDJlMBy.js",
-      "_dialog-BMOcRNjR.js"
+      "_api-result-Cj_zPAs8.js",
+      "_defineProperty-DmSgLQbW.js"
     ]
   },
   "web/frontend/test-sets.jsx": {
-    "file": "test-sets-DnaSvqHa.js",
+    "file": "test-sets-Dp2fjxNE.js",
     "name": "test-sets",
     "src": "web/frontend/test-sets.jsx",
     "isEntry": true,
     "imports": [
       "_dist-BPOBA6G3.js",
-      "_x-BNrdNBnO.js"
+      "_x-BNrdNBnO.js",
+      "_preload-helper-BTe_eKfg.js"
+    ],
+    "dynamicImports": [
+      "node_modules/@fortune-sheet/react/dist/index.esm.js",
+      "node_modules/xlsx/xlsx.mjs"
     ],
     "css": [
-      "test-sets-BMTRMlbt.css"
+      "test-sets-vTXzTTxl.css"
+    ]
+  },
+  "web/frontend/workflow-canvas-implementation.jsx": {
+    "file": "chunks/workflow-canvas-implementation-HB0JXKM4.js",
+    "name": "workflow-canvas-implementation",
+    "src": "web/frontend/workflow-canvas-implementation.jsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BPOBA6G3.js",
+      "_x-BNrdNBnO.js",
+      "_defineProperty-DmSgLQbW.js"
+    ],
+    "css": [
+      "workflow-canvas-implementation-Cf4l7tH-.css"
     ]
   },
   "web/frontend/workflow-canvas.jsx": {
-    "file": "workflow-canvas-C3RSoer8.js",
+    "file": "workflow-canvas-BlvYZ7gt.js",
     "name": "workflow-canvas",
     "src": "web/frontend/workflow-canvas.jsx",
     "isEntry": true,
     "imports": [
-      "_dist-BPOBA6G3.js",
-      "_x-BNrdNBnO.js",
-      "_dialog-BMOcRNjR.js"
+      "_preload-helper-BTe_eKfg.js"
     ],
-    "css": [
-      "workflow-canvas-BTVdOi2w.css"
+    "dynamicImports": [
+      "web/frontend/workflow-canvas-implementation.jsx"
     ]
   }
 }
