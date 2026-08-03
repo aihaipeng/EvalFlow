@@ -175,16 +175,21 @@ class NodeRunnerBase:
         started = self._start_node(document)
         document["attempt_count"] = 1
         inputs = {item.name: strict_json_clone(item.value) for item in node.inputs}
+        outputs = {
+            name: strict_json_clone(value)
+            for name, value in inputs.items()
+            if name not in context
+        }
         document["inputs"] = inputs
         document["logs"]["input_validation"] = {
             "status": "SUCCESS", "inputs": strict_json_clone(inputs), "error": None
         }
-        document["outputs"] = strict_json_clone(inputs)
+        document["outputs"] = strict_json_clone(outputs)
         document["logs"]["context_commit"] = {
-            "status": "SUCCESS", "outputs": strict_json_clone(inputs), "error": None
+            "status": "SUCCESS", "outputs": strict_json_clone(outputs), "error": None
         }
         self._finish_node(document, "SUCCESS", started)
-        return document, inputs
+        return document, outputs
 
     def execute_end(self, workflow, node, node_execution_id, context):
         document = self._base_node(workflow, node, node_execution_id)

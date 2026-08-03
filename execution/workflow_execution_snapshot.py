@@ -34,28 +34,8 @@ def snapshot_record(record: WorkflowStructuralRecord) -> dict[str, Any]:
     }
 
 
-def _json_type(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, float):
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
-    raise WorkflowExecutionError("批量变量不是严格 JSON 值")
-
-
-def record_from_snapshot(
-    snapshot: dict[str, Any], start_inputs: dict[str, Any]
-) -> WorkflowStructuralRecord:
-    """Rebuild a validated record and materialize one Case's injected Context."""
+def record_from_snapshot(snapshot: dict[str, Any]) -> WorkflowStructuralRecord:
+    """Rebuild a validated record without mutating its frozen structure."""
 
     try:
         document = strict_json_clone(snapshot)
@@ -64,19 +44,6 @@ def record_from_snapshot(
         edges = document["edges"]
         if not isinstance(workflow_data, dict) or not isinstance(node_items, list):
             raise TypeError
-        start_items = [item for item in node_items if item.get("node", {}).get("type") == "START"]
-        if len(start_items) != 1:
-            raise WorkflowExecutionError("批量 Workflow 快照必须恰好包含一个 START")
-        inputs = start_items[0]["node"].setdefault("inputs", [])
-        declared = {item["name"]: item for item in inputs}
-        for name, value in start_inputs.items():
-            materialized = strict_json_clone(value)
-            if name in declared:
-                declared[name]["type"] = _json_type(materialized)
-                declared[name]["value"] = materialized
-            else:
-                inputs.append({"name": name, "type": _json_type(materialized), "value": materialized})
-
         nodes = [NODE_STRUCTURAL_ADAPTER.validate_python(item["node"]) for item in node_items]
         workflow = WorkflowStructuralModel.model_validate(
             {

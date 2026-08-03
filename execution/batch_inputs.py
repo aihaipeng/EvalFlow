@@ -29,6 +29,35 @@ _VARIABLE_TYPES = {"string", "number", "integer", "boolean", "object", "array", 
 _CALL_ORDERS = {"SEQUENTIAL", "REVERSE", "RANDOM"}
 
 
+def _validate_external_context_requirements(
+    requirements: dict[str, tuple[str, ...]],
+    variables: list[dict[str, Any]],
+) -> None:
+    variables_by_key = {variable["key"]: variable for variable in variables}
+    missing = sorted(set(requirements) - set(variables_by_key))
+    if missing:
+        raise BatchExecutionError(
+            "任务变量未声明 Workflow 所需的外部 Context 变量: "
+            f"{', '.join(missing)}。请在任务变量配置中关联测试集字段或填写自定义值"
+        )
+
+    invalid_nested: list[str] = []
+    for name, paths in requirements.items():
+        if any(path != name for path in paths) and variables_by_key[name]["type"] not in {
+            "object",
+            "array",
+        }:
+            invalid_nested.append(
+                f"{name}（引用 {', '.join('${' + path + '}' for path in paths if path != name)}，"
+                f"当前类型为 {variables_by_key[name]['type']}）"
+            )
+    if invalid_nested:
+        raise BatchExecutionError(
+            "外部 Context 嵌套引用要求任务变量类型为 object 或 array: "
+            + "; ".join(invalid_nested)
+        )
+
+
 def _normalize_variables(
     columns: tuple[str, ...], variables: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -77,7 +106,7 @@ def _normalize_variables(
     return normalized
 
 
-def _start_inputs(
+def _initial_context(
     values: dict[str, Any], variables: list[dict[str, Any]]
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
@@ -221,7 +250,10 @@ class BatchInputService:
             raise BatchExecutionError("活动中的任务不能重复启动")
         batch = self.store.ensure_round_identity(batch)
         source = batch.get("configuration") or self._legacy_configuration(batch)
-        configuration, prepared = self._prepare_configuration(**source)
+        configuration, prepared = self._prepare_configuration(
+            **source,
+            require_external_context=True,
+        )
         has_execution = self.store.has_execution(batch)
         round_number = int(batch.get("execution_round_number", 1)) + (
             1 if has_execution else 0
@@ -242,6 +274,15 @@ class BatchInputService:
         )
         return next_batch
 
+    def validate_execution(self, batch_id: str) -> None:
+        """Validate a saved task without replacing its current execution round."""
+
+        batch = self.store.get(batch_id)
+        if batch is None:
+            raise BatchExecutionError(f"任务不存在: {batch_id}")
+        source = batch.get("configuration") or self._legacy_configuration(batch)
+        self._prepare_configuration(**source, require_external_context=True)
+
     def _prepare_configuration(
         self,
         *,
@@ -256,6 +297,7 @@ class BatchInputService:
         evaluation_rules: list[dict[str, Any]] | None = None,
         case_display_column: str | None = None,
         rule_display_column: str | None = None,
+        require_external_context: bool = False,
         **_ignored: Any,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         test_set = self.preview(test_set_id)
@@ -273,7 +315,7 @@ class BatchInputService:
         if workflow_record is None:
             raise BatchExecutionError(f"工作流不存在: {workflow_id}")
         try:
-            validate_workflow_graph(
+            external_requirements = validate_workflow_graph(
                 workflow_record.workflow,
                 workflow_record.node_models,
             )
@@ -288,6 +330,25 @@ class BatchInputService:
         }
         workflow_snapshot = snapshot_record(workflow_record)
         normalized_variables = _normalize_variables(columns, variables)
+        business_outputs = {
+            output.name
+            for node in workflow_record.node_models
+            if node.type in {"SCRIPT", "LLM", "HTTP"}
+            for output in node.outputs
+        }
+        output_collisions = sorted(
+            {variable["key"] for variable in normalized_variables} & business_outputs
+        )
+        if output_collisions:
+            raise BatchExecutionError(
+                "任务变量不能覆盖 Workflow 业务节点输出: "
+                + ", ".join(output_collisions)
+            )
+        if require_external_context:
+            _validate_external_context_requirements(
+                external_requirements,
+                normalized_variables,
+            )
         normalized_call_order, random_seed, ordered_cases = _ordered_cases(
             test_set, call_order
         )
@@ -333,10 +394,13 @@ class BatchInputService:
         display_columns = prepared["display_columns"]
         columns = prepared["columns"]
         created_at = utc_execution_time()
+        record_from_snapshot(workflow_snapshot)
         cases = []
         for call_number, test_case in enumerate(ordered_cases, start=1):
-            start_inputs = _start_inputs(test_case.values, configuration["variables"])
-            record_from_snapshot(workflow_snapshot, start_inputs)
+            initial_context = _initial_context(
+                test_case.values,
+                configuration["variables"],
+            )
             cases.append(
                 {
                     "id": str(uuid4()),
@@ -349,7 +413,7 @@ class BatchInputService:
                     "verdict": "NOT_EVALUATED",
                     "evaluation": {"verdict": "NOT_EVALUATED", "rules": []},
                     "source_values": strict_json_clone(test_case.values),
-                    "start_inputs": start_inputs,
+                    "initial_context": initial_context,
                     "workflow_execution_ids": [],
                     "created_at": created_at,
                     "started_at": None,

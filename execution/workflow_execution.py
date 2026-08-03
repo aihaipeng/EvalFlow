@@ -77,7 +77,7 @@ class WorkflowExecutionManager:
     def start_batch(
         self,
         structural_snapshot: dict[str, Any],
-        start_inputs: dict[str, Any],
+        initial_context: dict[str, Any],
         trigger: dict[str, Any],
     ) -> dict[str, Any]:
         """使用 Batch 创建时冻结的结构和当前 Case 输入启动一次执行。"""
@@ -88,17 +88,48 @@ class WorkflowExecutionManager:
         if not required.issubset(trigger):
             raise WorkflowExecutionError("批量 Workflow trigger 缺少 Case 追踪字段")
         return self._start_record(
-            record_from_snapshot(structural_snapshot, start_inputs),
+            record_from_snapshot(structural_snapshot),
             strict_json_clone(trigger),
+            initial_context=initial_context,
         )
 
     def _start_record(
-        self, record: WorkflowStructuralRecord, trigger: dict[str, Any]
+        self,
+        record: WorkflowStructuralRecord,
+        trigger: dict[str, Any],
+        *,
+        initial_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             if self._closed:
                 raise WorkflowExecutionError("Workflow Execution Manager 已关闭")
-        validate_workflow_graph(record.workflow, record.node_models)
+        external_requirements = validate_workflow_graph(
+            record.workflow,
+            record.node_models,
+        )
+        initial = strict_json_clone(
+            {} if initial_context is None else initial_context
+        )
+        if not isinstance(initial, dict):
+            raise WorkflowExecutionError("Workflow 初始 Context 必须是 JSON object")
+        if trigger.get("type") == "BATCH":
+            missing = sorted(set(external_requirements) - set(initial))
+            if missing:
+                raise WorkflowExecutionError(
+                    "任务变量未声明 Workflow 所需的外部 Context 变量: "
+                    + ", ".join(missing)
+                )
+            invalid_nested = sorted(
+                name
+                for name, paths in external_requirements.items()
+                if any(path != name for path in paths)
+                and not isinstance(initial[name], (dict, list))
+            )
+            if invalid_nested:
+                raise WorkflowExecutionError(
+                    "外部 Context 嵌套引用要求任务变量值为 object 或 array: "
+                    + ", ".join(invalid_nested)
+                )
         execution_id = str(uuid4())
         snapshot = snapshot_record(record)
         document = {
@@ -111,7 +142,11 @@ class WorkflowExecutionManager:
             "started_at": None,
             "finished_at": None,
             "duration_ms": None,
-            "context": {"commits": [], "final": {}},
+            "context": {
+                "initial": initial,
+                "commits": [],
+                "final": strict_json_clone(initial),
+            },
             "result": {},
             "nodes": [
                 {"node_id": node.id, "node_execution_id": None, "state": "WAITING", "reason": None}
@@ -195,7 +230,9 @@ class WorkflowExecutionManager:
         for edge in record.workflow.edges:
             parents[edge.target_node_id].add(edge.source_node_id)
         completed: dict[str, str] = {}
-        context: dict[str, Any] = {}
+        context: dict[str, Any] = strict_json_clone(
+            workflow.get("context", {}).get("initial", {})
+        )
         context_lock = threading.Lock()
 
         def commit(node_id: str, node_execution_id: str, values: dict[str, Any]) -> None:

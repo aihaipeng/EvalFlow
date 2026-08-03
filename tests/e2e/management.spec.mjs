@@ -1452,7 +1452,7 @@ test("任务可创建、复制、设置定时、启动并查看详情", async ({
             type: "START",
             name: "START",
             description: "",
-            inputs: [{ name: "input_value", type: "integer", value: 0 }],
+            inputs: [{ name: "start_default", type: "integer", value: 7 }],
           },
           position_x: 0,
           position_y: 0,
@@ -1482,6 +1482,7 @@ test("任务可创建、复制、设置定时、启动并查看详情", async ({
     },
   });
   expect(workflow.ok()).toBeTruthy();
+  const workflowId = (await workflow.json()).workflow.workflow.id;
   await page.goto("/");
   await page.getByRole("button", { name: "任务调度" }).click();
   await page.getByRole("button", { name: "新建任务" }).click();
@@ -1525,8 +1526,25 @@ test("任务可创建、复制、设置定时、启动并查看详情", async ({
     .toBe("SUCCESS");
   const caseResponse = await request.get(`/api/batch-runs/${taskId}/cases`);
   const executedCases = (await caseResponse.json()).cases;
-  expect(executedCases.map((item) => item.start_inputs.input_value)).toEqual([
+  expect(executedCases.map((item) => item.initial_context.input_value)).toEqual([
     41, 99,
+  ]);
+  expect(executedCases.every((item) => !("start_inputs" in item))).toBeTruthy();
+  const firstExecutionResponse = await request.get(
+    `/api/workflows/${workflowId}/runs/${executedCases[0].workflow_execution_ids[0]}`,
+  );
+  const firstExecution = (await firstExecutionResponse.json()).execution;
+  expect(firstExecution.context.initial).toEqual({ input_value: 41 });
+  expect(firstExecution.context.final).toMatchObject({
+    input_value: 41,
+    start_default: 7,
+    answer: 42,
+  });
+  const frozenStart = firstExecution.structural_snapshot.nodes.find(
+    (item) => item.node.type === "START",
+  ).node;
+  expect(frozenStart.inputs).toEqual([
+    { name: "start_default", type: "integer", value: 7 },
   ]);
   await page.getByRole("button", { name: "E2E 任务", exact: true }).click();
   await expect(page.getByRole("heading", { name: "E2E 任务" })).toBeVisible();

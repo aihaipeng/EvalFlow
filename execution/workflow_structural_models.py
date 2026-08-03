@@ -196,8 +196,8 @@ def validate_workflow_graph(
     node_models: list[NodeStructuralModel],
     *,
     validate_context: bool = True,
-) -> None:
-    """验证完整 DAG、系统节点边界，并按需验证 Workflow Context。"""
+) -> dict[str, tuple[str, ...]]:
+    """验证完整 DAG，并返回未由结构声明的外部 Context 根变量。"""
 
     models = [NODE_STRUCTURAL_ADAPTER.validate_python(node) for node in node_models]
     by_id = {node.id: node for node in models}
@@ -270,9 +270,10 @@ def validate_workflow_graph(
         raise WorkflowStructuralRepositoryError("所有节点都必须能够到达 END")
 
     if not validate_context:
-        return
+        return {}
 
     context_names: list[str] = []
+    external_references: dict[str, list[str]] = {}
     for node in models:
         if node.type == "START":
             context_names.extend(item.name for item in node.inputs)
@@ -323,9 +324,10 @@ def validate_workflow_graph(
         for root_name, path in template_references(values):
             declaration = declarations.get(root_name)
             if declaration is None:
-                raise WorkflowStructuralRepositoryError(
-                    f"节点“{node.name}”引用的 Context 变量不存在: {path}"
-                )
+                paths = external_references.setdefault(root_name, [])
+                if path not in paths:
+                    paths.append(path)
+                continue
             producer_id, declared_type = declaration
             if producer_id not in ancestors:
                 raise WorkflowStructuralRepositoryError(
@@ -335,6 +337,8 @@ def validate_workflow_graph(
                 raise WorkflowStructuralRepositoryError(
                     f"节点“{node.name}”的嵌套 Context 引用要求根变量为 object 或 array: {path}"
                 )
+
+    return {name: tuple(paths) for name, paths in external_references.items()}
 
 
 class WorkflowStructuralRepository:

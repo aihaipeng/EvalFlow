@@ -188,6 +188,15 @@ def test_batch_api_previews_database_set_creates_starts_and_traces_cases(tmp_pat
         assert [case["case_id"] for case in cases] == ["case-1", "case-2"]
         assert [case["row_number"] for case in cases] == [1, 2]
         assert all(len(case["workflow_execution_ids"]) == 1 for case in cases)
+        assert [case["initial_context"] for case in cases] == [
+            {"question": "hello"},
+            {"question": "world"},
+        ]
+        assert all("start_inputs" not in case for case in cases)
+        execution = client.get(
+            f"/api/workflows/{workflow_id}/runs/{cases[0]['workflow_execution_ids'][0]}"
+        ).json()["execution"]
+        assert execution["context"]["initial"] == {"question": "hello"}
 
         assert client.delete(f"/api/batch-runs/{batch_id}").status_code == 200
         assert client.delete(f"/api/workflows/{workflow_id}").status_code == 200
@@ -207,6 +216,117 @@ def test_batch_rule_display_column_is_optional_and_does_not_fallback(tmp_path: P
         batch = created.json()["batch"]
         assert batch["input"]["display_columns"] == {"case": "question", "rule": None}
         assert batch["configuration"]["rule_display_column"] is None
+
+
+def test_external_context_requirements_allow_draft_but_block_start_and_schedule_enable(
+    tmp_path: Path,
+):
+    application = create_app(
+        database_path=tmp_path / "database.sqlite3",
+        execution_root=tmp_path / "workflow-executions",
+    )
+    with TestClient(application) as client:
+        workflow_body = _workflow_body("External Context Workflow")
+        business = workflow_body["nodes"][1]["node"]
+        business_id = business["id"]
+        business.clear()
+        business.update(
+            {
+                "id": business_id,
+                "type": "HTTP",
+                "name": "外部变量请求",
+                "description": "",
+                "request": {
+                    "url": "https://example.invalid/${tenant}/${payload.items[0]}"
+                },
+            }
+        )
+        workflow_id = _create_workflow(client, workflow_body)
+        test_set_id = _create_test_set(client)
+
+        created = client.post(
+            "/api/batch-runs",
+            json=_batch_body(test_set_id, workflow_id, "Missing External Variables"),
+        )
+
+        assert created.status_code == 201, created.text
+        batch_id = created.json()["batch"]["id"]
+        disabled = client.put(
+            f"/api/batch-runs/{batch_id}/schedule",
+            json={
+                "enabled": False,
+                "cadence": "DAILY",
+                "run_at": "",
+                "run_time": "09:00",
+                "weekdays": ["1"],
+                "month_day": 1,
+                "timezone": "UTC",
+                "overlap_policy": "SKIP",
+            },
+        )
+        assert disabled.status_code == 200, disabled.text
+
+        started = client.post(f"/api/batch-runs/{batch_id}/start")
+        assert started.status_code == 400
+        assert "payload" in started.text
+        assert "tenant" in started.text
+        assert "任务变量未声明" in started.text
+        assert (
+            client.get(f"/api/batch-runs/{batch_id}").json()["batch"]["status"]
+            == "QUEUED"
+        )
+
+        run_at = (datetime.now(UTC) + timedelta(minutes=5)).replace(
+            tzinfo=None
+        ).isoformat(timespec="milliseconds")
+        enabled = client.put(
+            f"/api/batch-runs/{batch_id}/schedule",
+            json={
+                "enabled": True,
+                "cadence": "ONCE",
+                "run_at": run_at,
+                "run_time": "09:00",
+                "weekdays": [],
+                "month_day": 1,
+                "timezone": "UTC",
+                "overlap_policy": "SKIP",
+            },
+        )
+        assert enabled.status_code == 400
+        assert "payload" in enabled.text
+        assert "tenant" in enabled.text
+        assert "任务变量未声明" in enabled.text
+        assert client.get(
+            f"/api/batch-runs/{batch_id}/schedule"
+        ).json()["schedule"]["enabled"] is False
+
+        updated_body = _batch_body(
+            test_set_id, workflow_id, "Wrong External Variable Type"
+        )
+        updated_body["variables"].extend(
+            [
+                {
+                    "source": "CUSTOM",
+                    "key": "tenant",
+                    "value": "east",
+                    "type": "string",
+                },
+                {
+                    "source": "CUSTOM",
+                    "key": "payload",
+                    "value": "not-an-object",
+                    "type": "string",
+                },
+            ]
+        )
+        saved = client.put(f"/api/batch-runs/{batch_id}", json=updated_body)
+        assert saved.status_code == 200, saved.text
+
+        wrong_type = client.post(f"/api/batch-runs/{batch_id}/start")
+        assert wrong_type.status_code == 400
+        assert "payload" in wrong_type.text
+        assert "object 或 array" in wrong_type.text
+        assert "当前类型为 string" in wrong_type.text
 
 
 def test_batch_schedule_api_persists_and_triggers_once_while_app_is_running(tmp_path: Path):

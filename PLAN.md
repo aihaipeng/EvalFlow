@@ -3821,3 +3821,82 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - Who / Where：后续开发者通过 `PLAN.md` 接续工作；本轮无人模式只处理计划状态、验收证据和 GitHub 同步。
 - What / Priority：本轮只允许修改 `PLAN.md`，不修改任何代码、配置、构建产物或业务数据；仅记录 24.15、24.16 的已完成事实。没有新增运行证据的 24.14 保持 `in progress`，最终 100 条汇总和存储占用仍需后续按真实结果回填。
 - How to Measure：提交前后文件范围检查必须只有 `PLAN.md`；文档差异通过 `git diff --check`；提交成功推送后，本地 HEAD、`origin/main` 与 GitHub 远端 `main` 必须一致。
+
+### 24.18 Excel、串并行 Workflow、即时/定时任务真实端到端验收（in progress，2026-08-04）
+
+#### 业务背景与已确认验收口径
+
+- Why：企业测试工程师需要用真实 Excel 用例、企业 Agent Mock、真实 DeepSeek 模型和持久化任务计划，验证从用例导入到变量注入、串并行编排、结果校验、即时调度、定时触发和失败定位的完整链路，而不是继续依赖隔离夹具或固定字符串测试。
+- Who / Where：本机 EvalFlow 的企业数据中心测试工程师，在浏览器中导入 `C:\Users\Administrator\Desktop\testcases.xlsx`，通过 `C:\Users\Administrator\Desktop\api-mock` 模拟企业 Agent，并在测试集管理、Workflow Studio、任务调度和任务详情中完成操作与排障。
+- What / Priority：P0 端到端验收。用户已确认 `1A / 2A / 3A`：全量保存 100 条 Excel 用例；即时任务和近期 `ONCE` 定时任务各执行五类代表场景；变量注入完整覆盖 `TEST_SET / CUSTOM × string / number / integer / boolean / object / array / null`；结果校验覆盖全部七类；另保留一条故意失败记录验证可行动诊断。
+- 新增范围：用户要求增加复杂 JSON 单元格专项测试，已确认采用机房业务 JSON，覆盖多层对象、对象数组、布尔、数字、null、中文字符串，并分别验证 Workflow 点路径/数组下标提取和结果校验深层路径提取。
+- 数据保留：本轮创建的测试集、Workflow、即时任务、定时计划、成功/失败运行和执行历史均保留，不做验收后清理；只在最终停止本轮自行启动的服务进程时结束进程，不删除业务记录。
+- How to Measure：全量集在 UI/API/SQLite 中严格为 100 条/10 字段；专项集严格为 5 条/17 字段；串并行 DAG 具备真实 fan-out/fan-in 且两条支路执行时间重叠；每条任务可追溯 START 注入值的 JSON 类型、HTTP 请求/响应、真实 LLM 请求/响应和七类校验事实；定时计划必须由调度器真实触发；故意失败后用户能直接看到失败位置、期望值、实际值和建议动作；最终相关单元测试、静态检查、构建和浏览器回归通过。
+
+#### 子任务、依赖与当前状态
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 24.18.1 | 启动并验证真实依赖 | EvalFlow `127.0.0.1:8010`、api-mock `127.0.0.1:8000`、`deepseek-v4-flash` | 两项 HTTP 健康检查、诊断接口事实、真实模型可用性请求 | 无 | completed |
+| 24.18.2 | 导入和持久化 Excel | 原始工作簿；100 条全量集、五类场景专项集和七类字段 | 浏览器解析/选区/保存、API 回读、SQLite 计数、列表 UI | 24.18.1 | completed |
+| 24.18.3 | 编排串并行复杂 Workflow | 9 Node、9 Edge、HTTP/SCRIPT/LLM、14 路类型变量 | 结构严格校验、画布可视检查、真实预运行、Node Execution 时间线和最终 Context | 24.18.1-24.18.2 | completed |
+| 24.18.4 | 执行即时五场景任务 | 5 条专项集、复杂 Workflow、14 路类型矩阵、七类校验规则 | Batch/Case 终态、START 快照、规则 facts、节点请求响应、LLM usage | 24.18.3 | pending |
+| 24.18.5 | 验证真实定时触发 | 近期 `ONCE` 计划、同一五场景配置 | 等待调度器触发；核对 schedule、history、Batch/Case 和保留状态 | 24.18.4 | pending |
+| 24.18.6 | 验证可行动失败诊断 | 一条故意不匹配规则 | UI 在 10 秒内给出失败位置、期望、实际和建议；底层 facts 一致 | 24.18.4 | pending |
+| 24.18.7 | 验证复杂 JSON 提取 | 直接修改测试集单元格为复杂机房 JSON | object 注入、点路径、数组下标、深层 result_path 和实际/预期值 | 24.18.4 | pending |
+| 24.18.8 | 完整回归与报告 | 所有受影响模块和完整业务流 | 单元测试、静态检查、构建、浏览器 E2E、SQLite/Artifact 检查 | 24.18.4-24.18.7 | pending |
+
+#### 已完成事实与证据
+
+- 工作簿只读解析确认 Sheet 为“机房故障诊断”，有效区域 `A1:J101`，含 10 个表头和 100 条业务用例。浏览器导入时按产品“选区首行也作为用例保留”的语义选择 `A2:J101`，避免把表头误存为第 101 条用例。
+- 全量测试集 `E2E-机房诊断-全量100-20260804` ID 为 `df88b375-94ff-4483-870e-bc7d2100d243`；浏览器详情、SQLite `test_cases` 和 `test_set_columns` 分别确认 100 条、10 字段，字段已按 Excel 表头重命名。
+- 五场景专项测试集 `E2E-机房诊断-专项5-七类型-20260804` ID 为 `3b06201e-56ee-4ef0-8076-469bcb9724b3`；保留前五条冷却、供电、网络、磁盘和内存场景，并增加七类可转换字段，UI 列表确认 5 条、17 字段。
+- SQLite 中已有供应商 `DeepSeek`，模型列表包含 `deepseek-v4-flash`；真实可用性调用返回 HTTP 200、`available=true`、约 1165 ms，并产生实际模型输出。密钥未写入临时 Workflow 请求或本文档。
+- Workflow `E2E-机房诊断-复杂九节点-20260804` ID 为 `6ac2366c-9393-4474-8424-191bdcc1e072`。当前拓扑为 `START -> 登录企业Agent -> 调用企业Agent诊断`，随后 fan-out 为：上支路 `审计十四路类型变量 -> DeepSeek 独立复核 -> 归一化 LLM 结论`，下支路 `鉴权后续查询`；两条支路 fan-in 到 `汇总业务与类型判定 -> END`。结构 API 确认 9 Node、9 Edge、诊断节点出度 2、汇总节点入度 2，画布已显示真实分叉与汇合。
+- 串并行预运行 `70522c7d-3959-4c53-8d23-8c6ac4b5bed6` 为 `SUCCESS`，总耗时 5574 ms，9 个节点全部 `SUCCESS`。诊断完成后，类型审计与鉴权查询均在 `2026-08-04 02:30:29` 启动并于下一秒内完成；DeepSeek 支路继续执行至 `02:30:33`，汇总节点在两条前置支路完成后才启动，符合并行 fan-out + AND Join 语义。
+- 该预运行最终 Context 中 `matrix_all_match=true`、`llm_parse_ok=true`；`final_array` 为 2 项数组、`final_object` 为对象、`final_null` 为真实 null，已证明默认输入下七类输出可被执行器保真提交。前一个纯串行草稿预运行 `70513f5f-3428-4c72-bd51-fc11d7df7d36` 也保留为 `SUCCESS`，用于对照结构变更前后的执行记录。
+
+#### 当前暂停点与未覆盖范围
+
+- 当前暂停在 24.18.4 之前：尚未创建或启动五场景即时 Batch，尚未创建 `ONCE` 定时计划，尚未产生故意失败任务，也尚未执行复杂 JSON 单元格提取专项。
+- 尚未运行本轮最终单元测试、静态检查、前端构建和完整端到端回归；现有成功证据只覆盖环境、Excel 导入、资源持久化、Workflow 结构和两次真实预运行，不能据此宣称整轮验收完成。
+- `api-mock` 当前使用 `127.0.0.1:8000`；EvalFlow 使用正式 `run_storage`，因此已创建资源和后续任务记录会继续保留在当前本机事实源中。
+
+### 24.19 任务变量直接初始化 Workflow Context（completed，2026-08-04）
+
+#### 业务背景、真实场景与优先级
+
+- Why：批量任务变量属于每次任务/用例的运行时输入，不应为了注入变量而修改已冻结的 Workflow 结构或要求用户重复维护 START。变量应在首个节点执行前直接进入 Context，同时保留来源和历史执行可追溯性。
+- Who / Where：企业测试工程师复用同一 Workflow 创建即时或定时批量任务，并将测试集字段或任务自定义值映射为运行变量；不同任务可以提供不同值，而无需进入 Workflow Studio 修改 START。
+- What / When：P0 执行契约与排障能力。已确认 `1A / 2A / 3A`：批量任务变量覆盖同名 START 默认值；`${变量名}` 未由 START 或上游节点声明时视为外部 Context 需求；直接 Context 注入只作用于 Batch，手动运行保持现有 START 行为。
+- 需求边界：任务草稿缺少外部变量时允许保存；启动即时任务或启用定时任务时必须强制校验。错误必须逐项列出准确的未声明变量名（例如 `query`、`payload`），不得只返回“变量配置不完整”等笼统信息。
+
+#### 可观测验收标准（How to Measure）
+
+- Batch 的冻结 Workflow 快照和 START inputs 在创建、启动与执行后保持不变，不再写入任务变量。
+- 严格类型转换后的任务变量在首个节点执行前写入 Execution `context.initial`，并可从执行 JSON 追溯注入来源和值。
+- Batch 任务变量与 START 输入同名时，任务变量优先；START 只补充 Context 中缺失的默认值。手动运行仍由 START 按现有规则初始化 Context。
+- Workflow 可引用未由 START/上游输出声明的 `${变量名}`；任务草稿允许保存，但即时启动或启用定时任务前必须验证任务变量配置覆盖全部外部根变量。
+- `${payload.items[0]}` 按根变量 `payload` 校验，且任务变量类型须支持对象/数组路径访问；缺失时错误直接包含 `payload`。
+- 新写入的 Batch case 使用 `initial_context`；历史仅含 `start_inputs` 的任务仍可恢复、重试和读取。
+- 相关单元测试、静态检查、前端构建及真实即时/定时任务端到端回归全部通过；失败场景可在 10 秒内识别缺失的具体变量和处理动作。
+
+#### 可独立验证的实施子任务
+
+| 子任务 | 目标 | 输入 / 输出 | 验证方法 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 24.19.1 | 建立外部 Context 需求契约 | Workflow 模板引用；输出外部根变量及类型约束 | 结构模型单元测试覆盖简单、嵌套、START/上游已声明引用 | 无 | completed（`16 passed`） |
+| 24.19.2 | 增加启动前精确校验 | Batch 变量配置；输出缺失变量名列表和可行动错误 | 即时启动与定时启用 API 测试，草稿保存仍成功 | 24.19.1 | completed（专项 `17 passed`） |
+| 24.19.3 | 持久化 Batch 初始 Context | 严格类型任务变量；输出 `case.initial_context`，兼容旧 `start_inputs` | Batch 输入与调度器单元测试 | 24.19.1 | completed（联合专项 `69 passed`） |
+| 24.19.4 | 执行时直接注入 Context | initial Context、原始 START；输出任务值优先且 START 仅补默认值 | Execution 单元测试验证快照不变、冲突优先级和手动运行不变 | 24.19.3 | completed（联合专项 `69 passed`） |
+| 24.19.5 | 完善 API/UI 诊断与兼容 | 精确错误、历史记录；输出用户可行动提示 | 前端/API 回归及历史任务恢复测试 | 24.19.2-24.19.4 | completed（前端 `13 + 26 passed`） |
+| 24.19.6 | 完整回归与价值验证 | 即时/定时完整业务流 | 单元测试、静态检查、构建、浏览器 E2E、执行 JSON 事实核对 | 24.19.1-24.19.5 | completed |
+
+#### 实现与验证记录
+
+- Workflow 结构校验现在返回未由 START 或可达上游输出声明的外部根变量；已声明但来自非上游节点的引用仍会拒绝，嵌套引用会保留完整路径并要求任务变量为 object 或 array。
+- 任务创建和编辑允许暂缺外部变量；即时启动、启用定时计划前均执行同一强校验。缺失错误逐项列出准确变量名，类型错误同时列出变量名、引用路径和当前类型；校验失败不会改变任务状态或原定时计划。
+- 新 Batch case 使用 `initial_context`；Workflow Execution 在首个节点前写入 `context.initial`，START 只提交尚未存在的默认值。冻结结构不再被任务变量改写，历史 `start_inputs` 仅保留读取回退。
+- 后端联合专项最终通过；全量 `uv run pytest -q` 为 `457 passed, 4 skipped`，4 项跳过仍是未配置真实供应商凭据的 live 测试。一次既有停止任务历史时序用例在联合回归中偶发提前读取，单独复跑 `1 passed`，最终全量通过。
+- `python -m compileall`、OpenAPI 检查、TypeScript 类型检查、`npm run build` 和 `git diff --check` 通过；构建仍提示既有 Workflow 画布与 Fortune Sheet 大分包警告，本次未新增前端依赖或包体。
+- 前端 Python 契约测试 `13 passed`、Node 前端测试 `26 passed`；Playwright `18 passed`。任务 E2E 已核对无 START 声明的 `input_value` 直接进入 `context.initial`，START 冻结默认值保持不变并补入最终 Context，浏览器无错误。

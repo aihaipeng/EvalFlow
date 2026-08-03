@@ -91,7 +91,11 @@ def test_batch_input_injects_test_set_fields_and_freezes_snapshot(tmp_path: Path
 
     assert case["case_id"] == "C-1"
     assert case["row_number"] == 1
-    assert case["start_inputs"] == {"question": "退款", "body": {"kind": "case"}}
+    assert case["initial_context"] == {
+        "question": "退款",
+        "body": {"kind": "case"},
+    }
+    assert "start_inputs" not in case
     assert batch["input"]["test_set_id"] == test_set.id
     assert batch["description"] == "退款场景回归"
     snapshot = BatchExecutionStore._read(store.batch_root(batch["id"]) / "input" / "snapshot.json")
@@ -148,7 +152,7 @@ def test_batch_input_converts_typed_test_set_values_selected_by_header(tmp_path:
 
     case = store.list_cases(batch["id"])[0]
     assert batch["variables"][0]["value"] == "col_string"
-    assert case["start_inputs"] == {
+    assert case["initial_context"] == {
         "text": "hello",
         "score": 12.5,
         "count": 42,
@@ -653,16 +657,21 @@ def test_case_poll_fails_when_workflow_thread_dies_without_terminal_fact(
         case_concurrency=1,
     )
     case = store.list_cases(batch["id"])[0]
+    legacy_context = case.pop("initial_context")
+    case["start_inputs"] = legacy_context
     scheduler = BatchScheduler(store, manager, max_total_case_concurrency=1)
     execution_id = str(uuid4())
     scheduler._active_executions[batch["id"]] = set()
+    received_context = []
+
+    def start_batch(_snapshot, initial_context, _trigger):
+        received_context.append(initial_context)
+        return {"id": execution_id, "workflow_id": workflow_id}
+
     monkeypatch.setattr(
         manager,
         "start_batch",
-        lambda *_args, **_kwargs: {
-            "id": execution_id,
-            "workflow_id": workflow_id,
-        },
+        start_batch,
     )
     monkeypatch.setattr(
         manager.store,
@@ -674,6 +683,7 @@ def test_case_poll_fails_when_workflow_thread_dies_without_terminal_fact(
     with pytest.raises(BatchExecutionError, match="未产生终态"):
         scheduler._run_case_attempt(batch, case, threading.Event())
 
+    assert received_context == [legacy_context]
     assert scheduler._active_executions[batch["id"]] == set()
 
 

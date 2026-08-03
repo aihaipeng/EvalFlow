@@ -313,20 +313,9 @@ def _llm_reference_node(reference: str):
     )
 
 
-@pytest.mark.parametrize(
-    ("start_input", "reference", "message"),
-    [
-        (None, "${missing}", "变量不存在"),
-        (
-            {"name": "question", "type": "string", "value": "hello"},
-            "${question.value}",
-            "object 或 array",
-        ),
-    ],
-)
-def test_repository_rejects_invalid_static_context_references(
-    tmp_path, start_input, reference, message
-):
+def test_repository_rejects_nested_reference_to_scalar_context_value(tmp_path):
+    start_input = {"name": "question", "type": "string", "value": "hello"}
+    reference = "${question.value}"
     start = NODE_STRUCTURAL_ADAPTER.validate_python(
         {
             "id": str(uuid4()),
@@ -362,8 +351,50 @@ def test_repository_rejects_invalid_static_context_references(
         ],
     )
 
-    with pytest.raises(WorkflowStructuralRepositoryError, match=message):
+    with pytest.raises(WorkflowStructuralRepositoryError, match="object 或 array"):
         workflow_module.validate_workflow_graph(workflow, nodes)
+
+
+def test_static_context_references_return_external_root_requirements(tmp_path):
+    start = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {
+            "id": str(uuid4()),
+            "type": "START",
+            "name": "开始",
+            "description": "",
+            "inputs": [],
+        }
+    )
+    llm = _llm_reference_node(
+        "${query}\n${payload.items[0].name}\n${query}\n${payload.enabled}"
+    )
+    end = NODE_STRUCTURAL_ADAPTER.validate_python(
+        {"id": str(uuid4()), "type": "END", "name": "结束", "description": ""}
+    )
+    nodes = [start, llm, end]
+    workflow = WorkflowStructuralModel(
+        id=str(uuid4()),
+        name="外部 Context 需求",
+        nodes=[
+            {"node_id": node.id, "position_x": index * 200, "position_y": 0}
+            for index, node in enumerate(nodes)
+        ],
+        edges=[
+            {
+                "id": str(uuid4()),
+                "source_node_id": source.id,
+                "target_node_id": target.id,
+            }
+            for source, target in ((start, llm), (llm, end))
+        ],
+    )
+
+    requirements = workflow_module.validate_workflow_graph(workflow, nodes)
+
+    assert requirements == {
+        "query": ("query",),
+        "payload": ("payload.items[0].name", "payload.enabled"),
+    }
 
 
 @pytest.mark.parametrize("producer_is_upstream", [False, True])

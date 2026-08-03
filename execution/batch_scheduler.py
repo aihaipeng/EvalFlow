@@ -486,7 +486,7 @@ class BatchScheduler:
     ) -> None:
         started = self.workflow_manager.start_batch(
             batch["workflow"]["structural_snapshot"],
-            case["start_inputs"],
+            case.get("initial_context", case.get("start_inputs", {})),
             {
                 "type": "BATCH",
                 "batch_execution_id": batch["id"],

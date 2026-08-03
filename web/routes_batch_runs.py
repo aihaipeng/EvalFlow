@@ -418,9 +418,11 @@ def save_batch_schedule(
     if services.batch_store.get(batch_id) is None:
         raise HTTPException(404, f"Batch Execution 不存在: {batch_id}")
     try:
+        if body.enabled:
+            services.batch_inputs.validate_execution(batch_id)
         schedule = services.batch_schedules.save(batch_id, body.model_dump())
         services.batch_schedule_manager.refresh(batch_id)
-    except ValueError as exc:
+    except (BatchExecutionError, ValueError) as exc:
         _error(exc)
     return {"schedule": schedule}
 

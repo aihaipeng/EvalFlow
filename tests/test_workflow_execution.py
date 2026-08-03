@@ -258,6 +258,7 @@ def test_script_workflow_persists_context_and_schedules_end_after_upstream_succe
     node_documents = store.get_nodes(workflow_id, started["id"])
 
     assert finished["status"] == "SUCCESS"
+    assert finished["context"]["initial"] == {}
     assert finished["context"]["final"] == {"question": "hello", "answer": "HELLO"}
     by_type = {item["type"]: item for item in node_documents}
     assert set(by_type) == {"START", "SCRIPT", "END"}
@@ -308,7 +309,7 @@ def test_end_ignores_legacy_result_fields_and_only_marks_workflow_success(tmp_pa
     assert "outputs" not in end_execution["structural_snapshot"]
 
 
-def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):
+def test_batch_execution_uses_frozen_snapshot_and_case_initial_context(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node(
         "START",
@@ -355,6 +356,9 @@ def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):
     finished = wait_for_terminal(store, workflow_id, started["id"])
 
     assert finished["status"] == "SUCCESS"
+    assert finished["context"]["initial"] == {
+        "input": {"question": "batch case"}
+    }
     assert finished["context"]["final"] == {
         "input": {"question": "batch case"},
         "answer": "BATCH CASE",
@@ -364,10 +368,17 @@ def test_batch_execution_uses_frozen_snapshot_and_case_start_inputs(tmp_path):
         item["node"] for item in finished["structural_snapshot"]["nodes"]
         if item["node"]["type"] == "START"
     )
-    assert snapshot_start["inputs"][0]["value"] == {"question": "batch case"}
+    assert snapshot_start["inputs"][0]["value"] == {"question": "default"}
+    start_execution = next(
+        item
+        for item in store.get_nodes(workflow_id, started["id"])
+        if item["type"] == "START"
+    )
+    assert start_execution["inputs"] == {"input": {"question": "default"}}
+    assert start_execution["outputs"] == {}
 
 
-def test_batch_execution_materializes_unknown_and_retyped_context_inputs(tmp_path):
+def test_batch_execution_keeps_unknown_and_retyped_values_out_of_start_snapshot(tmp_path):
     database = tmp_path / "workflow.sqlite3"
     start = make_node(
         "START", inputs=[{"name": "question", "type": "string", "value": "default"}]
@@ -393,7 +404,14 @@ def test_batch_execution_materializes_unknown_and_retyped_context_inputs(tmp_pat
         item["node"] for item in injected_finished["structural_snapshot"]["nodes"]
         if item["node"]["type"] == "START"
     )
-    assert {item["name"]: item["value"] for item in injected_start["inputs"]}["missing"] == "value"
+    assert injected_finished["context"]["initial"] == {"missing": "value"}
+    assert injected_finished["context"]["final"] == {
+        "missing": "value",
+        "question": "default",
+    }
+    assert {item["name"]: item["value"] for item in injected_start["inputs"]} == {
+        "question": "default"
+    }
 
     retyped = manager.start_batch(frozen, {"question": 123}, trigger)
     retyped_finished = wait_for_terminal(_store, workflow_id, retyped["id"])
@@ -402,7 +420,9 @@ def test_batch_execution_materializes_unknown_and_retyped_context_inputs(tmp_pat
         if item["node"]["type"] == "START"
     )
     question = next(item for item in retyped_start["inputs"] if item["name"] == "question")
-    assert question == {"name": "question", "type": "integer", "value": 123}
+    assert question == {"name": "question", "type": "string", "value": "default"}
+    assert retyped_finished["context"]["initial"] == {"question": 123}
+    assert retyped_finished["context"]["final"] == {"question": 123}
 
 
 def test_missing_script_output_fails_fast_and_never_creates_end_execution(tmp_path):
@@ -1453,6 +1473,62 @@ def test_http_node_sends_real_request_and_extracts_filtered_response(tmp_path, l
     assert finished["context"]["final"] == {"lookup_id": 3, "selected_name": "three"}
     assert http_execution["inputs"] == {"lookup_id": 3}
     assert http_execution["response"]["body"]["data"][1] == {"id": 3, "name": "three"}
+    assert requests == [{"method": "GET", "path": "/items?wanted=3"}]
+
+
+def test_batch_external_template_variable_runs_from_initial_context_without_start_declaration(
+    tmp_path, local_execution_server
+):
+    base_url, requests = local_execution_server
+    database = tmp_path / "workflow.sqlite3"
+    start = make_node(
+        "START",
+        inputs=[{"name": "start_default", "type": "string", "value": "kept"}],
+    )
+    http_node = make_node(
+        "HTTP",
+        request={
+            "method": "GET",
+            "url": base_url + "/items",
+            "params": [{"key": "wanted", "value": "${lookup_id}"}],
+        },
+    )
+    end = make_node("END")
+    workflow_id, repository = create_workflow(
+        database,
+        [start, http_node, end],
+        [(start, http_node), (http_node, end)],
+    )
+    manager, store = make_manager(tmp_path, repository)
+    frozen = workflow_execution_module.snapshot_record(repository.get(workflow_id))
+
+    started = manager.start_batch(
+        frozen,
+        {"lookup_id": 3},
+        {
+            "type": "BATCH",
+            "batch_execution_id": str(uuid4()),
+            "case_run_id": str(uuid4()),
+            "case_id": "external-1",
+            "row_number": 1,
+        },
+    )
+    finished = wait_for_terminal(store, workflow_id, started["id"])
+
+    assert finished["status"] == "SUCCESS"
+    assert finished["context"]["initial"] == {"lookup_id": 3}
+    assert finished["context"]["final"] == {
+        "lookup_id": 3,
+        "start_default": "kept",
+    }
+    snapshot_start = next(
+        item["node"]
+        for item in finished["structural_snapshot"]["nodes"]
+        if item["node"]["type"] == "START"
+    )
+    assert snapshot_start["inputs"] == [
+        {"name": "start_default", "type": "string", "value": "kept"}
+    ]
     assert requests == [{"method": "GET", "path": "/items?wanted=3"}]
 
 
