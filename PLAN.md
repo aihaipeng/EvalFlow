@@ -3822,7 +3822,7 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - What / Priority：本轮只允许修改 `PLAN.md`，不修改任何代码、配置、构建产物或业务数据；仅记录 24.15、24.16 的已完成事实。没有新增运行证据的 24.14 保持 `in progress`，最终 100 条汇总和存储占用仍需后续按真实结果回填。
 - How to Measure：提交前后文件范围检查必须只有 `PLAN.md`；文档差异通过 `git diff --check`；提交成功推送后，本地 HEAD、`origin/main` 与 GitHub 远端 `main` 必须一致。
 
-### 24.18 Excel、串并行 Workflow、即时/定时任务真实端到端验收（in progress，2026-08-04）
+### 24.18 Excel、串并行 Workflow、即时/定时任务真实端到端验收（completed with 1 acceptance gap，2026-08-04）
 
 #### 业务背景与已确认验收口径
 
@@ -3831,7 +3831,7 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - What / Priority：P0 端到端验收。用户已确认 `1A / 2A / 3A`：全量保存 100 条 Excel 用例；即时任务和近期 `ONCE` 定时任务各执行五类代表场景；变量注入完整覆盖 `TEST_SET / CUSTOM × string / number / integer / boolean / object / array / null`；结果校验覆盖全部七类；另保留一条故意失败记录验证可行动诊断。
 - 新增范围：用户要求增加复杂 JSON 单元格专项测试，已确认采用机房业务 JSON，覆盖多层对象、对象数组、布尔、数字、null、中文字符串，并分别验证 Workflow 点路径/数组下标提取和结果校验深层路径提取。
 - 数据保留：本轮创建的测试集、Workflow、即时任务、定时计划、成功/失败运行和执行历史均保留，不做验收后清理；只在最终停止本轮自行启动的服务进程时结束进程，不删除业务记录。
-- How to Measure：全量集在 UI/API/SQLite 中严格为 100 条/10 字段；专项集严格为 5 条/17 字段；串并行 DAG 具备真实 fan-out/fan-in 且两条支路执行时间重叠；每条任务可追溯 START 注入值的 JSON 类型、HTTP 请求/响应、真实 LLM 请求/响应和七类校验事实；定时计划必须由调度器真实触发；故意失败后用户能直接看到失败位置、期望值、实际值和建议动作；最终相关单元测试、静态检查、构建和浏览器回归通过。
+- How to Measure：全量集在 UI/API/SQLite 中严格为 100 条/10 字段；七类型专项集严格为 5 条/17 字段，复杂 JSON 专项集严格为 5 条/10 字段；串并行 DAG 具备真实 fan-out/fan-in 且两条支路执行时间重叠；每条任务可追溯 START 注入值的 JSON 类型、HTTP 请求/响应、真实 LLM 请求/响应和校验 facts；定时计划必须由调度器真实触发；故意失败后用户能直接看到失败位置、期望值、实际值和建议动作；最终相关单元测试、静态检查、构建和浏览器回归通过。
 
 #### 子任务、依赖与当前状态
 
@@ -3840,11 +3840,11 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 | 24.18.1 | 启动并验证真实依赖 | EvalFlow `127.0.0.1:8010`、api-mock `127.0.0.1:8000`、`deepseek-v4-flash` | 两项 HTTP 健康检查、诊断接口事实、真实模型可用性请求 | 无 | completed |
 | 24.18.2 | 导入和持久化 Excel | 原始工作簿；100 条全量集、五类场景专项集和七类字段 | 浏览器解析/选区/保存、API 回读、SQLite 计数、列表 UI | 24.18.1 | completed |
 | 24.18.3 | 编排串并行复杂 Workflow | 9 Node、9 Edge、HTTP/SCRIPT/LLM、14 路类型变量 | 结构严格校验、画布可视检查、真实预运行、Node Execution 时间线和最终 Context | 24.18.1-24.18.2 | completed |
-| 24.18.4 | 执行即时五场景任务 | 5 条专项集、复杂 Workflow、14 路类型矩阵、七类校验规则 | Batch/Case 终态、START 快照、规则 facts、节点请求响应、LLM usage | 24.18.3 | pending |
-| 24.18.5 | 验证真实定时触发 | 近期 `ONCE` 计划、同一五场景配置 | 等待调度器触发；核对 schedule、history、Batch/Case 和保留状态 | 24.18.4 | pending |
-| 24.18.6 | 验证可行动失败诊断 | 一条故意不匹配规则 | UI 在 10 秒内给出失败位置、期望、实际和建议；底层 facts 一致 | 24.18.4 | pending |
-| 24.18.7 | 验证复杂 JSON 提取 | 直接修改测试集单元格为复杂机房 JSON | object 注入、点路径、数组下标、深层 result_path 和实际/预期值 | 24.18.4 | pending |
-| 24.18.8 | 完整回归与报告 | 所有受影响模块和完整业务流 | 单元测试、静态检查、构建、浏览器 E2E、SQLite/Artifact 检查 | 24.18.4-24.18.7 | pending |
+| 24.18.4 | 执行即时五场景任务 | 5 条专项集、复杂 Workflow、14 路类型矩阵、七类校验规则 | Batch/Case 终态、START 快照、规则 facts、节点请求响应、LLM usage | 24.18.3 | completed |
+| 24.18.5 | 验证真实定时触发 | 近期 `ONCE` 计划、同一五场景配置 | 等待调度器触发；核对 schedule、history、Batch/Case 和保留状态 | 24.18.4 | completed |
+| 24.18.6 | 验证可行动失败诊断 | 一条故意不匹配规则 | UI 在 10 秒内给出失败位置、期望、实际和建议；底层 facts 一致 | 24.18.4 | completed（验收未通过：缺少路径和建议） |
+| 24.18.7 | 验证复杂 JSON 提取 | 直接修改测试集单元格为复杂机房 JSON | object 注入、点路径、数组下标、深层 result_path 和实际/预期值 | 24.18.4 | completed |
+| 24.18.8 | 完整回归与报告 | 所有受影响模块和完整业务流 | 单元测试、静态检查、构建、浏览器 E2E、SQLite/Artifact 检查 | 24.18.4-24.18.7 | completed |
 
 #### 已完成事实与证据
 
@@ -3855,12 +3855,22 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - Workflow `E2E-机房诊断-复杂九节点-20260804` ID 为 `6ac2366c-9393-4474-8424-191bdcc1e072`。当前拓扑为 `START -> 登录企业Agent -> 调用企业Agent诊断`，随后 fan-out 为：上支路 `审计十四路类型变量 -> DeepSeek 独立复核 -> 归一化 LLM 结论`，下支路 `鉴权后续查询`；两条支路 fan-in 到 `汇总业务与类型判定 -> END`。结构 API 确认 9 Node、9 Edge、诊断节点出度 2、汇总节点入度 2，画布已显示真实分叉与汇合。
 - 串并行预运行 `70522c7d-3959-4c53-8d23-8c6ac4b5bed6` 为 `SUCCESS`，总耗时 5574 ms，9 个节点全部 `SUCCESS`。诊断完成后，类型审计与鉴权查询均在 `2026-08-04 02:30:29` 启动并于下一秒内完成；DeepSeek 支路继续执行至 `02:30:33`，汇总节点在两条前置支路完成后才启动，符合并行 fan-out + AND Join 语义。
 - 该预运行最终 Context 中 `matrix_all_match=true`、`llm_parse_ok=true`；`final_array` 为 2 项数组、`final_object` 为对象、`final_null` 为真实 null，已证明默认输入下七类输出可被执行器保真提交。前一个纯串行草稿预运行 `70513f5f-3428-4c72-bd51-fc11d7df7d36` 也保留为 `SUCCESS`，用于对照结构变更前后的执行记录。
+- 新规则即时任务 `E2E-新Context规则-即时5-20260804` ID 为 `b1aec6cd-f817-4d80-ac83-337f2aa1b850`，最终 `5/5 SUCCESS + PASS`。每条 case 只持久化 `initial_context`、不含 `start_inputs`；任务 `case_id` 覆盖 START 的 `CASE-DEFAULT`，冻结 START 保持不变并只补 `start_default_only`；14 路 `TEST_SET / CUSTOM × 七类型` 和 10 条结果规则全部通过，9 个节点、3 次 Mock HTTP 与真实 DeepSeek 请求/响应及 token usage 均可追溯。
+- 新规则负例均保留：缺参草稿 `96f39eea-251f-410d-8839-7e6a68bcfdce` 可保存，但即时启动和启用定时计划均精确拒绝 19 个缺失根变量；任务变量与业务输出 `mock_access_token` 冲突时拒绝；嵌套约束 Workflow `48f749af-dafb-437f-b1d1-80da269f1aa6` 和标量草稿任务 `b979f2ff-0455-41d9-ada6-fa92883a6942` 证明 `${payload.site}` 只能由 object/array 根变量提供。
+- 首次 ONCE 任务 `48a611a7-2042-413e-8102-10456f22f813` 由调度器自动触发并保留 `4/5 PASS`：CASE-005 因当时 `max_tokens=220` 截断 DeepSeek JSON 而失败。将同一 Workflow 的 LLM 上限调整为 500 后，复验任务 `b4b16b71-a26c-4826-b63e-1a99eaa4e1fa` 在计划时间自动触发并达到 `5/5 PASS`；计划自动设为 `enabled=false`，`last_run_at=2026-08-03T20:01:08.006Z`，两次成功/失败历史均保留。
+- 故意失败任务 `33bf3da9-db74-4a37-9af7-6e68c435a7f3` 保留为 `COMPLETED_WITH_ERRORS`、`0/5 PASS`。底层 facts 和 UI 均显示规则“故意失败-字符串不一致”、期望 `INTENTIONAL-WRONG`、实际 `typed-value`；但主校验表未显示 `result_path` 或建议动作，展开“错误与节点日志”只显示 `error=null / problem_node=null`，因此“10 秒内看到失败位置和下一步”验收不通过。
+- 复杂 JSON 工作簿输出为 `outputs/e2e-complex-json-20260804/testcases-complex-json.xlsx`：在原工作簿 J 列原位将 `rule_description` 改为 `complex_payload`，前五行包含多层对象、对象数组、布尔、数字、null 和中文字符串。`@oai/artifact-tool` 的值检查、公式错误扫描和前后视觉渲染均通过；未修改原始 `C:\Users\Administrator\Desktop\testcases.xlsx`。
+- 复杂 JSON 测试集 `686b195e-4110-46e0-a47e-ae07f7d63eae` 为 5 条/10 字段；串并行 Workflow `5f5f20f7-a445-4a7a-9e85-5671af7cc3c0` 为 9 Node/9 Edge；即时任务 `2b08852a-0cf0-4592-963a-c30e80841a56` 为 `5/5 SUCCESS + PASS`。46/46 条程序化断言通过：`payload:object` 直接进入 `initial_context` 并覆盖冻结 START 默认对象，HTTP 和 DeepSeek 提示词中的 `${payload.datacenter.name}`、`${payload.racks[0].hosts[1]}` 等路径正确提取，12 条结果规则从 `context.payload` 和 `context.complex_payload_summary` 深层提取对象字段、数组下标、数字、布尔及 null 路径并全部 PASS。
+- 复杂 JSON 的 5 次真实 DeepSeek 调用均为 `deepseek-v4-flash`、`max_tokens=500`，token 总量依次为 `417 / 457 / 440 / 431 / 432`；每条均有 9/9 节点成功、3/3 Mock HTTP 200、上下支路执行时间重叠且 AND Join 等待两支路完成。任务详情 UI 显示 5 PASS、0 Failed、0 Error，CASE-001 直接显示“上海一号机房”“srv-002”“0.91”和 null 路径等 12 条通过事实，浏览器 console error 为 0。
 
-#### 当前暂停点与未覆盖范围
+#### 最终回归、未覆盖范围与已知风险
 
-- 当前暂停在 24.18.4 之前：尚未创建或启动五场景即时 Batch，尚未创建 `ONCE` 定时计划，尚未产生故意失败任务，也尚未执行复杂 JSON 单元格提取专项。
-- 尚未运行本轮最终单元测试、静态检查、前端构建和完整端到端回归；现有成功证据只覆盖环境、Excel 导入、资源持久化、Workflow 结构和两次真实预运行，不能据此宣称整轮验收完成。
-- `api-mock` 当前使用 `127.0.0.1:8000`；EvalFlow 使用正式 `run_storage`，因此已创建资源和后续任务记录会继续保留在当前本机事实源中。
+- 最终回归：`uv run pytest -q --basetemp=.pytest_tmp_e2e_20260804` 为 `457 passed, 4 skipped`；Node 前端测试 `26 passed`；Playwright `18 passed`；`python -m compileall`、OpenAPI 检查、TypeScript 类型检查和 `npm run build` 通过。4 个 skip 仍是未配置 live 凭据的测试，本轮真实 DeepSeek E2E 已单独提供运行证据。
+- 第一次直接执行全量 pytest 时，仍在运行的 `8011` 测试服务占用 `.pytest_tmp/evalflow-8011.err.log`，造成 setup 清理错误而非业务断言失败；为保留日志且不终止服务，改用独立 `basetemp` 后全量通过。更早的真实 E2E 曾因多个 hot-reload 子进程并存而随机命中旧校验代码；清理为单进程 `8010` 后结果稳定，这两项均记录为本机测试环境风险。
+- 生产 SQLite 回读确认复杂 JSON 测试集 `1` 条资源、`5` 条 case、`10` 个字段，Workflow 为 `1` 条资源、`9` 个 binding、`9` 条 edge；`run_storage` 保留该 Batch 的 `7` 个文件（含 5 case）和 5 次 Workflow Execution 的 `50` 个文件（5 个 workflow.json + 45 个 Node JSON）。所有测试集、Workflow、任务、计划、成功/失败运行和历史记录均未删除。
+- 原始 `testcases.xlsx` 的浏览器解析、选区和保存已在 24.18.2 覆盖。复杂 JSON 副本的 Chrome 文件选择因扩展拒绝本地文件访问，Windows 控制又因无法可靠确认当前 URL 被安全策略终止，因此本专项通过工作簿导出的同一 5 行结构调用产品测试集 API 创建资源，未重复覆盖浏览器“选择文件”动作；该限制不影响 JSON 类型注入、路径提取、调度、执行和结果校验证据，但必须作为未覆盖范围保留。
+- 构建仍有既有 Fortune Sheet / Workflow 画布大 chunk 警告；本轮未新增前端依赖。唯一产品验收缺口是失败详情缺少结果路径和建议动作，后续应单独修复后复测，不应把当前测试完成状态误写为全项通过。
+- `api-mock` 使用 `127.0.0.1:8000`，EvalFlow 使用正式 `run_storage`；当前服务进程未在验收后停止，以便用户继续查看保留记录。
 
 ### 24.19 任务变量直接初始化 Workflow Context（completed，2026-08-04）
 
@@ -3900,3 +3910,4 @@ run_storage/workflow_executions/{workflow_id}/{workflow_execution_id}/
 - 后端联合专项最终通过；全量 `uv run pytest -q` 为 `457 passed, 4 skipped`，4 项跳过仍是未配置真实供应商凭据的 live 测试。一次既有停止任务历史时序用例在联合回归中偶发提前读取，单独复跑 `1 passed`，最终全量通过。
 - `python -m compileall`、OpenAPI 检查、TypeScript 类型检查、`npm run build` 和 `git diff --check` 通过；构建仍提示既有 Workflow 画布与 Fortune Sheet 大分包警告，本次未新增前端依赖或包体。
 - 前端 Python 契约测试 `13 passed`、Node 前端测试 `26 passed`；Playwright `18 passed`。任务 E2E 已核对无 START 声明的 `input_value` 直接进入 `context.initial`，START 冻结默认值保持不变并补入最终 Context，浏览器无错误。
+- 24.18 的真实回归进一步覆盖即时任务 `b1aec6cd-f817-4d80-ac83-337f2aa1b850`、ONCE 复验 `b4b16b71-a26c-4826-b63e-1a99eaa4e1fa` 和复杂 JSON 任务 `2b08852a-0cf0-4592-963a-c30e80841a56`；三者均证明新 case 只使用 `initial_context`，任务值覆盖同名 START 默认值，START 只补缺失值。复杂 JSON 专项对 object 根变量、点路径和数组下标完成 46/46 断言与 5/5 PASS。
